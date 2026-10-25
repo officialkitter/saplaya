@@ -55,6 +55,11 @@ Run the baseline SQL files above first, then apply `supabase/migrations/20261024
 
 Set `FIREBASE_PROJECT_ID=saplaya-v1` and `FIREBASE_SERVICE_ACCOUNT_JSON` in Railway. The latter must be the Firebase Admin service-account JSON stored as a Railway secret; never commit it or put it in a client variable. For iOS phone auth, also configure Firebase's APNs/reCAPTCHA requirements for the registered app. Firebase phone verification SMS provider activation and billing are a separate setup step.
 
+#### Free phone-auth testing (no real SMS)
+To exercise the OTP flow without sending or paying for SMS, open Firebase Console → `saplaya-v1` → Authentication → Sign-in method → Phone, then add a fictional phone number and a fixed six-digit test code under **Phone numbers for testing**. Use only a number reserved for testing, never a customer's real number. Enter that same number and code in the app; Firebase accepts the test credential without sending an SMS. These test accounts validate the sign-in and backend identity flow, not delivery to a handset.
+
+Firebase's current limits document says real phone verification SMS requires the Blaze pay-as-you-go plan and is billed per SMS. Do not enable live SMS or upgrade billing until that spend is approved. For live use later, enable the Phone provider, allow Tanzania (`+255`) in the SMS region policy, and complete native app verification setup (Android signing fingerprints and iOS APNs/reCAPTCHA configuration).
+
 ## 2. Backend (Railway)
 ```
 cd backend
