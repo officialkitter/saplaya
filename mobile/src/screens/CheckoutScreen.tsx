@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { MotiView } from 'moti';
 import ScreenHeader from '../components/ScreenHeader';
-import { confirmPayment, initializePayment, placeCashOrder } from '../lib/api';
+import { confirmPayment, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { STORE, deliveryTier, distanceKm } from '../lib/delivery';
 import { useAccount } from '../store/AccountContext';
@@ -23,12 +23,14 @@ type CheckoutPayment = 'online' | 'cash_on_delivery';
 
 export default function CheckoutScreen({ navigation }: any) {
   const { lines, mode, subtotal, priceOf, clear, setLastOrderId } = useStore();
-  const { profile, user, addresses, selectAddress } = useAccount();
+  const { profile, user, addresses, isSignedIn, selectAddress } = useAccount();
   const place = useDeliveryPlace();
   const { setPlace } = useDeliveryActions();
   const [name, setName] = useState(profile.fullName);
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(profile.phone);
+  const [paymentPhone, setPaymentPhone] = useState('');
+  const [savedPaymentMethods, setSavedPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
   const [deliveryWindow, setDeliveryWindow] = useState<DeliveryWindow>('morning');
@@ -56,6 +58,25 @@ export default function CheckoutScreen({ navigation }: any) {
     if (!email && user?.email) setEmail(user.email);
     if (!phone && profile.phone) setPhone(profile.phone);
   }, [profile.fullName, profile.phone, user?.email, name, email, phone]);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setSavedPaymentMethods([]);
+      return;
+    }
+    let active = true;
+    void fetchPaymentMethods().then((methods) => {
+      if (!active) return;
+      setSavedPaymentMethods(methods);
+      const preferred = methods.find((method) => method.is_default) ?? methods[0];
+      if (preferred) setPaymentPhone((current) => current || preferred.phone_e164);
+    }).catch((error: unknown) => {
+      console.error('Could not load saved payment methods:', error);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isSignedIn]);
 
   const chooseAddress = async (id: string) => {
     const saved = addresses.find((address) => address.id === id);
@@ -178,6 +199,7 @@ export default function CheckoutScreen({ navigation }: any) {
           lat: place.lat,
           lng: place.lng,
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+          payment_phone: paymentPhone.trim() || phone.trim(),
         });
         setPayment(initialized);
         return;
@@ -340,6 +362,39 @@ export default function CheckoutScreen({ navigation }: any) {
           </View>
 
           {checkoutPayment === 'online' && (
+            <>
+              {savedPaymentMethods.length > 0 && (
+                <View style={styles.savedMethods}>
+                  <Text style={styles.label}>Saved mobile money numbers</Text>
+                  {savedPaymentMethods.map((method) => (
+                    <Pressable
+                      key={method.id}
+                      style={[styles.savedMethod, paymentPhone === method.phone_e164 && styles.savedMethodSelected]}
+                      onPress={() => setPaymentPhone(method.phone_e164)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: paymentPhone === method.phone_e164 }}
+                    >
+                      <Ionicons name="phone-portrait-outline" size={20} color={colors.green} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.choiceTitle}>{method.label}</Text>
+                        <Text style={styles.choiceHint}>{method.phone_e164}</Text>
+                      </View>
+                      {paymentPhone === method.phone_e164 && <Ionicons name="checkmark-circle" size={21} color={colors.green} />}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              <Field
+                label="Mobile money number for this payment"
+                value={paymentPhone}
+                onChangeText={setPaymentPhone}
+                keyboardType="phone-pad"
+                placeholder={phone || '+255 7XX XXX XXX'}
+              />
+            </>
+          )}
+
+          {checkoutPayment === 'online' && (
             <View style={styles.secureCard}>
               <Ionicons name="shield-checkmark-outline" size={22} color={colors.green} />
               <Text style={styles.secureText}>Complete payment securely using the available mobile money or card options.</Text>
@@ -406,6 +461,9 @@ const styles = StyleSheet.create({
   choiceSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },
   choiceTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   choiceHint: { color: colors.muted, fontSize: 11, lineHeight: 15 },
+  savedMethods: { marginBottom: 10, padding: 13, borderRadius: radius.md, backgroundColor: colors.white },
+  savedMethod: { minHeight: 54, marginTop: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  savedMethodSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },
   deliveryTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   pin: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EFF7EC', alignItems: 'center', justifyContent: 'center' },
   address: { color: colors.ink, fontSize: 15, fontWeight: '800' },

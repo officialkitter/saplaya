@@ -50,7 +50,7 @@ export default function AccountScreen({ navigation }: any) {
 
         <Text style={styles.sectionTitle}>Manage your account</Text>
         <View style={styles.menu}>
-          {sections.map((section, index) => (
+          {sections.filter((section) => section.key !== 'payments' || isSignedIn).map((section, index, visibleSections) => (
             <MotiView
               key={section.key}
               from={{ opacity: 0, translateY: 8 }}
@@ -58,7 +58,7 @@ export default function AccountScreen({ navigation }: any) {
               transition={{ type: 'timing', duration: 220, delay: index * 30 }}
             >
               <Pressable
-                style={[styles.row, index < sections.length - 1 && styles.rowBorder]}
+                style={[styles.row, index < visibleSections.length - 1 && styles.rowBorder]}
                 onPress={() => navigation.navigate('AccountDetail', { section: section.key })}
                 accessibilityRole="button"
               >

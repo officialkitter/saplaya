@@ -242,6 +242,25 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, customerId]);
 
+  useEffect(() => {
+    if (!user || user.is_anonymous || !customerId) return;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    void import('../lib/push-notifications')
+      .then(({ registerPushNotifications }) => registerPushNotifications())
+      .then((stopListening) => {
+        if (active) unsubscribe = stopListening;
+        else stopListening();
+      })
+      .catch((pushError: unknown) => {
+        console.error('Could not enable order notifications:', pushError);
+      });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [user, customerId]);
+
   const signIn = useCallback(async (email: string, password: string) => {
     await signOutPhoneAuth();
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });

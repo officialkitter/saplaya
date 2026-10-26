@@ -4,6 +4,7 @@ import cors from 'cors';
 import { createClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
+import { getMessaging } from 'firebase-admin/messaging';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -67,7 +68,7 @@ const PERMISSIONS: Record<Role, Perm[]> = {
   platform_owner: ALL.filter((p) => p !== 'products.edit' && p !== 'stock.adjust'),
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
-    'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
+    'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage', 'team.view',
   ],
   supplier_owner: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
@@ -128,6 +129,13 @@ function getFirebaseAdminAuth() {
     projectId: FIREBASE_PROJECT_ID,
   }, FIREBASE_APP_NAME);
   return getAuth(app);
+}
+
+function getFirebaseAdminMessaging() {
+  getFirebaseAdminAuth();
+  const adminApp = getApps().find((app) => app.name === FIREBASE_APP_NAME);
+  if (!adminApp) throw new Error('Firebase server application was not initialized.');
+  return getMessaging(adminApp);
 }
 
 function isFirebaseTokenForProject(token: string): boolean {
@@ -447,6 +455,7 @@ const checkoutSchema = z.object({
     email: z.string().trim().email().max(254),
     phone: z.string().trim().min(5).max(32),
   }),
+  payment_phone: z.string().trim().min(5).max(32).optional(),
 });
 
 const applicationSchema = z.object({
@@ -502,7 +511,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
   const parsed = checkoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { mode, items, lat, lng, customer, delivery_window: deliveryWindow } = parsed.data;
-  const phone = normalizedTanzanianPhone(customer.phone);
+  const phone = normalizedTanzanianPhone(parsed.data.payment_phone ?? customer.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid Tanzanian mobile number.' });
 
   const { data: providerConfig, error: configError } = await db
@@ -746,6 +755,128 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
     })),
   });
 });
+
+const savedPaymentMethodSchema = z.object({
+  label: z.string().trim().min(1).max(40),
+  phone: z.string().trim().min(5).max(32),
+});
+
+app.get('/payment-methods', requireUser, async (req: AuthedRequest, res) => {
+  if (req.isAnonymous) return res.status(403).json({ error: 'Sign in to save payment methods.' });
+  const { data, error } = await db.from('customer_payment_methods')
+    .select('id, label, phone_e164, is_default, created_at')
+    .eq('customer_id', req.userId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.error('Could not load customer payment methods:', error.message);
+    return res.status(500).json({ error: 'Could not load saved payment methods.' });
+  }
+  return res.json(data);
+});
+
+app.post('/payment-methods', requireUser, async (req: AuthedRequest, res) => {
+  if (req.isAnonymous) return res.status(403).json({ error: 'Sign in to save payment methods.' });
+  const parsed = savedPaymentMethodSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const phone = normalizedTanzanianPhone(parsed.data.phone);
+  if (!phone) return res.status(400).json({ error: 'Enter a valid Tanzanian mobile number.' });
+  const { data, error } = await db.rpc('save_customer_payment_method', {
+    p_customer: req.userId,
+    p_label: parsed.data.label,
+    p_phone_e164: phone,
+  });
+  if (error || !data) {
+    console.error('Could not save a customer payment method:', error?.message ?? 'No method was returned.');
+    return res.status(500).json({ error: 'Could not save this mobile money number.' });
+  }
+  return res.status(201).json(data);
+});
+
+app.delete('/payment-methods/:id', requireUser, async (req: AuthedRequest, res) => {
+  if (req.isAnonymous) return res.status(403).json({ error: 'Sign in to manage payment methods.' });
+  const methodId = z.string().uuid().safeParse(req.params.id);
+  if (!methodId.success) return res.status(400).json({ error: 'Invalid payment method.' });
+  const { data, error } = await db.rpc('delete_customer_payment_method', {
+    p_customer: req.userId,
+    p_method_id: methodId.data,
+  });
+  if (error) {
+    console.error('Could not remove a customer payment method:', error.message);
+    return res.status(500).json({ error: 'Could not remove this payment method.' });
+  }
+  if (!data) return res.status(404).json({ error: 'Payment method not found.' });
+  return res.status(204).send();
+});
+
+const pushTokenSchema = z.object({
+  token: z.string().trim().min(20).max(4096),
+  platform: z.enum(['android', 'ios']),
+});
+
+app.post('/devices/push-token', requireUser, async (req: AuthedRequest, res) => {
+  if (req.isAnonymous) return res.status(403).json({ error: 'Sign in to enable notifications.' });
+  const parsed = pushTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { error } = await db.from('customer_push_tokens').upsert({
+    customer_id: req.userId,
+    token: parsed.data.token,
+    platform: parsed.data.platform,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'token' });
+  if (error) {
+    console.error('Could not save customer notification token:', error.message);
+    return res.status(500).json({ error: 'Could not enable notifications.' });
+  }
+  return res.json({ registered: true });
+});
+
+async function notifyCustomerOrderStatus(orderId: string, status: string) {
+  const { data: order, error: orderError } = await db.from('orders')
+    .select('customer_id')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (orderError) throw new Error(`Could not look up order notification recipient: ${orderError.message}`);
+  if (!order) return;
+
+  const { data: registrations, error: tokenError } = await db.from('customer_push_tokens')
+    .select('id, token')
+    .eq('customer_id', order.customer_id);
+  if (tokenError) throw new Error(`Could not load customer notification tokens: ${tokenError.message}`);
+  if (!registrations?.length) return;
+
+  const statusLabels: Record<string, string> = {
+    pending: 'Order received',
+    packing: 'Your order is being prepared',
+    en_route: 'Your order is on the way',
+    delivered: 'Your order has been delivered',
+    cancelled: 'Your order was cancelled',
+  };
+  const messaging = getFirebaseAdminMessaging();
+  const result = await messaging.sendEachForMulticast({
+    tokens: registrations.map((registration) => registration.token),
+    notification: {
+      title: 'Saplaya order update',
+      body: statusLabels[status] ?? 'Your order status has changed',
+    },
+    data: { order_id: orderId, status },
+  });
+  const invalidTokenIds = registrations
+    .filter((_, index) => {
+      const response = result.responses[index];
+      return !response.success && (
+        response.error?.code === 'messaging/registration-token-not-registered'
+        || response.error?.code === 'messaging/invalid-registration-token'
+      );
+    })
+    .map((registration) => registration.id);
+  if (invalidTokenIds.length) {
+    const { error: cleanupError } = await db.from('customer_push_tokens').delete().in('id', invalidTokenIds);
+    if (cleanupError) console.error('Could not remove expired customer notification tokens:', cleanupError.message);
+  }
+  if (result.failureCount > invalidTokenIds.length) {
+    console.error('Some customer order notifications could not be delivered.');
+  }
+}
 
 app.get('/payments/callback', (req, res) => {
   const transactionRef = String(req.query.OrderMerchantReference ?? req.query.tx_ref ?? '');
@@ -1080,6 +1211,12 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
   if (m.role === 'driver' && !DRIVER_STATUSES.includes(parsed.data.status)) {
     return res.status(403).json({ error: 'Drivers can only mark orders On the way or Delivered' });
   }
+  let currentQuery = db.from('supplier_orders').select('status').eq('id', req.params.id);
+  if (m.supplier_id) currentQuery = currentQuery.eq('supplier_id', m.supplier_id);
+  const { data: current, error: currentError } = await currentQuery.maybeSingle();
+  if (currentError) return res.status(500).json({ error: currentError.message });
+  if (!current) return res.status(404).json({ error: 'Not found' });
+
   let q = db
     .from('supplier_orders')
     .update({ status: parsed.data.status, updated_at: new Date().toISOString() })
@@ -1088,6 +1225,11 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
   const { data, error } = await q.select().maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Not found' });
+  if (current.status !== data.status) {
+    void notifyCustomerOrderStatus(data.order_id, data.status).catch((notificationError: unknown) => {
+      console.error('Could not send customer order status notification:', notificationError);
+    });
+  }
   res.json(data);
 });
 
@@ -1155,6 +1297,32 @@ app.get('/admin/catalog', requirePerm('catalog.manage'), async (_req: AuthedRequ
     return res.status(500).json({ error: 'Could not load the product catalog.' });
   }
   return res.json({ items, proposals });
+});
+
+const catalogCreateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  category: z.string().trim().min(2).max(80),
+  unit: z.string().trim().min(1).max(24),
+  retail_price: z.number().int().positive(),
+  wholesale_price: z.number().int().positive(),
+  wholesale_min_qty: z.number().int().positive(),
+  image_url: z.string().url().nullable(),
+  price_approved: z.boolean().default(false),
+}).refine((value) => value.wholesale_price < value.retail_price, {
+  message: 'Wholesale price must be lower than retail price.',
+  path: ['wholesale_price'],
+});
+
+app.post('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
+  const parsed = catalogCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { data, error } = await db.from('catalog_products').insert(parsed.data).select('*').single();
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'A catalog product with this name already exists.' });
+    console.error('Could not add a shared catalog product:', error.message);
+    return res.status(500).json({ error: 'Could not add this catalog product.' });
+  }
+  return res.status(201).json(data);
 });
 
 const catalogUpdateSchema = z.object({

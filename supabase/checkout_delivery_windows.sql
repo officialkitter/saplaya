@@ -13,6 +13,122 @@ alter table public.checkout_payments
   add column if not exists delivery_window text not null default 'morning'
     check (delivery_window in ('morning', 'afternoon'));
 
+create table if not exists public.customer_payment_methods (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references auth.users(id) on delete cascade,
+  label text not null check (length(trim(label)) between 1 and 40),
+  phone_e164 text not null check (phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
+  is_default boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (customer_id, phone_e164)
+);
+
+create unique index if not exists customer_payment_methods_one_default_uidx
+  on public.customer_payment_methods (customer_id)
+  where is_default;
+alter table public.customer_payment_methods enable row level security;
+revoke all on public.customer_payment_methods from anon, authenticated;
+grant all on public.customer_payment_methods to service_role;
+
+create or replace function public.save_customer_payment_method(
+  p_customer uuid,
+  p_label text,
+  p_phone_e164 text
+) returns public.customer_payment_methods
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_method public.customer_payment_methods%rowtype;
+  v_is_default boolean;
+begin
+  if p_label is null or length(trim(p_label)) not between 1 and 40
+    or p_phone_e164 !~ '^\+[1-9][0-9]{7,14}$' then
+    raise exception 'Invalid saved payment method';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_customer::text, 0));
+  select * into v_method
+    from public.customer_payment_methods
+    where customer_id = p_customer and phone_e164 = p_phone_e164
+    for update;
+
+  if found then
+    update public.customer_payment_methods
+      set label = trim(p_label)
+      where id = v_method.id
+      returning * into v_method;
+    return v_method;
+  end if;
+
+  select not exists (
+    select 1 from public.customer_payment_methods
+    where customer_id = p_customer and is_default
+  ) into v_is_default;
+
+  insert into public.customer_payment_methods (customer_id, label, phone_e164, is_default)
+  values (p_customer, trim(p_label), p_phone_e164, v_is_default)
+  returning * into v_method;
+  return v_method;
+end;
+$$;
+
+create or replace function public.delete_customer_payment_method(
+  p_customer uuid,
+  p_method_id uuid
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted public.customer_payment_methods%rowtype;
+  v_next_id uuid;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_customer::text, 0));
+  delete from public.customer_payment_methods
+    where id = p_method_id and customer_id = p_customer
+    returning * into v_deleted;
+  if not found then
+    return false;
+  end if;
+
+  if v_deleted.is_default then
+    select id into v_next_id
+      from public.customer_payment_methods
+      where customer_id = p_customer
+      order by created_at, id
+      limit 1;
+    if v_next_id is not null then
+      update public.customer_payment_methods
+        set is_default = true
+        where id = v_next_id;
+    end if;
+  end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.save_customer_payment_method(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.save_customer_payment_method(uuid, text, text) to service_role;
+revoke all on function public.delete_customer_payment_method(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.delete_customer_payment_method(uuid, uuid) to service_role;
+
+create table if not exists public.customer_push_tokens (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references auth.users(id) on delete cascade,
+  token text not null unique,
+  platform text not null check (platform in ('android', 'ios')),
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+create index if not exists customer_push_tokens_customer_idx
+  on public.customer_push_tokens (customer_id);
+alter table public.customer_push_tokens enable row level security;
+revoke all on public.customer_push_tokens from anon, authenticated;
+grant all on public.customer_push_tokens to service_role;
+
 create table if not exists public.cash_order_requests (
   request_key text primary key,
   customer_id uuid not null references auth.users(id) on delete cascade,

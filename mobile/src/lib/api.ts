@@ -26,7 +26,7 @@ async function authenticatedRequest<T>(path: string, options: AuthenticatedOptio
   const response = await fetch(`${API_URL}${path}`, {
     method: options.method ?? 'GET',
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: 'Bearer ' + token,
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
@@ -49,6 +49,15 @@ export type CheckoutInput = {
   lat: number;
   lng: number;
   customer: { name: string; email: string; phone: string };
+  payment_phone?: string;
+};
+
+export type SavedPaymentMethod = {
+  id: string;
+  label: string;
+  phone_e164: string;
+  is_default: boolean;
+  created_at: string;
 };
 
 export type OrderItem = {
@@ -94,6 +103,32 @@ export function placeCashOrder(input: CheckoutInput & { request_key: string }) {
     created_at: string;
     items: { product_id: string; qty: number; unit_price: number }[];
   }>('/orders/cash', { method: 'POST', body: input });
+}
+
+export function fetchPaymentMethods() {
+  return authenticatedRequest<SavedPaymentMethod[]>('/payment-methods');
+}
+
+export function savePaymentMethod(input: { label: string; phone: string }) {
+  return authenticatedRequest<SavedPaymentMethod>('/payment-methods', { method: 'POST', body: input });
+}
+
+export async function deletePaymentMethod(id: string) {
+  const token = await getCustomerApiToken();
+  const response = await fetch(`${API_URL}/payment-methods/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (response.status === 204) return;
+  const result = await response.json() as { error?: string };
+  throw new Error(result.error ?? 'Could not remove this payment method.');
+}
+
+export async function registerPushToken(token: string, platform: 'android' | 'ios') {
+  await authenticatedRequest<{ registered: boolean }>('/devices/push-token', {
+    method: 'POST',
+    body: { token, platform },
+  });
 }
 
 export function confirmPayment(txRef: string, orderTrackingId: string) {

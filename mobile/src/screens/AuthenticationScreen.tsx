@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
+import GoogleMark from '../components/GoogleMark';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAccount } from '../store/AccountContext';
 import { colors, radius } from '../theme';
@@ -276,7 +277,7 @@ export default function AuthenticationScreen({ navigation }: any) {
             <View style={styles.orRow}><View style={styles.orLine} /><Text style={styles.orText}>OR CONTINUE WITH</Text><View style={styles.orLine} /></View>
             <View style={styles.socialRow}>
               <Pressable style={styles.socialButton} onPress={() => void submitSocial('google')} disabled={busy}>
-                <Ionicons name="logo-google" size={19} color="#4285F4" /><Text style={styles.socialText}>Google</Text>
+                <GoogleMark size={20} /><Text style={styles.socialText}>Google</Text>
               </Pressable>
               <Pressable style={styles.socialButton} onPress={() => void submitSocial('apple')} disabled={busy}>
                 <Ionicons name="logo-apple" size={20} color={colors.ink} /><Text style={styles.socialText}>Apple</Text>

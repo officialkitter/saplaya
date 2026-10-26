@@ -1,13 +1,13 @@
 'use client';
 
-import { Check, Pencil, Search, X } from 'lucide-react';
+import { Check, ImagePlus, Pencil, Plus, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input } from '@/components/ui/Fields';
 import { Modal } from '@/components/ui/Modal';
-import { fetchAdmin } from '@/lib/supabase';
+import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { formatTZS } from '@/lib/format';
 import { useToast } from '@/lib/store';
 
@@ -33,10 +33,21 @@ type PriceProposal = {
 };
 
 type CatalogResponse = { items: CatalogItem[]; proposals: PriceProposal[] };
-type Form = Pick<CatalogItem, 'category' | 'unit' | 'image_url' | 'price_approved'> & {
+type Form = Pick<CatalogItem, 'name' | 'category' | 'unit' | 'image_url' | 'price_approved'> & {
   retail_price: string;
   wholesale_price: string;
   wholesale_min_qty: string;
+};
+
+const blankForm: Form = {
+  name: '',
+  category: 'Vegetables',
+  unit: 'kg',
+  image_url: null,
+  price_approved: false,
+  retail_price: '',
+  wholesale_price: '',
+  wholesale_min_qty: '10',
 };
 
 function SharedCatalog() {
@@ -44,10 +55,11 @@ function SharedCatalog() {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [proposals, setProposals] = useState<PriceProposal[]>([]);
   const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState<CatalogItem | null>(null);
+  const [editing, setEditing] = useState<CatalogItem | 'new' | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -74,6 +86,7 @@ function SharedCatalog() {
   const startEdit = (item: CatalogItem) => {
     setEditing(item);
     setForm({
+      name: item.name,
       category: item.category,
       unit: item.unit,
       image_url: item.image_url,
@@ -84,11 +97,53 @@ function SharedCatalog() {
     });
   };
 
+  const startCreate = () => {
+    setEditing('new');
+    setForm({ ...blankForm });
+  };
+
+  const uploadPhoto = async (file: File | undefined) => {
+    if (!file || !form) return;
+    if (!file.type.startsWith('image/')) {
+      push('Choose an image file.', 'bad');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      push('Choose an image smaller than 5 MB.', 'bad');
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const extension = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const path = `catalog/${crypto.randomUUID()}.${extension}`;
+      const { error } = await getSupabase().storage.from('catalog-product-images').upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = getSupabase().storage.from('catalog-product-images').getPublicUrl(path);
+      setForm((current) => current ? { ...current, image_url: data.publicUrl } : current);
+      push('Product photo added.');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not upload this photo.', 'bad');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const save = async () => {
     if (!editing || !form) return;
     const retail = Number(form.retail_price);
     const wholesale = Number(form.wholesale_price);
     const minimum = Number(form.wholesale_min_qty);
+    if (form.name.trim().length < 2) {
+      push('Enter a product name.', 'bad');
+      return;
+    }
+    if (form.category.trim().length < 2 || !form.unit.trim()) {
+      push('Enter a category and sales unit.', 'bad');
+      return;
+    }
     if (!Number.isInteger(retail) || retail <= 0 || !Number.isInteger(wholesale) || wholesale <= 0 || wholesale >= retail) {
       push('Set a positive bulk price lower than the retail price.', 'bad');
       return;
@@ -99,9 +154,12 @@ function SharedCatalog() {
     }
     setSaving(true);
     try {
-      await fetchAdmin(`/admin/catalog/${encodeURIComponent(editing.id)}`, {
-        method: 'PATCH',
+      await fetchAdmin(
+        editing === 'new' ? '/admin/catalog' : `/admin/catalog/${encodeURIComponent(editing.id)}`,
+        {
+        method: editing === 'new' ? 'POST' : 'PATCH',
         body: JSON.stringify({
+          ...(editing === 'new' ? { name: form.name.trim() } : {}),
           category: form.category,
           unit: form.unit,
           image_url: form.image_url,
@@ -111,7 +169,7 @@ function SharedCatalog() {
           price_approved: form.price_approved,
         }),
       });
-      push(`${editing.name} shared price was saved.`);
+      push(editing === 'new' ? `${form.name.trim()} was added to the shared catalog.` : `${form.name.trim()} shared price was saved.`);
       setEditing(null);
       setForm(null);
       await reload();
@@ -143,6 +201,7 @@ function SharedCatalog() {
       <PageHeader
         title="Shared product catalog"
         subtitle="One admin-approved retail and wholesale price is shared by every farm listing the same product."
+        actions={<Button icon={<Plus size={19} />} onClick={startCreate}>Add product</Button>}
       />
 
       <Panel title="Price requests" subtitle="Supplier requests are reviewed before they change the shared customer price.">
@@ -218,16 +277,40 @@ function SharedCatalog() {
         )}
       </Panel>
 
-      <Modal open={!!editing && !!form} onClose={() => { setEditing(null); setForm(null); }} title={editing ? `Edit ${editing.name}` : 'Edit catalog item'}>
+      <Modal open={!!editing && !!form} onClose={() => { setEditing(null); setForm(null); }} title={editing === 'new' ? 'Add catalog product' : editing ? `Edit ${editing.name}` : 'Catalog product'}>
         {form && (
           <div className="space-y-4">
+            <Field label="Product name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Tomatoes" /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Category"><Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></Field>
               <Field label="Unit"><Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} /></Field>
               <Field label="Retail price (TZS)"><Input type="number" min="1" value={form.retail_price} onChange={(event) => setForm({ ...form, retail_price: event.target.value })} /></Field>
               <Field label="Wholesale price (TZS)"><Input type="number" min="1" value={form.wholesale_price} onChange={(event) => setForm({ ...form, wholesale_price: event.target.value })} /></Field>
               <Field label="Wholesale minimum quantity"><Input type="number" min="1" value={form.wholesale_min_qty} onChange={(event) => setForm({ ...form, wholesale_min_qty: event.target.value })} /></Field>
-              <Field label="Product image URL"><Input value={form.image_url ?? ''} onChange={(event) => setForm({ ...form, image_url: event.target.value || null })} placeholder="Optional" /></Field>
+            </div>
+            <div className="rounded-2xl border border-line p-4">
+              <div className="flex flex-wrap items-center gap-4">
+                {form.image_url && (
+                  <img src={form.image_url} alt={`${form.name || 'Product'} preview`} className="h-20 w-20 rounded-xl object-cover" />
+                )}
+                <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-leaf-soft px-4 py-2 font-bold text-leaf-deep hover:bg-leaf-soft/80">
+                  <ImagePlus size={18} />
+                  <span>{uploadingPhoto ? 'Adding photo…' : form.image_url ? 'Change photo' : 'Add photo'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic"
+                    capture="environment"
+                    className="sr-only"
+                    disabled={uploadingPhoto}
+                    onChange={(event) => {
+                      void uploadPhoto(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                {form.image_url && <Button variant="ghost" onClick={() => setForm({ ...form, image_url: null })}>Remove photo</Button>}
+              </div>
+              <p className="mt-2 text-xs text-ink-mute">JPG, PNG, WebP or HEIC · up to 5 MB. On supported phones this opens the camera or photo library.</p>
             </div>
             <label className="flex items-start gap-3 rounded-2xl bg-leaf-soft p-4 text-sm font-semibold text-leaf-deep">
               <input type="checkbox" checked={form.price_approved} onChange={(event) => setForm({ ...form, price_approved: event.target.checked })} className="mt-0.5 accent-leaf" />
@@ -235,7 +318,7 @@ function SharedCatalog() {
             </label>
             <div className="flex justify-end gap-2">
               <Button variant="soft" onClick={() => { setEditing(null); setForm(null); }}>Cancel</Button>
-              <Button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save shared price'}</Button>
+              <Button disabled={saving || uploadingPhoto} onClick={() => void save()}>{saving ? 'Saving…' : editing === 'new' ? 'Add product' : 'Save shared price'}</Button>
             </div>
           </div>
         )}

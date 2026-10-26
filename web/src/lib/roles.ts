@@ -25,7 +25,7 @@ export const PERMS: Record<Role, Perm[]> = {
   ],
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
-    'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
+    'catalog.manage', 'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
   ],
   supplier_owner: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',

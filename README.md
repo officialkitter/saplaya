@@ -57,6 +57,8 @@ Run the baseline SQL files above first, then apply `supabase/migrations/20261024
 
 Set `FIREBASE_PROJECT_ID=saplaya-v1` and `FIREBASE_SERVICE_ACCOUNT_JSON` in Railway. The latter must be the Firebase Admin service-account JSON stored as a Railway secret; never commit it or put it in a client variable. For iOS phone auth, also configure Firebase's APNs/reCAPTCHA requirements for the registered app. Firebase phone verification SMS provider activation and billing are a separate setup step.
 
+Signed-in mobile customers can receive FCM notifications when a supplier changes an order's status. Messaging is included in the native Expo build; a new development/release build is required after adding or changing native Firebase modules. Configure the Firebase Admin service account above and upload an APNs authentication key in Firebase for iOS delivery. Supabase account-verification and password-reset emails are configured under Supabase Auth → Email Templates; Firebase phone OTP does not send those emails.
+
 #### Free phone-auth testing (no real SMS)
 To exercise the OTP flow without sending or paying for SMS, open Firebase Console → `saplaya-v1` → Authentication → Sign-in method → Phone, then add a fictional phone number and a fixed six-digit test code under **Phone numbers for testing**. Use only a number reserved for testing, never a customer's real number. Enter that same number and code in the app; Firebase accepts the test credential without sending an SMS. These test accounts validate the sign-in and backend identity flow, not delivery to a handset.
 

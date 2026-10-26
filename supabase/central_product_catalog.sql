@@ -44,6 +44,72 @@ alter table public.catalog_price_proposals enable row level security;
 revoke all on public.catalog_products, public.catalog_price_proposals from anon, authenticated;
 grant all on public.catalog_products, public.catalog_price_proposals to service_role;
 
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'catalog-product-images',
+  'catalog-product-images',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/heic']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "catalog product images are public" on storage.objects;
+create policy "catalog product images are public" on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'catalog-product-images');
+
+drop policy if exists "catalog admins upload product images" on storage.objects;
+create policy "catalog admins upload product images" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'catalog-product-images'
+    and exists (
+      select 1 from public.team_members m
+      where m.user_id = (select public.current_supabase_auth_user_id())
+        and m.status = 'active'
+        and m.role in ('platform_owner', 'platform_manager')
+    )
+  );
+
+drop policy if exists "catalog admins update product images" on storage.objects;
+create policy "catalog admins update product images" on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'catalog-product-images'
+    and exists (
+      select 1 from public.team_members m
+      where m.user_id = (select public.current_supabase_auth_user_id())
+        and m.status = 'active'
+        and m.role in ('platform_owner', 'platform_manager')
+    )
+  )
+  with check (
+    bucket_id = 'catalog-product-images'
+    and exists (
+      select 1 from public.team_members m
+      where m.user_id = (select public.current_supabase_auth_user_id())
+        and m.status = 'active'
+        and m.role in ('platform_owner', 'platform_manager')
+    )
+  );
+
+drop policy if exists "catalog admins delete product images" on storage.objects;
+create policy "catalog admins delete product images" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'catalog-product-images'
+    and exists (
+      select 1 from public.team_members m
+      where m.user_id = (select public.current_supabase_auth_user_id())
+        and m.status = 'active'
+        and m.role in ('platform_owner', 'platform_manager')
+    )
+  );
+
 -- Existing live prices become the first canonical prices; disagreement is held for owner review.
 insert into public.catalog_products (name, category, unit, retail_price, wholesale_price, wholesale_min_qty, price_approved)
 select

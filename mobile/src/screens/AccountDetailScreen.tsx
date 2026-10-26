@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { MotiView } from 'moti';
 import ScreenHeader from '../components/ScreenHeader';
-import { submitSupplierApplication } from '../lib/api';
+import { deletePaymentMethod, fetchPaymentMethods, SavedPaymentMethod, savePaymentMethod, submitSupplierApplication } from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { colors, radius, shadow } from '../theme';
@@ -209,21 +209,112 @@ function Addresses() {
 }
 
 function PaymentMethods() {
+  const { isSignedIn } = useAccount();
+  const [methods, setMethods] = useState<SavedPaymentMethod[]>([]);
+  const [phone, setPhone] = useState('');
+  const [label, setLabel] = useState('Mobile money');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchPaymentMethods().then((result) => {
+      if (active) setMethods(result);
+    }).catch((error: unknown) => {
+      if (active) Alert.alert('Could not load payment methods', error instanceof Error ? error.message : 'Please try again.');
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const addMethod = async () => {
+    if (!phone.trim()) {
+      Alert.alert('Add a phone number', 'Enter the mobile money number you want to use at checkout.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const saved = await savePaymentMethod({ label, phone: phone.trim() });
+      setMethods((current) => {
+        const withoutDuplicate = current.filter((method) => method.id !== saved.id);
+        return saved.is_default
+          ? [saved, ...withoutDuplicate.map((method) => ({ ...method, is_default: false }))]
+          : [...withoutDuplicate, saved];
+      });
+      setPhone('');
+    } catch (error) {
+      Alert.alert('Could not save payment method', error instanceof Error ? error.message : 'Please check the number and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeMethod = (method: SavedPaymentMethod) => {
+    Alert.alert('Remove mobile money number?', method.phone_e164, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            await deletePaymentMethod(method.id);
+            setMethods(await fetchPaymentMethods());
+          } catch (error) {
+            Alert.alert('Could not remove payment method', error instanceof Error ? error.message : 'Please try again.');
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  if (!isSignedIn) return null;
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.intro}>Choose secure online payment or cash on delivery when you check out. Payment credentials are handled by the payment provider and are not stored by Saplaya.</Text>
-      <View style={[styles.addressCard, styles.selectedAddress]}>
-        <View style={styles.addressMain}>
-          <View style={styles.paymentIcon}><Ionicons name="shield-checkmark" size={22} color={colors.green} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>Secure online checkout</Text>
-            <Text style={styles.cardBody}>Available mobile money and card options are shown at checkout.</Text>
-          </View>
-          <Ionicons name="checkmark-circle" size={22} color={colors.green} />
+      <Text style={styles.cardTitle}>Saved payment methods</Text>
+      <Text style={styles.helper}>Select a saved number during checkout.</Text>
+
+      {loading ? (
+        <View style={styles.paymentLoading}><Text style={styles.helper}>Loading…</Text></View>
+      ) : methods.length === 0 ? (
+        <View style={styles.paymentEmpty}>
+          <Ionicons name="wallet-outline" size={30} color={colors.green} />
+          <Text style={styles.cardTitle}>Add your first mobile money number</Text>
         </View>
+      ) : methods.map((method) => (
+        <View key={method.id} style={[styles.paymentMethodRow, styles.addressCard]}>
+          <View style={styles.paymentIcon}><Ionicons name="phone-portrait-outline" size={22} color={colors.green} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{method.label}{method.is_default ? ' · Preferred' : ''}</Text>
+            <Text style={styles.cardBody}>{method.phone_e164}</Text>
+          </View>
+          <Pressable onPress={() => removeMethod(method)} disabled={busy} accessibilityRole="button" accessibilityLabel={`Remove ${method.label} number`}>
+            <Ionicons name="trash-outline" size={20} color="#B3261E" />
+          </Pressable>
+        </View>
+      ))}
+
+      <View style={[styles.formCard, shadow]}>
+        <Text style={styles.cardTitle}>Add mobile money</Text>
+        <Field label="Network name" value={label} onChangeText={setLabel} placeholder="e.g. M-Pesa" />
+        <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+255 7XX XXX XXX" />
+        <ActionButton title={busy ? 'Saving…' : 'Save number'} onPress={() => void addMethod()} disabled={busy} />
       </View>
-      <InfoCard icon="cash-outline" title="Cash on delivery" body="You can choose to pay when your order arrives." />
-      <InfoCard icon="lock-closed-outline" title="Your payment stays private" body="Saplaya receives only the verified payment result. Never share your card PIN or mobile money PIN with anyone." />
+
+      <View style={styles.paymentCardOption}>
+        <Ionicons name="card-outline" size={22} color={colors.green} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>Cards</Text>
+          <Text style={styles.cardBody}>Available in secure online checkout.</Text>
+        </View>
+        <Ionicons name="lock-closed-outline" size={18} color={colors.muted} />
+      </View>
     </ScrollView>
   );
 }
@@ -468,6 +559,10 @@ const styles = StyleSheet.create({
   locationButton: { minHeight: 48, marginVertical: 8, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: radius.md, backgroundColor: '#EFF7EC' },
   locationButtonText: { color: colors.green, fontSize: 14, fontWeight: '800' },
   paymentIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#E8F5E9', alignItems: 'center', justifyContent: 'center' },
+  paymentLoading: { minHeight: 88, alignItems: 'center', justifyContent: 'center' },
+  paymentEmpty: { minHeight: 120, marginTop: 14, marginBottom: 12, padding: 20, borderRadius: radius.md, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  paymentMethodRow: { padding: 14, gap: 12 },
+  paymentCardOption: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, padding: 16, borderRadius: radius.md, backgroundColor: colors.white },
   stars: { flexDirection: 'row', gap: 10, marginVertical: 14 },
   reviewCard: { marginTop: 12, padding: 15, borderRadius: radius.md, backgroundColor: colors.white },
   reviewStars: { color: colors.yellowDeep, fontSize: 18, marginBottom: 5 },
