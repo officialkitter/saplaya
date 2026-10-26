@@ -44,6 +44,7 @@ async function authenticatedRequest<T>(path: string, options: AuthenticatedOptio
 
 export type CheckoutInput = {
   mode: Mode;
+  delivery_window: 'morning' | 'afternoon';
   items: { product_id: string; qty: number }[];
   lat: number;
   lng: number;
@@ -63,6 +64,8 @@ export type CustomerOrder = {
   subtotal: number;
   delivery_fee: number;
   created_at: string;
+  delivery_window?: 'morning' | 'afternoon';
+  payment_method?: 'pesapal' | 'cash_on_delivery';
   customer_email?: string;
   order_items: OrderItem[];
 };
@@ -79,6 +82,18 @@ export function initializePayment(input: CheckoutInput) {
     subtotal: number;
     items: { product_id: string; qty: number; unit_price: number }[];
   }>('/payments/initialize', { method: 'POST', body: input });
+}
+
+export function placeCashOrder(input: CheckoutInput & { request_key: string }) {
+  return authenticatedRequest<{
+    order_id: string;
+    subtotal: number;
+    delivery_fee: number;
+    amount: number;
+    delivery_window: 'morning' | 'afternoon';
+    created_at: string;
+    items: { product_id: string; qty: number; unit_price: number }[];
+  }>('/orders/cash', { method: 'POST', body: input });
 }
 
 export function confirmPayment(txRef: string, orderTrackingId: string) {

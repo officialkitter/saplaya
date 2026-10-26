@@ -59,6 +59,8 @@ export interface SupplierOrder {
   customerPhone: string;
   customerEmail?: string;
   deliveryFee?: number;
+  deliveryWindow?: 'morning' | 'afternoon';
+  paymentMethod?: 'pesapal' | 'cash_on_delivery';
   area: string;
   mode: Mode;
   items: OrderItem[];

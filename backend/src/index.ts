@@ -52,17 +52,18 @@ type Role = 'platform_owner' | 'platform_manager' | 'supplier_owner' | 'supplier
 type Perm =
   | 'dashboard.view' | 'orders.view' | 'orders.update_status'
   | 'products.view' | 'products.edit' | 'stock.adjust' | 'inventory.view'
+  | 'catalog.manage'
   | 'suppliers.view_all' | 'suppliers.manage'
   | 'team.view' | 'team.manage' | 'settings.manage';
 
 const ALL: Perm[] = [
   'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
-  'stock.adjust', 'inventory.view', 'suppliers.view_all', 'suppliers.manage',
+  'stock.adjust', 'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage',
   'team.view', 'team.manage', 'settings.manage',
 ];
 
 const PERMISSIONS: Record<Role, Perm[]> = {
-  // Products and stock belong to the farms: even the Saplaya owner cannot change a farm's prices or stock.
+  // The platform owner controls shared catalog prices, not farm-specific products or stock.
   platform_owner: ALL.filter((p) => p !== 'products.edit' && p !== 'stock.adjust'),
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
@@ -90,6 +91,7 @@ type Member = {
 };
 type AuthedRequest = Request & {
   userId?: string;
+  isAnonymous?: boolean;
   authProvider?: 'supabase' | 'firebase';
   member?: Member;
 };
@@ -252,6 +254,7 @@ async function requireUser(req: AuthedRequest, res: Response, next: NextFunction
   const { data, error } = await db.auth.getUser(token);
   if (!error && data.user) {
     req.userId = data.user.id;
+    req.isAnonymous = data.user.is_anonymous === true;
     req.authProvider = 'supabase';
     return next();
   }
@@ -286,6 +289,7 @@ async function requireUser(req: AuthedRequest, res: Response, next: NextFunction
   if (!identity) return res.status(401).json({ error: 'Complete Firebase account setup before continuing.' });
 
   req.userId = identity.auth_user_id;
+  req.isAnonymous = false;
   req.authProvider = 'firebase';
   next();
 }
@@ -419,6 +423,7 @@ app.get('/promos', async (_req, res) => {
 
 const checkoutSchema = z.object({
   mode: z.enum(['retail', 'wholesale']),
+  delivery_window: z.enum(['morning', 'afternoon']).default('morning'),
   items: z.array(z.object({
     product_id: z.string().uuid(),
     qty: z.number().positive().max(10000),
@@ -478,9 +483,10 @@ function normalizedTanzanianPhone(phone: string): string | null {
 }
 
 app.get('/orders', requireUser, async (req: AuthedRequest, res) => {
+  if (req.isAnonymous) return res.status(403).json({ error: 'Sign in to view past orders.' });
   const { data, error } = await db
     .from('orders')
-    .select('id, mode, status, subtotal, delivery_fee, created_at, order_items(qty, unit_price, products(name, unit, image_url))')
+    .select('id, mode, status, subtotal, delivery_fee, created_at, delivery_window, payment_method, order_items(qty, unit_price, products(name, unit, image_url))')
     .eq('customer_id', req.userId!)
     .order('created_at', { ascending: false })
     .limit(50);
@@ -495,7 +501,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
 
   const parsed = checkoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { mode, items, lat, lng, customer } = parsed.data;
+  const { mode, items, lat, lng, customer, delivery_window: deliveryWindow } = parsed.data;
   const phone = normalizedTanzanianPhone(customer.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid Tanzanian mobile number.' });
 
@@ -564,6 +570,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     customer_email: customer.email,
     customer_name: customer.name,
     customer_phone: customer.phone,
+    delivery_window: deliveryWindow,
     amount,
     currency: 'TZS',
   });
@@ -628,6 +635,116 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     console.error('Pesapal payment initialization failed:', error);
     return res.status(502).json({ error: 'Could not open secure payment checkout. Please try again.' });
   }
+});
+
+const cashCheckoutSchema = checkoutSchema.extend({
+  request_key: z.string().min(16).max(120),
+});
+
+app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
+  const parsed = cashCheckoutSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { mode, items, lat, lng, customer, delivery_window: deliveryWindow, request_key: requestKey } = parsed.data;
+
+  const { data: products, error: productError } = await db
+    .from('products')
+    .select('id, name, stock, active, retail_price, wholesale_price, wholesale_min_qty')
+    .in('id', items.map((item) => item.product_id));
+  if (productError) {
+    console.error('Could not validate cash-on-delivery basket:', productError.message);
+    return res.status(500).json({ error: 'Could not validate the basket.' });
+  }
+  if (!products || products.length !== items.length) {
+    return res.status(400).json({ error: 'One or more items are no longer available.' });
+  }
+
+  let subtotal = 0;
+  const pricedItems: { product_id: string; qty: number; unit_price: number }[] = [];
+  for (const item of items) {
+    const product = products.find((candidate) => candidate.id === item.product_id);
+    if (!product || !product.active) {
+      return res.status(400).json({ error: 'One or more items are no longer available.' });
+    }
+    if (Number(product.stock) < item.qty) {
+      return res.status(400).json({ error: `${product.name} no longer has enough stock.` });
+    }
+    if (mode === 'wholesale' && item.qty < Number(product.wholesale_min_qty)) {
+      return res.status(400).json({ error: `Wholesale minimum for ${product.name} is ${product.wholesale_min_qty}.` });
+    }
+    const price = Math.round(Number(mode === 'wholesale' ? product.wholesale_price : product.retail_price));
+    pricedItems.push({ product_id: item.product_id, qty: item.qty, unit_price: price });
+    subtotal += Math.round(price * item.qty);
+  }
+
+  const { data: deliverySettings, error: settingsError } = await db
+    .from('platform_settings')
+    .select('free_radius_km, mid_radius_km, mid_fee, far_fee')
+    .eq('id', 'primary')
+    .maybeSingle();
+  if (settingsError || !deliverySettings) {
+    console.error('Could not load cash checkout delivery settings:', settingsError?.message ?? 'Settings are not initialized.');
+    return res.status(503).json({ error: 'Checkout pricing is not configured.' });
+  }
+
+  const distance = haversineKm(Number(STORE_LAT), Number(STORE_LNG), lat, lng);
+  const fee = deliveryFor(distance, deliverySettings);
+  const { data: orderId, error: orderError } = await db.rpc('place_cash_on_delivery_order', {
+    p_customer: req.userId,
+    p_request_key: requestKey,
+    p_mode: mode,
+    p_items: pricedItems,
+    p_fee: fee,
+    p_distance: Number(distance.toFixed(2)),
+    p_lat: lat,
+    p_lng: lng,
+    p_delivery_window: deliveryWindow,
+    p_customer_name: customer.name,
+    p_customer_email: customer.email,
+    p_customer_phone: customer.phone,
+  });
+  if (orderError || !orderId) {
+    console.error('Could not place cash-on-delivery order:', orderError?.message ?? 'Order ID was not returned.');
+    const message = orderError?.message ?? '';
+    if (message.includes('Checkout request key was reused')) {
+      return res.status(409).json({ error: 'Your basket changed while the order was being placed. Review it and try again.' });
+    }
+    if (/not enough stock|no longer available|price .* changed|wholesale minimum/i.test(message)) {
+      return res.status(409).json({ error: message });
+    }
+    return res.status(500).json({ error: 'Could not place your order. Please try again.' });
+  }
+
+  const [{ data: savedOrder, error: savedOrderError }, { data: savedItems, error: savedItemsError }] = await Promise.all([
+    db.from('orders')
+      .select('id, subtotal, delivery_fee, delivery_window, created_at')
+      .eq('id', orderId)
+      .eq('customer_id', req.userId)
+      .single(),
+    db.from('order_items')
+      .select('product_id, qty, unit_price')
+      .eq('order_id', orderId),
+  ]);
+  if (savedOrderError || savedItemsError || !savedOrder) {
+    console.error('Cash-on-delivery order exists but could not be reloaded:', {
+      orderId,
+      error: savedOrderError?.message ?? savedItemsError?.message ?? 'Order was not returned.',
+    });
+    return res.status(503).json({ error: 'Your order was created but could not be displayed. Check your order tracking before retrying.' });
+  }
+
+  return res.status(201).json({
+    order_id: orderId,
+    subtotal: Number(savedOrder.subtotal),
+    delivery_fee: Number(savedOrder.delivery_fee),
+    amount: Number(savedOrder.subtotal) + Number(savedOrder.delivery_fee),
+    delivery_window: savedOrder.delivery_window,
+    created_at: savedOrder.created_at,
+    items: (savedItems ?? []).map((item) => ({
+      product_id: item.product_id,
+      qty: Number(item.qty),
+      unit_price: Number(item.unit_price),
+    })),
+  });
 });
 
 app.get('/payments/callback', (req, res) => {
@@ -893,7 +1010,7 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
   const m = req.member!;
   let q = db
     .from('supplier_orders')
-    .select('id, order_id, supplier_id, status, updated_at, orders!supplier_orders_order_id_fkey(id, mode, created_at, delivery_fee, dest_lat, dest_lng, customer_id), order_items!order_items_supplier_order_id_fkey(product_id, qty, unit_price, products(name, unit))')
+    .select('id, order_id, supplier_id, status, updated_at, orders!supplier_orders_order_id_fkey(id, mode, created_at, delivery_fee, dest_lat, dest_lng, customer_id, delivery_window, payment_method, contact_name, contact_phone), order_items!order_items_supplier_order_id_fkey(product_id, qty, unit_price, products(name, unit))')
     .order('updated_at', { ascending: false })
     .limit(300);
   if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
@@ -904,19 +1021,29 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
     .flatMap((row) => Array.isArray(row.orders) ? row.orders : row.orders ? [row.orders] : [])
     .map((order) => order.customer_id)
     .filter(Boolean))];
+  const orderIds = [...new Set((data ?? []).map((row) => row.order_id).filter(Boolean))];
   const mayViewCustomerContact = !m.supplier_id;
-  const { data: customers, error: customerError } = mayViewCustomerContact && customerIds.length
-    ? await db.from('customer_profiles').select('customer_id, full_name, phone').in('customer_id', customerIds)
-    : { data: [], error: null };
-  if (customerError) {
-    console.error('Could not load admin order customer details:', customerError.message);
+  const [{ data: customers, error: customerError }, { data: paymentContacts, error: paymentContactError }] = mayViewCustomerContact
+    ? await Promise.all([
+      customerIds.length
+        ? db.from('customer_profiles').select('customer_id, full_name, phone').in('customer_id', customerIds)
+        : Promise.resolve({ data: [], error: null }),
+      orderIds.length
+        ? db.from('checkout_payments').select('order_id, customer_name, customer_phone').in('order_id', orderIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  if (customerError || paymentContactError) {
+    console.error('Could not load admin order customer details:', customerError?.message ?? paymentContactError?.message);
     return res.status(500).json({ error: 'Could not load orders.' });
   }
   const customerById = new Map((customers ?? []).map((customer) => [customer.customer_id, customer]));
+  const paymentContactByOrderId = new Map((paymentContacts ?? []).map((payment) => [payment.order_id, payment]));
   res.json((data ?? []).map((row) => {
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
     const customer = order ? customerById.get(order.customer_id) : undefined;
-    const fullName = customer?.full_name || 'Customer';
+    const paymentContact = paymentContactByOrderId.get(row.order_id);
+    const fullName = order?.contact_name || paymentContact?.customer_name || customer?.full_name || 'Customer';
     const customerName = m.supplier_id ? fullName.split(/\s+/)[0] : fullName;
     const area = order?.dest_lat != null && order?.dest_lng != null
       ? `${Number(order.dest_lat).toFixed(4)}, ${Number(order.dest_lng).toFixed(4)}`
@@ -930,7 +1057,7 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
       code: row.order_id.slice(0, 8).toUpperCase(),
       order,
       customer_name: customerName,
-      customer_phone: mayViewCustomerContact ? customer?.phone || '' : '',
+      customer_phone: mayViewCustomerContact ? order?.contact_phone || paymentContact?.customer_phone || customer?.phone || '' : '',
       area,
       items: (row.order_items ?? []).map((item) => ({
         product_id: item.product_id,
@@ -1016,6 +1143,71 @@ app.patch('/admin/products/:id', requirePerm('products.edit'), async (req: Authe
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Not found' });
   res.json(data);
+});
+
+app.get('/admin/catalog', requirePerm('catalog.manage'), async (_req: AuthedRequest, res: Response) => {
+  const [{ data: items, error: catalogError }, { data: proposals, error: proposalError }] = await Promise.all([
+    db.from('catalog_products').select('*').order('category').order('name'),
+    db.from('catalog_price_proposals').select('id, catalog_product_id, supplier_id, product_id, retail_price, wholesale_price, status, created_at').eq('status', 'pending').order('created_at'),
+  ]);
+  if (catalogError || proposalError) {
+    console.error('Could not load the central product catalog:', catalogError?.message ?? proposalError?.message);
+    return res.status(500).json({ error: 'Could not load the product catalog.' });
+  }
+  return res.json({ items, proposals });
+});
+
+const catalogUpdateSchema = z.object({
+  category: z.string().trim().min(2).max(80),
+  unit: z.string().trim().min(1).max(24),
+  retail_price: z.number().int().positive(),
+  wholesale_price: z.number().int().positive(),
+  wholesale_min_qty: z.number().int().positive(),
+  image_url: z.string().url().nullable(),
+  price_approved: z.boolean(),
+}).refine((value) => value.wholesale_price < value.retail_price, {
+  message: 'Wholesale price must be lower than retail price.',
+  path: ['wholesale_price'],
+});
+
+app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const parsed = catalogUpdateSchema.safeParse(req.body);
+  if (!id.success || !parsed.success) {
+    return res.status(400).json({ error: parsed.success ? 'Invalid catalog product ID.' : parsed.error.flatten() });
+  }
+  const { data, error } = await db.rpc('admin_update_catalog_product', {
+    p_id: id.data,
+    p_category: parsed.data.category,
+    p_unit: parsed.data.unit,
+    p_retail_price: parsed.data.retail_price,
+    p_wholesale_price: parsed.data.wholesale_price,
+    p_wholesale_min_qty: parsed.data.wholesale_min_qty,
+    p_image_url: parsed.data.image_url,
+    p_price_approved: parsed.data.price_approved,
+  });
+  if (error || !data) {
+    console.error('Could not update central catalog pricing:', error?.message ?? 'Catalog product not found.');
+    return res.status(error?.message.includes('not found') ? 404 : 400).json({ error: 'Could not update this catalog product.' });
+  }
+  return res.json(data);
+});
+
+app.post('/admin/catalog-proposals/:id/review', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const parsed = z.object({ approve: z.boolean() }).safeParse(req.body);
+  if (!id.success || !parsed.success) {
+    return res.status(400).json({ error: parsed.success ? 'Invalid price proposal ID.' : parsed.error.flatten() });
+  }
+  const { data, error } = await db.rpc('review_catalog_price_proposal', {
+    p_proposal_id: id.data,
+    p_approve: parsed.data.approve,
+  });
+  if (error || !data) {
+    console.error('Could not review catalog price proposal:', error?.message ?? 'Proposal was not found.');
+    return res.status(error?.message.includes('not found') ? 404 : 409).json({ error: 'Could not review this price proposal.' });
+  }
+  return res.json({ catalog_product_id: data, status: parsed.data.approve ? 'approved' : 'rejected' });
 });
 
 app.get('/admin/inventory-movements', requirePerm('inventory.view'), async (req: AuthedRequest, res: Response) => {

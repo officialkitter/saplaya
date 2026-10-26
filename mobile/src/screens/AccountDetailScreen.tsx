@@ -211,18 +211,19 @@ function Addresses() {
 function PaymentMethods() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.intro}>Pay securely at checkout. Your mobile money details are entered on Pesapal and are never stored by Saplaya.</Text>
+      <Text style={styles.intro}>Choose secure online payment or cash on delivery when you check out. Payment credentials are handled by the payment provider and are not stored by Saplaya.</Text>
       <View style={[styles.addressCard, styles.selectedAddress]}>
         <View style={styles.addressMain}>
           <View style={styles.paymentIcon}><Ionicons name="shield-checkmark" size={22} color={colors.green} /></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>Pesapal secure checkout</Text>
-            <Text style={styles.cardBody}>Choose the available payment option in Pesapal’s secure window.</Text>
+            <Text style={styles.cardTitle}>Secure online checkout</Text>
+            <Text style={styles.cardBody}>Available mobile money and card options are shown at checkout.</Text>
           </View>
           <Ionicons name="checkmark-circle" size={22} color={colors.green} />
         </View>
       </View>
-      <InfoCard icon="lock-closed-outline" title="Your payment stays private" body="Saplaya only receives a verified payment result. We do not ask you to save or share your card PIN." />
+      <InfoCard icon="cash-outline" title="Cash on delivery" body="You can choose to pay when your order arrives." />
+      <InfoCard icon="lock-closed-outline" title="Your payment stays private" body="Saplaya receives only the verified payment result. Never share your card PIN or mobile money PIN with anyone." />
     </ScrollView>
   );
 }
@@ -343,7 +344,7 @@ function HelpCenter() {
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.intro}>Quick answers for your Saplaya shopping experience.</Text>
       <InfoCard icon="cube-outline" title="Where is my order?" body="Open My orders or Track in the bottom navigation to see delivery progress and order history." />
-      <InfoCard icon="card-outline" title="When is payment confirmed?" body="Your order is created after Pesapal confirms the exact amount and currency." />
+      <InfoCard icon="card-outline" title="When is payment confirmed?" body="Online orders are confirmed after the provider verifies payment. Cash-on-delivery orders are confirmed when you place them." />
       <InfoCard icon="location-outline" title="Can I change my delivery point?" body="Tap the delivery location at the top of the shop, or choose a saved address at checkout." />
       <Pressable style={styles.locationButton} onPress={openSupport}>
         <Ionicons name="mail-outline" size={20} color={colors.green} />
@@ -356,8 +357,8 @@ function HelpCenter() {
 function Legal() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <InfoCard icon="shield-checkmark-outline" title="Your privacy" body="Your account details and addresses are associated with your signed-in account. Payment details are handled by Pesapal and are not stored in Saplaya." />
-      <InfoCard icon="bag-handle-outline" title="Orders and delivery" body="Prices, stock and delivery charges are confirmed by the service when checkout begins. An order is placed only after payment has been verified." />
+      <InfoCard icon="shield-checkmark-outline" title="Your privacy" body="Your account details and addresses are associated with your signed-in account. Payment details are handled securely by the payment provider and are not stored in Saplaya." />
+      <InfoCard icon="bag-handle-outline" title="Orders and delivery" body="Prices, stock and delivery charges are confirmed by the service at checkout. Online orders are placed after payment verification; cash-on-delivery orders are placed when you confirm." />
       <InfoCard icon="leaf-outline" title="Local suppliers" body="Supplier applications are reviewed before a farm can sell through Saplaya. Submitting an application does not guarantee approval." />
       <Text style={styles.helper}>Contact support from the Help center if you have a question about your information or an order.</Text>
     </ScrollView>

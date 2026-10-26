@@ -6,6 +6,7 @@ export type Perm =
   | 'orders.update_status'
   | 'products.view'
   | 'products.edit'
+  | 'catalog.manage'
   | 'stock.adjust'
   | 'inventory.view'
   | 'suppliers.view_all'
@@ -18,6 +19,7 @@ export type Perm =
 export const PERMS: Record<Role, Perm[]> = {
   platform_owner: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
+    'catalog.manage',
     'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
     'team.manage', 'settings.manage',
   ],
@@ -56,21 +58,21 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     scope: 'Saplaya team',
     blurb: 'Runs Saplaya. Sees every farm and decides who can do what.',
     badge: 'bg-leaf text-white',
-    cannot: ["Change a farm's prices or stock (farms control their own)"],
+    cannot: ["Change a farm's stock (farm teams control their inventory)"],
   },
   platform_manager: {
     label: 'Operations manager',
     scope: 'Saplaya team',
     blurb: 'Approves new farms and keeps every order moving.',
     badge: 'bg-sprout text-white',
-    cannot: ['Change delivery fees and settings', 'Invite or pause team members', "Change a farm's prices or stock"],
+    cannot: ['Change delivery fees and settings', 'Invite or pause team members', 'Approve central catalog prices'],
   },
   supplier_owner: {
     label: 'Farm owner',
     scope: 'Farm team',
-    blurb: 'Runs one farm: products, prices, stock, orders and farm staff.',
+    blurb: 'Runs one farm: listings, stock, orders, farm staff and requests for shared-price changes.',
     badge: 'bg-sun text-ink',
-    cannot: ['See other farms', 'See customer phone numbers or full names', 'Add anyone except farm staff'],
+    cannot: ['Set shared customer prices directly', 'See other farms', 'See customer phone numbers or full names', 'Add anyone except farm staff'],
   },
   supplier_staff: {
     label: 'Farm packer',
@@ -101,7 +103,8 @@ export const PERM_ROWS: { perm: Perm; label: string }[] = [
   { perm: 'orders.view', label: 'See orders' },
   { perm: 'orders.update_status', label: 'Move orders forward or cancel them' },
   { perm: 'products.view', label: 'See products' },
-  { perm: 'products.edit', label: 'Add products and change prices' },
+  { perm: 'products.edit', label: 'Manage farm listings and request price updates' },
+  { perm: 'catalog.manage', label: 'Approve and set shared catalog prices' },
   { perm: 'stock.adjust', label: 'Add stock when a harvest arrives' },
   { perm: 'inventory.view', label: 'See stock history' },
   { perm: 'suppliers.view_all', label: 'See every farm' },

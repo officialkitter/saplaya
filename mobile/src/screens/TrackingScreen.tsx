@@ -17,6 +17,7 @@ import { CustomerOrder, fetchOrderHistory, OrderItem } from '../lib/api';
 import { getCustomerDataContext } from '../lib/customer-auth';
 import RouteMap from '../components/RouteMap';
 import StatusPipeline from '../components/StatusPipeline';
+import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
 import { colors, formatTZS, OrderStatus, radius, statusColor, statusLabel } from '../theme';
 
@@ -30,6 +31,7 @@ function mergeOrders(remoteOrders: CustomerOrder[], previousOrders: CustomerOrde
 
 export default function TrackingScreen({ route }: any) {
   const { width } = useWindowDimensions();
+  const { isSignedIn } = useAccount();
   const { lastOrderId } = useStore();
   const routeOrder: CustomerOrder | undefined = route?.params?.order;
   const routeOrderId: string | null = route?.params?.orderId ?? routeOrder?.id ?? lastOrderId;
@@ -49,6 +51,15 @@ export default function TrackingScreen({ route }: any) {
 
   useFocusEffect(useCallback(() => {
     let active = true;
+    if (!isSignedIn) {
+      setOrders(routeOrder ? [routeOrder] : []);
+      setSelectedId(routeOrder?.id ?? routeOrderId);
+      setHistoryError(null);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
     setLoading(true);
     void (async () => {
       try {
@@ -72,7 +83,7 @@ export default function TrackingScreen({ route }: any) {
     return () => {
       active = false;
     };
-  }, [routeOrder?.customer_email, routeOrder?.id]));
+  }, [isSignedIn, routeOrder?.customer_email, routeOrder?.id, routeOrderId]));
 
   const ongoingOrders = orders.filter((order) => ONGOING_STATUSES.has(order.status));
   const historyOrders = orders.filter((order) => !ONGOING_STATUSES.has(order.status));
@@ -169,6 +180,28 @@ export default function TrackingScreen({ route }: any) {
             <View style={styles.pipelineCard}>
               <StatusPipeline status={status} />
             </View>
+            {selectedOrder && !isSignedIn && (
+              <View style={styles.detailsCard}>
+                <Text style={styles.detailsTitle}>This delivery</Text>
+                <Text style={styles.detailsDate}>
+                  {selectedOrder.delivery_window === 'afternoon' ? 'Afternoon · 15:00–18:00' : 'Morning · 07:00–10:00'}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {selectedOrder.payment_method === 'cash_on_delivery'
+                    ? 'Cash on delivery · pay when your order arrives'
+                    : 'Payment completed securely'}
+                </Text>
+                {selectedOrder.order_items?.map((item, index) => (
+                  <OrderLine key={`${selectedOrder.id}-guest-item-${index}`} item={item} />
+                ))}
+                <View style={[styles.amountRow, styles.grandTotal]}>
+                  <Text style={styles.grandTotalLabel}>Order total</Text>
+                  <Text style={styles.grandTotalValue}>
+                    {formatTZS(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
+                  </Text>
+                </View>
+              </View>
+            )}
           </>
         ) : (
           <View style={styles.trackEmpty}>
@@ -180,100 +213,94 @@ export default function TrackingScreen({ route }: any) {
           </View>
         )}
 
-        <View style={styles.sectionDivider} />
-
-        <View style={styles.ordersHeading}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.sectionTitle}>My orders</Text>
-            <Text style={styles.sectionSubtitle}>Switch between active deliveries and past orders.</Text>
-          </View>
-          {loading && <ActivityIndicator size="small" color={colors.green} />}
-        </View>
-
-        <OrderViewToggle
-          value={orderView}
-          ongoingCount={ongoingOrders.length}
-          historyCount={historyOrders.length}
-          onChange={selectOrderView}
-        />
-
-        {historyError && <Text style={styles.error}>{historyError}</Text>}
-        {visibleOrders.length === 0 ? (
-          <View style={styles.ordersEmpty}>
-            <Ionicons
-              name={orderView === 'ongoing' ? 'bicycle-outline' : 'time-outline'}
-              size={40}
-              color={colors.greenLight}
-            />
-            <Text style={styles.emptyTitle}>
-              {orderView === 'ongoing' ? 'No ongoing orders' : 'Your order history is empty'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {orderView === 'ongoing'
-                ? 'New deliveries will appear here while they are being prepared or brought to you.'
-                : 'Completed and cancelled orders will be saved here for you to revisit.'}
-            </Text>
-          </View>
-        ) : (
+        {isSignedIn && (
           <>
-            <Text style={styles.swipeHint}>
-              Swipe sideways to browse {visibleOrders.length === 1 ? 'your order' : `${visibleOrders.length} orders`}
-            </Text>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.orderCarousel}
-            >
-              {visibleOrders.map((order) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  selected={order.id === selectedId}
-                  width={Math.min(width - 72, 330)}
-                  onPress={() => selectOrder(order)}
-                />
-              ))}
-            </ScrollView>
-            {selectedOrder && (
-              <MotiView
-                key={`details-${selectedOrder.id}`}
-                from={{ opacity: 0, translateY: 10 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                transition={{ type: 'timing', duration: 220 }}
-                style={styles.detailsCard}
-              >
-                <View style={styles.detailsHeading}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.detailsTitle}>Order details</Text>
-                    <Text style={styles.detailsDate}>{new Date(selectedOrder.created_at).toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.modeBadge}>
-                    <Text style={styles.modeText}>{selectedOrder.mode}</Text>
-                  </View>
-                </View>
-                {selectedOrder.order_items?.length ? (
-                  selectedOrder.order_items.map((item, index) => (
-                    <OrderLine key={`${selectedOrder.id}-item-${index}`} item={item} />
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>Item details are not available for this order.</Text>
+            <View style={styles.sectionDivider} />
+            <View style={styles.ordersHeading}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>My orders</Text>
+                <Text style={styles.sectionSubtitle}>Switch between active deliveries and past orders.</Text>
+              </View>
+              {loading && <ActivityIndicator size="small" color={colors.green} />}
+            </View>
+
+            <OrderViewToggle
+              value={orderView}
+              ongoingCount={ongoingOrders.length}
+              historyCount={historyOrders.length}
+              onChange={selectOrderView}
+            />
+
+            {historyError && <Text style={styles.error}>{historyError}</Text>}
+            {visibleOrders.length === 0 ? (
+              <View style={styles.ordersEmpty}>
+                <Ionicons name={orderView === 'ongoing' ? 'bicycle-outline' : 'time-outline'} size={40} color={colors.greenLight} />
+                <Text style={styles.emptyTitle}>
+                  {orderView === 'ongoing' ? 'No ongoing orders' : 'Your order history is empty'}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {orderView === 'ongoing'
+                    ? 'New deliveries will appear here while they are being prepared or brought to you.'
+                    : 'Completed and cancelled orders will be saved here for you to revisit.'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.swipeHint}>
+                  Swipe sideways to browse {visibleOrders.length === 1 ? 'your order' : `${visibleOrders.length} orders`}
+                </Text>
+                <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.orderCarousel}>
+                  {visibleOrders.map((order) => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      selected={order.id === selectedId}
+                      width={Math.min(width - 72, 330)}
+                      onPress={() => selectOrder(order)}
+                    />
+                  ))}
+                </ScrollView>
+                {selectedOrder && (
+                  <MotiView
+                    key={`details-${selectedOrder.id}`}
+                    from={{ opacity: 0, translateY: 10 }}
+                    animate={{ opacity: 1, translateY: 0 }}
+                    transition={{ type: 'timing', duration: 220 }}
+                    style={styles.detailsCard}
+                  >
+                    <View style={styles.detailsHeading}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailsTitle}>Order details</Text>
+                        <Text style={styles.detailsDate}>{new Date(selectedOrder.created_at).toLocaleString()}</Text>
+                      </View>
+                      <View style={styles.modeBadge}>
+                        <Text style={styles.modeText}>{selectedOrder.mode}</Text>
+                      </View>
+                    </View>
+                    {selectedOrder.order_items?.length ? (
+                      selectedOrder.order_items.map((item, index) => (
+                        <OrderLine key={`${selectedOrder.id}-item-${index}`} item={item} />
+                      ))
+                    ) : (
+                      <Text style={styles.emptyText}>Item details are not available for this order.</Text>
+                    )}
+                    <View style={styles.amountRow}>
+                      <Text style={styles.amountLabel}>Items subtotal</Text>
+                      <Text style={styles.amountValue}>{formatTZS(Number(selectedOrder.subtotal))}</Text>
+                    </View>
+                    <View style={styles.amountRow}>
+                      <Text style={styles.amountLabel}>Delivery</Text>
+                      <Text style={styles.amountValue}>{Number(selectedOrder.delivery_fee) === 0 ? 'FREE' : formatTZS(Number(selectedOrder.delivery_fee))}</Text>
+                    </View>
+                    <View style={[styles.amountRow, styles.grandTotal]}>
+                      <Text style={styles.grandTotalLabel}>Order total</Text>
+                      <Text style={styles.grandTotalValue}>
+                        {formatTZS(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
+                      </Text>
+                    </View>
+                  </MotiView>
                 )}
-                <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Items subtotal</Text>
-                  <Text style={styles.amountValue}>{formatTZS(Number(selectedOrder.subtotal))}</Text>
-                </View>
-                <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Delivery</Text>
-                  <Text style={styles.amountValue}>{Number(selectedOrder.delivery_fee) === 0 ? 'FREE' : formatTZS(Number(selectedOrder.delivery_fee))}</Text>
-                </View>
-                <View style={[styles.amountRow, styles.grandTotal]}>
-                  <Text style={styles.grandTotalLabel}>Order total</Text>
-                  <Text style={styles.grandTotalValue}>
-                    {formatTZS(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
-                  </Text>
-                </View>
-              </MotiView>
+              </>
             )}
           </>
         )}

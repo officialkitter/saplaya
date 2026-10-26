@@ -1,8 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import type { User } from '@supabase/supabase-js';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import { supabase } from '../lib/supabase';
+import { ensureSession, supabase } from '../lib/supabase';
 import {
   getCurrentPhoneIdentity,
   getCustomerDataContext,
@@ -46,6 +47,8 @@ type AccountContextValue = {
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithProvider: (provider: 'google' | 'apple') => Promise<boolean>;
+  continueAsGuest: () => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<boolean>;
   sendPhoneOtp: (phone: string, fullName?: string) => Promise<void>;
   verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
@@ -130,7 +133,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         if (active && currentVersion === version) setCustomerId(userId);
       }).catch((identityError: unknown) => {
         if (active && currentVersion === version) {
-          setError(identityError instanceof Error ? identityError.message : 'Could not restore your Firebase account.');
+          setError(identityError instanceof Error ? identityError.message : 'Could not restore your account.');
         }
       });
     });
@@ -245,6 +248,53 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     if (signInError) throw signInError;
   }, []);
 
+  const signInWithProvider = useCallback(async (provider: 'google' | 'apple') => {
+    await signOutPhoneAuth();
+    const redirectTo = Linking.createURL('auth/callback');
+    const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo, skipBrowserRedirect: true },
+    });
+    if (oauthError) throw oauthError;
+    if (!data.url) throw new Error(`Could not start ${provider === 'google' ? 'Google' : 'Apple'} sign-in.`);
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, { preferEphemeralSession: true });
+    if (result.type !== 'success' || !result.url) return false;
+
+    const callback = Linking.parse(result.url);
+    const code = callback.queryParams?.code;
+    if (typeof code === 'string') {
+      const { data: session, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) throw exchangeError;
+      if (!session.user) throw new Error('The sign-in provider did not return a user.');
+      setUser(mapSupabaseUser(session.user));
+      setCustomerId(session.user.id);
+      return true;
+    }
+
+    const fragment = result.url.split('#')[1] ?? '';
+    const params = new URLSearchParams(fragment);
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken || !refreshToken) throw new Error('The sign-in provider did not return a valid session.');
+    const { data: session, error: sessionError } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (sessionError) throw sessionError;
+    if (!session.user) throw new Error('The sign-in provider did not return a user.');
+    setUser(mapSupabaseUser(session.user));
+    setCustomerId(session.user.id);
+    return true;
+  }, [mapSupabaseUser]);
+
+  const continueAsGuest = useCallback(async () => {
+    await signOutPhoneAuth();
+    const session = await ensureSession();
+    setUser(mapSupabaseUser(session.user));
+    setCustomerId(session.user.id);
+  }, [mapSupabaseUser]);
+
   const register = useCallback(async (email: string, password: string, fullName: string) => {
     await signOutPhoneAuth();
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -260,7 +310,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         setUser(mapSupabaseUser(data.user));
         setCustomerId(data.user.id);
       }
-      return false;
+      return !data.user?.email_confirmed_at;
     }
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
@@ -386,6 +436,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     signIn,
+    signInWithProvider,
+    continueAsGuest,
     register,
     sendPhoneOtp,
     verifyPhoneOtp,
@@ -397,7 +449,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     removeAddress,
     addReview,
   }), [
-    user, profile, addresses, reviews, loading, error, signIn, register, sendPhoneOtp, verifyPhoneOtp, signOut,
+    user, profile, addresses, reviews, loading, error, signIn, signInWithProvider, continueAsGuest, register, sendPhoneOtp, verifyPhoneOtp, signOut,
     saveProfile, uploadAvatar, addAddress, selectAddress, removeAddress, addReview,
   ]);
 

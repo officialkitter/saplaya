@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon,
-  Tractor, Users, Warehouse, X,
+  Tractor, Users, Warehouse, X, Tags,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -21,6 +21,7 @@ function navFor(farm: boolean): NavItem[] {
     { href: '/admin', label: 'Home', icon: LayoutDashboard, perm: 'dashboard.view', exact: true },
     { href: '/admin/orders', label: 'Orders', icon: ClipboardList, perm: 'orders.view' },
     { href: '/admin/products', label: farm ? 'My products' : 'Products', icon: Package, perm: 'products.view' },
+    { href: '/admin/catalog', label: 'Shared catalog', icon: Tags, perm: 'catalog.manage' },
     { href: '/admin/inventory', label: 'Stock history', icon: Warehouse, perm: 'inventory.view' },
     { href: '/admin/suppliers', label: 'Farms', icon: Tractor, perm: 'suppliers.view_all' },
     { href: '/admin/team', label: 'Team and roles', icon: Users, perm: 'team.view' },

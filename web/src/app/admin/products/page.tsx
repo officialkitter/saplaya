@@ -81,10 +81,13 @@ function Products() {
     try {
       if (editing === 'new') {
         await addProduct({ ...base, supplierId: farmId }, Math.max(0, Number(form.opening) || 0), me.name);
-        push(`${base.name} was added to the shop.`);
+        push(`${base.name} listing saved. Shared prices are centrally approved; new catalog entries need review before sale.`);
       } else if (editing) {
+        const priceChanged = editing.retailPrice !== base.retailPrice || editing.wholesalePrice !== base.wholesalePrice;
         await updateProduct(editing.id, base);
-        push(`${base.name} was updated.`);
+        push(priceChanged
+          ? `${base.name} was updated. Its price request is waiting for Saplaya review.`
+          : `${base.name} was updated.`);
       }
       setEditing(null);
     } catch (error) {
@@ -96,7 +99,7 @@ function Products() {
     <>
       <PageHeader
         title={farmId ? 'My products' : 'All products'}
-        subtitle={canEdit ? 'Set your prices and see what is in stock. Customers see these products in the Saplaya shop.' : farmId ? 'See what is in stock and add more when a harvest arrives. Only the farm owner can change prices.' : 'Every farm’s products. Farms control their own prices and stock.'}
+        subtitle={canEdit ? 'Manage your harvest and stock. Shared product prices are set by Saplaya; submit price requests for review.' : farmId ? 'See what is in stock and add more when a harvest arrives. Shared prices are approved centrally.' : 'Every farm’s listings and stock. Shared customer prices are centrally approved.'}
         actions={canEdit ? <Button icon={<Plus size={20} />} onClick={() => openForm('new')}>Add product</Button> : undefined}
       />
 
@@ -176,8 +179,8 @@ function Products() {
             <Field label="Sold by"><Select value={form.unit} onChange={set('unit')}>{UNITS.map((c) => <option key={c}>{c}</option>)}</Select></Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Shop price (TSh)" error={errors.retail} hint="What a home cook pays"><Input type="number" inputMode="numeric" value={form.retail} onChange={set('retail')} /></Field>
-            <Field label="Bulk price (TSh)" error={errors.wholesale} hint="What a shop or hotel pays"><Input type="number" inputMode="numeric" value={form.wholesale} onChange={set('wholesale')} /></Field>
+            <Field label="Suggested shop price (TSh)" error={errors.retail} hint="Shared customer prices require Saplaya approval"><Input type="number" inputMode="numeric" value={form.retail} onChange={set('retail')} /></Field>
+            <Field label="Suggested bulk price (TSh)" error={errors.wholesale} hint="A lower bulk price; submitted for central review"><Input type="number" inputMode="numeric" value={form.wholesale} onChange={set('wholesale')} /></Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Smallest bulk order" error={errors.min}><Input type="number" inputMode="numeric" value={form.min} onChange={set('min')} /></Field>

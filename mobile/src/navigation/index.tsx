@@ -12,6 +12,7 @@ import AccountDetailScreen from '../screens/AccountDetailScreen';
 import AuthenticationScreen from '../screens/AuthenticationScreen';
 import LocationPickerScreen from '../screens/LocationPickerScreen';
 import CheckoutScreen from '../screens/CheckoutScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
 import CartTabIcon from '../components/CartTabIcon';
 import { colors } from '../theme';
 
@@ -24,10 +25,11 @@ const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: c
  * Product detail lives INSIDE the tab navigator as a hidden tab so the tab bar
  * (and therefore the cart icon the particle flies to) stays visible.
  */
-export default function Navigation() {
+export default function Navigation({ initialRouteName = 'Tabs' }: { initialRouteName?: 'Tabs' | 'Onboarding' }) {
   return (
     <NavigationContainer theme={theme}>
-      <Stack.Navigator id="RootStack" initialRouteName="Tabs" screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors.cream } }}>
+      <Stack.Navigator id="RootStack" initialRouteName={initialRouteName} screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors.cream } }}>
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Tabs" component={Tabs} />
         <Stack.Screen name="Account" component={AccountScreen} />
         <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />

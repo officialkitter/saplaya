@@ -117,6 +117,8 @@ export async function loadAdminData(): Promise<Partial<DB>> {
         customerName: text(order.customer_name, 'Customer'),
         customerPhone: text(order.customer_phone),
         deliveryFee: number(relatedOrder?.delivery_fee),
+        deliveryWindow: relatedOrder?.delivery_window === 'afternoon' ? 'afternoon' : 'morning',
+        paymentMethod: relatedOrder?.payment_method === 'cash_on_delivery' ? 'cash_on_delivery' : 'pesapal',
         area: text(order.area, 'Delivery location'),
         mode: text(relatedOrder?.mode, 'retail') as 'retail' | 'wholesale',
         items: items.map((item) => ({

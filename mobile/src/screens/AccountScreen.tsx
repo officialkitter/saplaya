@@ -10,7 +10,7 @@ import { colors, radius, shadow } from '../theme';
 const sections = [
   { key: 'profile', title: 'Personal details', subtitle: 'Your name, phone and profile photo', icon: 'person-outline' as const },
   { key: 'addresses', title: 'Saved addresses', subtitle: 'Choose where your fresh order goes', icon: 'location-outline' as const },
-  { key: 'payments', title: 'Payment methods', subtitle: 'Secure Pesapal checkout', icon: 'card-outline' as const },
+  { key: 'payments', title: 'Payment methods', subtitle: 'Secure online and delivery options', icon: 'card-outline' as const },
   { key: 'reviews', title: 'Reviews', subtitle: 'Share feedback with Saplaya', icon: 'star-outline' as const },
   { key: 'supplier', title: 'Become a supplier', subtitle: 'Register your farm with Saplaya', icon: 'leaf-outline' as const },
   { key: 'help', title: 'Help center', subtitle: 'FAQs and customer support', icon: 'help-circle-outline' as const },
@@ -43,7 +43,7 @@ export default function AccountScreen({ navigation }: any) {
           <View style={styles.shortcutIcon}><Ionicons name="receipt-outline" size={22} color={colors.green} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>My orders</Text>
-            <Text style={styles.rowSubtitle}>Track your delivery and view order history</Text>
+            <Text style={styles.rowSubtitle}>{isSignedIn ? 'Track deliveries and view your order history' : 'Track a delivery in this session'}</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>

@@ -5,29 +5,30 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AnimatePresence, MotiView } from 'moti';
 import { StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Navigation from './src/navigation';
 import SplashMorph from './src/components/SplashMorph';
 import { StoreProvider } from './src/store/StoreContext';
 import { AccountProvider } from './src/store/AccountContext';
 import { FlyProvider } from './src/store/FlyContext';
-import { ensureSession } from './src/lib/supabase';
 import { DeliveryProvider } from './src/lib/location';
 
 export default function App() {
   const [splash, setSplash] = useState(true);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
   const finish = useCallback(() => setSplash(false), []);
 
   useEffect(() => {
-    ensureSession().catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/anonymous sign-ins are disabled/i.test(message)) {
-        console.warn(
-          'Guest sessions are off. Enable Anonymous sign-ins in Supabase (Authentication > Sign In / Providers) or sign in with an account.'
-        );
-      } else {
-        console.warn('Could not initialize the customer session:', error);
-      }
+    let active = true;
+    void AsyncStorage.getItem('saplaya.onboarding.complete').then((value) => {
+      if (active) setHasSeenOnboarding(value === 'true');
+    }).catch((error: unknown) => {
+      console.error('Could not restore onboarding state:', error);
+      if (active) setHasSeenOnboarding(false);
     });
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -38,7 +39,9 @@ export default function App() {
             <StoreProvider>
               <FlyProvider>
                 <StatusBar style="dark" />
-                <Navigation />
+                {hasSeenOnboarding !== null && (
+                  <Navigation initialRouteName={hasSeenOnboarding ? 'Tabs' : 'Onboarding'} />
+                )}
                 <AnimatePresence>
                   {splash && (
                     <MotiView

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { MotiText, MotiView } from 'moti';
 import { Easing } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme';
 
 /**
@@ -72,9 +72,9 @@ export default function SplashMorph({ onFinish }: { onFinish: () => void }) {
         >
           <View style={styles.logoWrap}>
             <View style={styles.logoCircle}>
-              <Ionicons name="leaf" size={54} color={colors.white} />
+              <MaterialCommunityIcons name="sprout" size={76} color={colors.white} />
               <View style={styles.cartBadge}>
-                <Ionicons name="cart" size={20} color={colors.green} />
+                <View style={styles.badgeDot} />
               </View>
             </View>
           </View>
@@ -87,7 +87,7 @@ export default function SplashMorph({ onFinish }: { onFinish: () => void }) {
         animate={phase === 'logo' ? { opacity: 1, translateY: 0 } : { opacity: 0, translateY: 14 }}
         transition={{ type: 'timing', duration: 500, delay: 650 }}
       >
-        Fresh<Text style={{ color: colors.yellowDeep }}>Cart</Text>
+        Sapla<Text style={{ color: colors.yellowDeep }}>ya</Text>
       </MotiText>
       <MotiText
         style={styles.tag}
@@ -130,26 +130,27 @@ const styles = StyleSheet.create({
   logoCircle: {
     width: 128,
     height: 128,
-    borderRadius: 64,
+    borderRadius: 42,
     backgroundColor: colors.green,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 5,
+    borderWidth: 4,
     borderColor: colors.yellow,
   },
   cartBadge: {
     position: 'absolute',
-    right: -6,
-    bottom: -2,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    right: -9,
+    bottom: -7,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.yellow,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: colors.cream,
   },
+  badgeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.yellowDeep },
   brand: { marginTop: 28, fontSize: 38, fontWeight: '800', color: colors.green, letterSpacing: 0.5 },
   tag: { marginTop: 6, fontSize: 15, color: colors.muted },
 });

@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { MotiView } from 'moti';
 import ScreenHeader from '../components/ScreenHeader';
-import { confirmPayment, initializePayment } from '../lib/api';
+import { confirmPayment, initializePayment, placeCashOrder } from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { STORE, deliveryTier, distanceKm } from '../lib/delivery';
 import { useAccount } from '../store/AccountContext';
@@ -18,6 +18,8 @@ import { colors, formatTZS, radius, shadow } from '../theme';
 WebBrowser.maybeCompleteAuthSession();
 
 type PaymentSession = Awaited<ReturnType<typeof initializePayment>>;
+type DeliveryWindow = 'morning' | 'afternoon';
+type CheckoutPayment = 'online' | 'cash_on_delivery';
 
 export default function CheckoutScreen({ navigation }: any) {
   const { lines, mode, subtotal, priceOf, clear, setLastOrderId } = useStore();
@@ -29,6 +31,9 @@ export default function CheckoutScreen({ navigation }: any) {
   const [phone, setPhone] = useState(profile.phone);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
+  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryWindow>('morning');
+  const [checkoutPayment, setCheckoutPayment] = useState<CheckoutPayment>('online');
+  const [cashRequestKey, setCashRequestKey] = useState('');
   const [pendingVerification, setPendingVerification] = useState<{ txRef: string; orderTrackingId: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,13 +41,14 @@ export default function CheckoutScreen({ navigation }: any) {
   const tier = deliveryTier(km);
   const estimate = subtotal + tier.fee;
   const basketKey = useMemo(
-    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, name, email, phone }),
-    [mode, lines, place.lat, place.lng, name, email, phone],
+    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, name, email, phone, deliveryWindow, checkoutPayment }),
+    [mode, lines, place.lat, place.lng, name, email, phone, deliveryWindow, checkoutPayment],
   );
 
   useEffect(() => {
     if (pendingVerification) return;
     setPayment(null);
+    setCashRequestKey('');
   }, [basketKey, pendingVerification]);
 
   useEffect(() => {
@@ -106,6 +112,8 @@ export default function CheckoutScreen({ navigation }: any) {
         subtotal: payment?.subtotal ?? subtotal,
         delivery_fee: payment?.delivery_fee ?? tier.fee,
         created_at: new Date().toISOString(),
+        delivery_window: deliveryWindow,
+        payment_method: 'pesapal' as const,
         order_items: lines.map((line) => ({
           qty: line.qty,
           unit_price: payment?.items.find((item) => item.product_id === line.product.id)?.unit_price ?? priceOf(line.product),
@@ -129,9 +137,43 @@ export default function CheckoutScreen({ navigation }: any) {
     if (!validate()) return;
     setBusy(true);
     try {
+      if (checkoutPayment === 'cash_on_delivery') {
+        const requestKey = cashRequestKey || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+        if (!cashRequestKey) setCashRequestKey(requestKey);
+        const result = await placeCashOrder({
+          mode,
+          delivery_window: deliveryWindow,
+          request_key: requestKey,
+          items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
+          lat: place.lat,
+          lng: place.lng,
+          customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+        });
+        const order = {
+          id: result.order_id,
+          mode,
+          status: 'pending' as const,
+          subtotal: result.subtotal,
+          delivery_fee: result.delivery_fee,
+          created_at: result.created_at,
+          delivery_window: result.delivery_window,
+          payment_method: 'cash_on_delivery' as const,
+          order_items: lines.map((line) => ({
+            qty: line.qty,
+            unit_price: result.items.find((item) => item.product_id === line.product.id)?.unit_price ?? priceOf(line.product),
+            products: { name: line.product.name, unit: line.product.unit, image_url: line.product.image_url },
+          })),
+        };
+        clear();
+        setLastOrderId(result.order_id);
+        navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order } });
+        return;
+      }
+
       if (!payment) {
         const initialized = await initializePayment({
           mode,
+          delivery_window: deliveryWindow,
           items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
           lat: place.lat,
           lng: place.lng,
@@ -225,6 +267,30 @@ export default function CheckoutScreen({ navigation }: any) {
             )}
           </View>
 
+          <Text style={styles.heading}>Choose a delivery window</Text>
+          <Text style={styles.subheading}>Your order will arrive in the selected time slot.</Text>
+          <View style={styles.choiceRow}>
+            {([
+              { value: 'morning', title: 'Morning', time: '07:00–10:00', icon: 'sunny-outline' },
+              { value: 'afternoon', title: 'Afternoon', time: '15:00–18:00', icon: 'partly-sunny-outline' },
+            ] as const).map((option) => (
+              <Pressable
+                key={option.value}
+                style={[styles.choiceCard, deliveryWindow === option.value && styles.choiceSelected]}
+                onPress={() => {
+                  setDeliveryWindow(option.value);
+                  setPayment(null);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: deliveryWindow === option.value }}
+              >
+                <Ionicons name={option.icon} size={20} color={deliveryWindow === option.value ? colors.green : colors.muted} />
+                <Text style={styles.choiceTitle}>{option.title}</Text>
+                <Text style={styles.choiceHint}>{option.time}</Text>
+              </Pressable>
+            ))}
+          </View>
+
           <Text style={styles.heading}>Your order</Text>
           {lines.map((line) => {
             const unitPrice = payment?.items.find((item) => item.product_id === line.product.id)?.unit_price ?? priceOf(line.product);
@@ -243,12 +309,42 @@ export default function CheckoutScreen({ navigation }: any) {
             {payment && <Text style={styles.confirmText}>Server-confirmed total · {payment.currency}</Text>}
           </View>
 
-          <View style={styles.secureCard}>
-            <Ionicons name="shield-checkmark-outline" size={22} color={colors.green} />
-            <Text style={styles.secureText}>
-              Pay securely through Pesapal. Your order is placed only after the payment is verified.
-            </Text>
+          <Text style={styles.heading}>Payment method</Text>
+          <View style={styles.choiceRow}>
+            <Pressable
+              style={[styles.choiceCard, checkoutPayment === 'online' && styles.choiceSelected]}
+              onPress={() => {
+                setCheckoutPayment('online');
+                setPayment(null);
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: checkoutPayment === 'online' }}
+            >
+              <Ionicons name="phone-portrait-outline" size={21} color={checkoutPayment === 'online' ? colors.green : colors.muted} />
+              <Text style={styles.choiceTitle}>Pay online</Text>
+              <Text style={styles.choiceHint}>Mobile money or card</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.choiceCard, checkoutPayment === 'cash_on_delivery' && styles.choiceSelected]}
+              onPress={() => {
+                setCheckoutPayment('cash_on_delivery');
+                setPayment(null);
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: checkoutPayment === 'cash_on_delivery' }}
+            >
+              <Ionicons name="cash-outline" size={21} color={checkoutPayment === 'cash_on_delivery' ? colors.green : colors.muted} />
+              <Text style={styles.choiceTitle}>Cash on delivery</Text>
+              <Text style={styles.choiceHint}>Pay when it arrives</Text>
+            </Pressable>
           </View>
+
+          {checkoutPayment === 'online' && (
+            <View style={styles.secureCard}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.green} />
+              <Text style={styles.secureText}>Complete payment securely using the available mobile money or card options.</Text>
+            </View>
+          )}
 
           {pendingVerification ? (
             <Pressable style={styles.primaryButton} onPress={retryVerification} disabled={busy}>
@@ -259,14 +355,18 @@ export default function CheckoutScreen({ navigation }: any) {
               {busy
                 ? <ActivityIndicator color={colors.white} />
                 : <Text style={styles.primaryText}>
-                  {payment ? `Continue to Pesapal · ${formatTZS(payment.amount)}` : 'Review secure payment'}
+                  {checkoutPayment === 'cash_on_delivery'
+                    ? `Place order · ${formatTZS(estimate)}`
+                    : payment ? `Continue to payment · ${formatTZS(payment.amount)}` : 'Review secure payment'}
                 </Text>}
             </Pressable>
           )}
           <Text style={styles.disclaimer}>
-            {payment
-              ? 'Review the confirmed total above, then continue to the secure payment page.'
-              : 'Your final total is checked against live prices and delivery distance before you pay.'}
+            {checkoutPayment === 'cash_on_delivery'
+              ? 'Your order, stock and total are confirmed before it is placed. Pay when your delivery arrives.'
+              : payment
+                ? 'Review the confirmed total above, then continue to the secure payment page.'
+                : 'Your final total is checked against live prices and delivery distance before payment.'}
           </Text>
         </MotiView>
       </ScrollView>
@@ -301,6 +401,11 @@ const styles = StyleSheet.create({
   label: { marginBottom: 6, color: colors.ink, fontSize: 13, fontWeight: '800' },
   input: { minHeight: 51, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, color: colors.ink, fontSize: 15 },
   deliveryCard: { marginVertical: 10, padding: 15, borderRadius: radius.md, backgroundColor: colors.white, ...shadow },
+  choiceRow: { flexDirection: 'row', gap: 10, marginBottom: 13 },
+  choiceCard: { flex: 1, minHeight: 102, padding: 13, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, alignItems: 'flex-start', justifyContent: 'center', gap: 5 },
+  choiceSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },
+  choiceTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
+  choiceHint: { color: colors.muted, fontSize: 11, lineHeight: 15 },
   deliveryTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   pin: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EFF7EC', alignItems: 'center', justifyContent: 'center' },
   address: { color: colors.ink, fontSize: 15, fontWeight: '800' },
