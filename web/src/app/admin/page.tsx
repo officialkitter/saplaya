@@ -13,7 +13,7 @@ import { RestockModal } from '@/components/admin/RestockModal';
 import { Button, LinkButton } from '@/components/ui/Button';
 import { CountUp, StatusPill } from '@/components/ui/Bits';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { formatNum, formatTZS, STATUS, timeAgo } from '@/lib/format';
+import { formatNum, formatTZS, STATUS, timeAgo, tanzaniaHour } from '@/lib/format';
 import { photoUrl } from '@/lib/images';
 import { can } from '@/lib/roles';
 import { customerLabel, isLow, modeSplitByDay, orderTotal, ordersByArea, ordersByHour, salesByCategory, salesByDay, salesByFarm, statusCounts, topProducts, weekChange, countsAsSale } from '@/lib/stats';
@@ -23,7 +23,7 @@ const AXIS = { fontSize: 12, fill: '#6B7A6C' };
 const TIP = { borderRadius: 14, border: '1px solid #E3EBE0', boxShadow: '0 10px 24px -12px rgba(27,94,32,.35)', fontWeight: 600 } as const;
 
 function greeting() {
-  const h = new Date().getHours();
+  const h = tanzaniaHour();
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 

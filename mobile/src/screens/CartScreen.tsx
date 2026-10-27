@@ -52,7 +52,13 @@ export default function CartScreen({ navigation }: any) {
         ListHeaderComponent={tier.free ? <ScooterBanner km={km} /> : null}
         renderItem={({ item }) => (
           <View style={[styles.line, shadow]}>
-            <Image source={{ uri: item.product.image_url }} style={styles.thumb} contentFit="cover" />
+            {item.product.image_url ? (
+              <Image source={{ uri: item.product.image_url }} style={styles.thumb} contentFit="cover" />
+            ) : (
+              <View style={[styles.thumb, styles.imageFallback]}>
+                <Ionicons name="leaf-outline" size={22} color={colors.green} />
+              </View>
+            )}
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.name} numberOfLines={1}>{item.product.name}</Text>
               <Text style={styles.price}>{formatTZS(priceOf(item.product) * item.qty)}</Text>
@@ -106,6 +112,7 @@ const styles = StyleSheet.create({
   h1: { fontSize: 30, fontWeight: '900', color: colors.green, marginHorizontal: 20, marginTop: 8 },
   line: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.md, padding: 10, marginBottom: 12 },
   thumb: { width: 84, height: 84, borderRadius: radius.sm, backgroundColor: colors.line },
+  imageFallback: { alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 17, fontWeight: '800', color: colors.ink },
   price: { fontSize: 16, fontWeight: '800', color: colors.green, marginTop: 2 },
   stepper: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 8, backgroundColor: '#F1F8E9', borderRadius: 14 },

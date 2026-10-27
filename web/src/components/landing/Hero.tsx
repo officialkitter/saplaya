@@ -7,8 +7,7 @@ import { LinkButton } from '@/components/ui/Button';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { cn, formatTZS } from '@/lib/format';
-import { photoUrl } from '@/lib/images';
-import { SHOWCASE } from '@/lib/showcase';
+import { useStorefrontProducts, type StorefrontProduct } from '@/lib/storefront';
 
 /** The big slide toggle: same control the customer app uses. */
 function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: boolean) => void }) {
@@ -34,8 +33,17 @@ function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: 
   );
 }
 
-function Phone({ wholesale }: { wholesale: boolean }) {
-  const items = SHOWCASE.slice(0, 4);
+function Phone({
+  wholesale,
+  products,
+  loading,
+  error,
+}: {
+  wholesale: boolean;
+  products: StorefrontProduct[];
+  loading: boolean;
+  error: boolean;
+}) {
   return (
     <div className="relative mx-auto h-[600px] w-[300px] rounded-[2.8rem] border-[10px] border-ink bg-milk shadow-lift">
       <div className="absolute left-1/2 top-2 z-20 h-5 w-24 -translate-x-1/2 rounded-full bg-ink" />
@@ -60,8 +68,8 @@ function Phone({ wholesale }: { wholesale: boolean }) {
               <Truck size={18} />
             </motion.span>
             <div className="leading-tight">
-              <p className="text-[11px] text-ink-mute">Delivering to</p>
-              <p className="text-[15px] font-extrabold">Area D, Dodoma</p>
+              <p className="text-[11px] text-ink-mute">Local farm delivery</p>
+              <p className="text-[15px] font-extrabold">Check your area in the app</p>
             </div>
           </div>
 
@@ -72,35 +80,47 @@ function Phone({ wholesale }: { wholesale: boolean }) {
             {wholesale ? 'Wholesale prices' : 'Fresh today'}
           </motion.div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
-            {items.map((it) => (
-              <div key={it.name} className="overflow-hidden rounded-2xl bg-white shadow-soft">
-                <SmartImage src={photoUrl(it.photo, 400)} alt={it.name} emoji={it.emoji} className="aspect-square w-full text-3xl" />
-                <div className="p-2.5">
-                  <p className="truncate text-[13px] font-bold">{it.name}</p>
-                  <div className="h-5 overflow-hidden">
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      <motion.p
-                        key={wholesale ? 'w' : 'r'}
-                        initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }}
-                        className="text-[14px] font-extrabold text-leaf"
-                      >
-                        {formatTZS(wholesale ? it.wholesale : it.retail)}
-                        <span className="text-[11px] font-medium text-ink-mute"> /{it.unit}</span>
-                      </motion.p>
+          {loading ? (
+            <div className="mt-3 grid grid-cols-2 gap-2.5" aria-label="Loading available products">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="aspect-square animate-pulse rounded-2xl bg-line" />
+              ))}
+            </div>
+          ) : error ? (
+            <p className="mt-4 rounded-2xl bg-white p-4 text-center text-sm font-bold text-ink-mute">Shop availability is temporarily unavailable.</p>
+          ) : products.length === 0 ? (
+            <p className="mt-4 rounded-2xl bg-white p-4 text-center text-sm font-bold text-ink-mute">Fresh listings will appear here when farms add stock.</p>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2.5">
+              {products.map((it) => (
+                <div key={it.id} className="overflow-hidden rounded-2xl bg-white shadow-soft">
+                  <SmartImage src={it.image_url ?? undefined} alt={it.name} className="aspect-square w-full text-3xl" />
+                  <div className="p-2.5">
+                    <p className="truncate text-[13px] font-bold">{it.name}</p>
+                    <div className="h-5 overflow-hidden">
+                      <AnimatePresence mode="popLayout" initial={false}>
+                        <motion.p
+                          key={wholesale ? 'w' : 'r'}
+                          initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }}
+                          className="text-[14px] font-extrabold text-leaf"
+                        >
+                          {formatTZS(wholesale ? it.wholesale_price : it.retail_price)}
+                          <span className="text-[11px] font-medium text-ink-mute"> /{it.unit}</span>
+                        </motion.p>
+                      </AnimatePresence>
+                    </div>
+                    <AnimatePresence initial={false}>
+                      {wholesale && (
+                        <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-sun-deep">
+                          Min {it.wholesale_min_qty} {it.unit}
+                        </motion.p>
+                      )}
                     </AnimatePresence>
                   </div>
-                  <AnimatePresence initial={false}>
-                    {wholesale && (
-                      <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-sun-deep">
-                        Min {it.min} {it.unit}
-                      </motion.p>
-                    )}
-                  </AnimatePresence>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -109,6 +129,7 @@ function Phone({ wholesale }: { wholesale: boolean }) {
 
 export function Hero() {
   const [wholesale, setWholesale] = useState(false);
+  const { products, loading, error } = useStorefrontProducts(4);
   return (
     <section className="relative overflow-hidden">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr] lg:pb-28 lg:pt-20">
@@ -137,7 +158,7 @@ export function Hero() {
         <div className="relative">
           <div className="absolute inset-x-0 top-6 mx-auto h-[540px] w-[88%] rounded-[3rem] bg-leaf field-lines" aria-hidden />
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 18, stiffness: 90, delay: 0.15 }} className="relative">
-            <Phone wholesale={wholesale} />
+            <Phone wholesale={wholesale} products={products} loading={loading} error={error} />
           </motion.div>
 
           <div className="absolute -left-2 top-24 hidden animate-floaty items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold shadow-lift sm:flex">

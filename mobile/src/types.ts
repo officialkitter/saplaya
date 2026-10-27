@@ -10,7 +10,7 @@ export type Product = {
   wholesale_price: number;
   wholesale_min_qty: number;
   stock: number;
-  image_url: string;
+  image_url: string | null;
   harvested_at: string;
 };
 

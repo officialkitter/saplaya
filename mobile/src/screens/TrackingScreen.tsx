@@ -18,6 +18,7 @@ import { getCustomerDataContext } from '../lib/customer-auth';
 import RouteMap from '../components/RouteMap';
 import StatusPipeline from '../components/StatusPipeline';
 import { useAccount } from '../store/AccountContext';
+import { formatTanzaniaDate, formatTanzaniaDateTime } from '../lib/date-time';
 import { useStore } from '../store/StoreContext';
 import { colors, formatTZS, OrderStatus, radius, statusColor, statusLabel } from '../theme';
 
@@ -271,7 +272,7 @@ export default function TrackingScreen({ route }: any) {
                     <View style={styles.detailsHeading}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.detailsTitle}>Order details</Text>
-                        <Text style={styles.detailsDate}>{new Date(selectedOrder.created_at).toLocaleString()}</Text>
+                        <Text style={styles.detailsDate}>{formatTanzaniaDateTime(selectedOrder.created_at)}</Text>
                       </View>
                       <View style={styles.modeBadge}>
                         <Text style={styles.modeText}>{selectedOrder.mode}</Text>
@@ -343,7 +344,7 @@ function OrderCard({
         <View style={styles.orderCardTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.orderCardTitle}>Order #{order.id.slice(0, 8)}</Text>
-            <Text style={styles.orderCardDate}>{new Date(order.created_at).toLocaleDateString()}</Text>
+            <Text style={styles.orderCardDate}>{formatTanzaniaDate(order.created_at)}</Text>
           </View>
           <Ionicons name={selected ? 'checkmark-circle' : 'chevron-forward-circle-outline'} size={24} color={colors.green} />
         </View>

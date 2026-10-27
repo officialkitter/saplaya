@@ -2,9 +2,18 @@ import clsx, { type ClassValue } from 'clsx';
 import type { OrderStatus } from './types';
 
 export const cn = (...inputs: ClassValue[]) => clsx(inputs);
+export const TANZANIA_TIME_ZONE = 'Africa/Dar_es_Salaam';
 
 export const formatTZS = (n: number) => 'TSh ' + Math.round(n).toLocaleString('en-US');
 export const formatNum = (n: number) => (Math.round(n * 10) / 10).toLocaleString('en-US');
+
+export function tanzaniaHour(ts = Date.now()): number {
+  return Number(new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    hourCycle: 'h23',
+    timeZone: TANZANIA_TIME_ZONE,
+  }).format(new Date(ts)));
+}
 
 export function timeAgo(ts: number, now = Date.now()): string {
   const m = Math.max(1, Math.round((now - ts) / 60000));
@@ -16,7 +25,19 @@ export function timeAgo(ts: number, now = Date.now()): string {
 }
 
 export function shortDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: TANZANIA_TIME_ZONE,
+  }).format(new Date(ts));
+}
+
+export function tanzaniaDateTime(ts: number | string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: TANZANIA_TIME_ZONE,
+  }).format(new Date(ts));
 }
 
 export function initials(name: string): string {

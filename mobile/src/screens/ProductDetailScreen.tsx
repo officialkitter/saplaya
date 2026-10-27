@@ -41,7 +41,13 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     <View style={styles.root}>
       {/* 60% hero */}
       <View style={styles.hero}>
-        <Image source={{ uri: product.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+        {product.image_url ? (
+          <Image source={{ uri: product.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.imageFallback]}>
+            <MaterialCommunityIcons name="food-apple-outline" size={68} color={colors.green} />
+          </View>
+        )}
         <Pressable onPress={() => navigation.goBack()} style={[styles.back, { top: insets.top + 8 }]} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={24} color={colors.ink} />
         </Pressable>
@@ -96,6 +102,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
   hero: { height: '60%', backgroundColor: colors.line },
+  imageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5E9' },
   back: { position: 'absolute', left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '41%', backgroundColor: colors.white, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 22, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, elevation: 12 },
   badge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },

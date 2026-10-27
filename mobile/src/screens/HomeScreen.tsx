@@ -20,7 +20,7 @@ export default function HomeScreen({ navigation }: any) {
   const [items, setItems] = useState<Product[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const navigateToRoot = (screen: 'Account' | 'LocationPicker') => {
@@ -41,12 +41,31 @@ export default function HomeScreen({ navigation }: any) {
       setHasMore(res.hasMore);
       setPage((p) => p + 1);
       setError(null);
-    } catch (e: any) {
-      setError(e.message ?? 'Something went wrong');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not load items.');
     } finally {
       setLoading(false);
     }
   }, [loading, hasMore, page]);
+
+  const refreshProducts = useCallback(async (isActive: () => boolean = () => true) => {
+    setLoading(true);
+    try {
+      const res = await fetchProducts(0);
+      if (!isActive()) return;
+      setItems(res.items);
+      setPage(1);
+      setHasMore(res.hasMore);
+      setError(null);
+    } catch (e: unknown) {
+      if (!isActive()) return;
+      const message = e instanceof Error ? e.message : 'Could not load items.';
+      setError(message);
+      console.error('Could not refresh customer products:', e);
+    } finally {
+      if (isActive()) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchPromos().then(setPromos).catch((promoError: unknown) => {
@@ -56,26 +75,11 @@ export default function HomeScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    const refresh = async () => {
-      try {
-        const res = await fetchProducts(0);
-        if (!active) return;
-        setItems(res.items);
-        setPage(1);
-        setHasMore(res.hasMore);
-        setError(null);
-      } catch (e: unknown) {
-        if (!active) return;
-        const message = e instanceof Error ? e.message : 'Could not load items.';
-        setError(message);
-        console.error('Could not refresh customer products:', e);
-      }
-    };
-    void refresh();
+    void refreshProducts(() => active);
     return () => {
       active = false;
     };
-  }, []));
+  }, [refreshProducts]));
 
   const header = (
     <View>
@@ -122,11 +126,24 @@ export default function HomeScreen({ navigation }: any) {
           <ProductCard product={item} index={index} onPress={() => navigation.navigate('Product', { product: item })} />
         )}
         ListHeaderComponent={header}
-        ListFooterComponent={
+        ListEmptyComponent={
           loading ? (
-            <ActivityIndicator color={colors.green} style={{ margin: 24 }} />
+            <ActivityIndicator color={colors.green} style={{ margin: 32 }} />
           ) : error ? (
-            <Text style={styles.err} onPress={loadMore}>{error} — tap to retry</Text>
+            <Text style={styles.err} onPress={() => void refreshProducts()}>{error} — tap to retry</Text>
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name="basket-outline" size={40} color={colors.green} />
+              <Text style={styles.emptyTitle}>No items in stock right now</Text>
+              <Text style={styles.emptyText}>New products will appear here as local farms add approved prices and available stock.</Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          loading && items.length > 0 ? (
+            <ActivityIndicator color={colors.green} style={{ margin: 24 }} />
+          ) : error && items.length > 0 ? (
+            <Text style={styles.err} onPress={() => void refreshProducts()}>{error} — tap to retry</Text>
           ) : null
         }
         onEndReachedThreshold={0.6}
@@ -150,4 +167,7 @@ const styles = StyleSheet.create({
   q: { fontSize: 20, fontWeight: '800', color: colors.ink, marginHorizontal: 20, marginTop: 22, marginBottom: 10 },
   section: { fontSize: 22, fontWeight: '900', color: colors.green, marginHorizontal: 20, marginTop: 22, marginBottom: 6 },
   err: { textAlign: 'center', color: '#D32F2F', padding: 20, fontWeight: '700' },
+  empty: { alignItems: 'center', paddingHorizontal: 28, paddingVertical: 36 },
+  emptyTitle: { marginTop: 12, fontSize: 17, fontWeight: '800', color: colors.ink, textAlign: 'center' },
+  emptyText: { marginTop: 6, color: colors.muted, textAlign: 'center', lineHeight: 20 },
 });

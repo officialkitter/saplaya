@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input } from '@/components/ui/Fields';
 import { Modal } from '@/components/ui/Modal';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
-import { formatTZS } from '@/lib/format';
+import { formatTZS, tanzaniaDateTime } from '@/lib/format';
 import { useToast } from '@/lib/store';
 
 type CatalogItem = {
@@ -218,7 +218,7 @@ function SharedCatalog() {
                     <p className="mt-1 text-sm text-ink-mute">
                       Proposed retail {formatTZS(proposal.retail_price)} · wholesale {formatTZS(proposal.wholesale_price)}
                     </p>
-                    <p className="mt-1 text-xs text-ink-mute">{new Date(proposal.created_at).toLocaleString()}</p>
+                    <p className="mt-1 text-xs text-ink-mute">{tanzaniaDateTime(proposal.created_at)}</p>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="soft" disabled={saving} onClick={() => void review(proposal, false)} icon={<X size={17} />}>Decline</Button>

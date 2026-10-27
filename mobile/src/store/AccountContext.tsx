@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 import type { User } from '@supabase/supabase-js';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { ensureSession, supabase } from '../lib/supabase';
@@ -68,11 +69,63 @@ type AccountContextValue = {
 const AccountContext = createContext<AccountContextValue | null>(null);
 
 const emptyProfile: AccountProfile = { fullName: '', phone: '', avatarUrl: null };
+const nativeAuthRedirect = 'saplaya://auth/callback';
+let latestAuthCode: string | null = null;
+let latestAuthCodeExchange: Promise<User | null> | null = null;
+let latestAccessToken: string | null = null;
+let latestSessionExchange: Promise<User | null> | null = null;
 
 function requireData<T>(data: T | null, error: { message: string } | null, message: string): T {
   if (error) throw new Error(error.message);
   if (data === null) throw new Error(message);
   return data;
+}
+
+async function completeAuthUrl(url: string): Promise<User | null> {
+  const parsed = Linking.parse(url);
+  const code = parsed.queryParams?.code;
+  if (typeof code === 'string') {
+    if (latestAuthCode === code && latestAuthCodeExchange) return latestAuthCodeExchange;
+    latestAuthCode = code;
+    latestAuthCodeExchange = supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+      if (error) throw error;
+      return data.user;
+    });
+    try {
+      return await latestAuthCodeExchange;
+    } catch (error) {
+      if (latestAuthCode === code) {
+        latestAuthCode = null;
+        latestAuthCodeExchange = null;
+      }
+      throw error;
+    }
+  }
+
+  const fragment = url.split('#')[1] ?? '';
+  const params = new URLSearchParams(fragment);
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  if (!accessToken || !refreshToken) return null;
+  if (latestAccessToken === accessToken && latestSessionExchange) return latestSessionExchange;
+
+  latestAccessToken = accessToken;
+  latestSessionExchange = supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  }).then(({ data, error }) => {
+    if (error) throw error;
+    return data.user;
+  });
+  try {
+    return await latestSessionExchange;
+  } catch (error) {
+    if (latestAccessToken === accessToken) {
+      latestAccessToken = null;
+      latestSessionExchange = null;
+    }
+    throw error;
+  }
 }
 
 export function AccountProvider({ children }: { children: React.ReactNode }) {
@@ -152,28 +205,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    const processAuthUrl = async (url: string) => {
-      const parsed = Linking.parse(url);
-      const code = parsed.queryParams?.code;
-      if (typeof code === 'string') {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeError) throw exchangeError;
-        return;
-      }
-      const fragment = url.split('#')[1] ?? '';
-      const params = new URLSearchParams(fragment);
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      if (accessToken && refreshToken) {
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-        if (sessionError) throw sessionError;
-      }
-    };
     const handle = (url: string) => {
-      void processAuthUrl(url).catch((authError: unknown) => {
+      void completeAuthUrl(url).catch((authError: unknown) => {
         if (active) setError(authError instanceof Error ? authError.message : 'Could not verify your email link.');
       });
     };
@@ -275,7 +308,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithProvider = useCallback(async (provider: 'google' | 'apple') => {
     await signOutPhoneAuth();
-    const redirectTo = Linking.createURL('auth/callback');
+    const redirectTo = Platform.OS === 'web' ? Linking.createURL('auth/callback') : nativeAuthRedirect;
     const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo, skipBrowserRedirect: true },
@@ -287,34 +320,28 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     if (result.type !== 'success' || !result.url) return false;
 
     const callback = Linking.parse(result.url);
-    const code = callback.queryParams?.code;
-    if (typeof code === 'string') {
-      const { data: session, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-      if (exchangeError) throw exchangeError;
-      if (!session.user) throw new Error('The sign-in provider did not return a user.');
-      setUser(mapSupabaseUser(session.user));
-      setCustomerId(session.user.id);
-      return true;
+    const callbackPath = callback.path?.replace(/^\/+/, '');
+    const isExpectedCallback = Platform.OS === 'web'
+      ? Boolean(callbackPath?.endsWith('auth/callback'))
+      : callback.scheme === 'saplaya' && callback.hostname === 'auth' && callbackPath === 'callback';
+    if (!isExpectedCallback) {
+      throw new Error('The sign-in provider returned to an unexpected address.');
     }
-
-    const fragment = result.url.split('#')[1] ?? '';
-    const params = new URLSearchParams(fragment);
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (!accessToken || !refreshToken) throw new Error('The sign-in provider did not return a valid session.');
-    const { data: session, error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    if (sessionError) throw sessionError;
-    if (!session.user) throw new Error('The sign-in provider did not return a user.');
-    setUser(mapSupabaseUser(session.user));
-    setCustomerId(session.user.id);
+    const user = await completeAuthUrl(result.url);
+    if (!user) throw new Error('The sign-in provider did not return a valid session.');
+    setUser(mapSupabaseUser(user));
+    setCustomerId(user.id);
     return true;
   }, [mapSupabaseUser]);
 
   const continueAsGuest = useCallback(async () => {
     await signOutPhoneAuth();
+    const { data: current, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (current.session && !current.session.user.is_anonymous) {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+    }
     const session = await ensureSession();
     setUser(mapSupabaseUser(session.user));
     setCustomerId(session.user.id);

@@ -1,5 +1,5 @@
 import type { Movement, OrderStatus, Product, Role, Supplier, SupplierOrder, Settings, TeamMember } from './types';
-import { STATUS_ALL } from './format';
+import { STATUS_ALL, TANZANIA_TIME_ZONE, shortDate } from './format';
 import { isFarmRole } from './roles';
 
 const DAY = 86_400_000;
@@ -9,11 +9,17 @@ export const countsAsSale = (o: SupplierOrder) => o.status !== 'cancelled';
 
 export function dayKeys(days: number, now = Date.now()) {
   const out: { start: number; label: string }[] = [];
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: TANZANIA_TIME_ZONE,
+  }).formatToParts(new Date(now));
+  const part = (type: 'year' | 'month' | 'day') => Number(parts.find((item) => item.type === type)?.value);
+  const todayStart = Date.UTC(part('year'), part('month') - 1, part('day')) - 3 * 60 * 60 * 1000;
   for (let i = days - 1; i >= 0; i--) {
-    const start = today.getTime() - i * DAY;
-    out.push({ start, label: new Date(start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) });
+    const start = todayStart - i * DAY;
+    out.push({ start, label: shortDate(start) });
   }
   return out;
 }
@@ -69,7 +75,14 @@ export const isLow = (p: Product) => p.active && p.stock <= p.lowStockAt;
 /** Orders per hour of the day (6am to 10pm) so teams can plan packing shifts. */
 export function ordersByHour(orders: SupplierOrder[]) {
   const counts = new Array(24).fill(0) as number[];
-  orders.filter(countsAsSale).forEach((o) => { counts[new Date(o.placedAt).getHours()] += 1; });
+  const hourFormatter = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    hourCycle: 'h23',
+    timeZone: TANZANIA_TIME_ZONE,
+  });
+  orders.filter(countsAsSale).forEach((o) => {
+    counts[Number(hourFormatter.format(new Date(o.placedAt)))] += 1;
+  });
   return counts
     .map((count, h) => ({ hour: `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`, h, count }))
     .filter((x) => x.h >= 6 && x.h <= 22);

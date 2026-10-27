@@ -67,8 +67,8 @@ export default function AuthenticationScreen({ navigation }: any) {
     if (/operation-not-allowed|billing-not-enabled|provider is disabled/i.test(message)) {
       return 'This sign-in option is not available right now. Try another sign-in method.';
     }
-    if (/anonymous.*disabled|anonymous sign-ins are disabled/i.test(message)) {
-      return 'Guest checkout is temporarily unavailable. Please sign in or create an account.';
+    if (/anonymous_provider_disabled|anonymous.*disabled|anonymous sign-ins are disabled/i.test(message)) {
+      return 'We could not start guest access. Try again, or sign in to your account.';
     }
     if (/invalid-credential|wrong-password|user-not-found/i.test(message)) {
       return 'Those sign-in details do not match an account. Check them and try again.';
@@ -162,7 +162,7 @@ export default function AuthenticationScreen({ navigation }: any) {
       await continueAsGuest();
       finish();
     } catch (error) {
-      Alert.alert('Guest checkout unavailable', friendlyError(error));
+      Alert.alert('Could not continue as guest', friendlyError(error));
     } finally {
       setBusy(false);
     }

@@ -22,9 +22,11 @@ void SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
 
 export default function App() {
   const [splash, setSplash] = useState(true);
+  const [splashAnimationFinished, setSplashAnimationFinished] = useState(false);
+  const [navigationReady, setNavigationReady] = useState(false);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
   const pendingAuthNavigation = React.useRef(false);
-  const finish = useCallback(() => setSplash(false), []);
+  const finish = useCallback(() => setSplashAnimationFinished(true), []);
   const routeToShop = useCallback(() => {
     if (!navigationRef.isReady()) {
       pendingAuthNavigation.current = true;
@@ -34,6 +36,7 @@ export default function App() {
     navigationRef.resetRoot({ index: 0, routes: [{ name: 'Tabs' }] });
   }, []);
   const handleNavigationReady = useCallback(() => {
+    setNavigationReady(true);
     if (pendingAuthNavigation.current) routeToShop();
   }, [routeToShop]);
 
@@ -65,6 +68,10 @@ export default function App() {
       console.error('Could not hide the native splash screen:', error);
     });
   }, [hasSeenOnboarding]);
+
+  useEffect(() => {
+    if (splashAnimationFinished && navigationReady) setSplash(false);
+  }, [navigationReady, splashAnimationFinished]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#F9FBF7' }}>

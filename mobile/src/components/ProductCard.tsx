@@ -16,7 +16,13 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
       style={styles.wrap}
     >
       <Pressable onPress={onPress} style={({ pressed }) => [styles.card, shadow, pressed && { transform: [{ scale: 0.97 }] }]}>
-        <Image source={{ uri: product.image_url }} style={styles.img} contentFit="cover" transition={250} />
+        {product.image_url ? (
+          <Image source={{ uri: product.image_url }} style={styles.img} contentFit="cover" transition={250} />
+        ) : (
+          <View style={[styles.img, styles.imageFallback]}>
+            <Text style={styles.imageFallbackIcon}>🥬</Text>
+          </View>
+        )}
         <View style={styles.body}>
           <Text numberOfLines={1} style={styles.name}>{product.name}</Text>
           <Text style={styles.price}>
@@ -37,6 +43,8 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, padding: 6 },
   card: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden' },
   img: { width: '100%', aspectRatio: 1, backgroundColor: colors.line },
+  imageFallback: { alignItems: 'center', justifyContent: 'center' },
+  imageFallbackIcon: { fontSize: 42 },
   body: { padding: 12 },
   name: { fontSize: 16, fontWeight: '700', color: colors.ink },
   price: { fontSize: 17, fontWeight: '800', color: colors.green, marginTop: 4 },
