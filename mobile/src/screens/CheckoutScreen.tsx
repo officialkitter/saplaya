@@ -294,7 +294,7 @@ export default function CheckoutScreen({ navigation }: any) {
           <View style={styles.choiceRow}>
             {([
               { value: 'morning', title: 'Morning', time: '07:00–10:00', icon: 'sunny-outline' },
-              { value: 'afternoon', title: 'Afternoon', time: '15:00–18:00', icon: 'partly-sunny-outline' },
+              { value: 'afternoon', title: 'Evening', time: '15:00–18:00', icon: 'partly-sunny-outline' },
             ] as const).map((option) => (
               <Pressable
                 key={option.value}

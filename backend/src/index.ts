@@ -412,15 +412,35 @@ app.get('/health', async (_req, res) => {
 });
 
 app.get('/products', async (req, res) => {
-  const page = Math.max(0, Number(req.query.page ?? 0));
-  const size = Math.min(40, Number(req.query.size ?? 20));
-  const { data, error } = await db
-    .from('storefront_products')
-    .select('*')
-    .order('name')
-    .range(page * size, page * size + size - 1);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ items: data, hasMore: (data?.length ?? 0) === size });
+  const requestedPage = Number(req.query.page ?? 0);
+  const requestedSize = Number(req.query.size ?? 20);
+  const page = Number.isFinite(requestedPage) ? Math.max(0, Math.floor(requestedPage)) : 0;
+  const size = Number.isFinite(requestedSize) ? Math.min(40, Math.max(1, Math.floor(requestedSize))) : 20;
+  const queryBatchSize = 500;
+  const products: Array<Record<string, unknown> & { id: string; name: string; stock: number }> = [];
+
+  for (let offset = 0; ; offset += queryBatchSize) {
+    const { data, error } = await db
+      .from('storefront_products')
+      .select('*')
+      .order('name')
+      .order('stock', { ascending: false })
+      .order('id')
+      .range(offset, offset + queryBatchSize - 1);
+    if (error) return res.status(500).json({ error: error.message });
+    products.push(...(data ?? []));
+    if ((data?.length ?? 0) < queryBatchSize) break;
+  }
+
+  const uniqueProducts = new Map<string, (typeof products)[number]>();
+  for (const product of products) {
+    const normalizedName = product.name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+    const key = normalizedName || `id:${product.id}`;
+    if (!uniqueProducts.has(key)) uniqueProducts.set(key, product);
+  }
+
+  const items = [...uniqueProducts.values()].slice(page * size, (page + 1) * size);
+  res.json({ items, hasMore: uniqueProducts.size > (page + 1) * size });
 });
 
 app.get('/promos', async (_req, res) => {

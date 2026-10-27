@@ -185,7 +185,7 @@ export default function TrackingScreen({ route }: any) {
               <View style={styles.detailsCard}>
                 <Text style={styles.detailsTitle}>This delivery</Text>
                 <Text style={styles.detailsDate}>
-                  {selectedOrder.delivery_window === 'afternoon' ? 'Afternoon · 15:00–18:00' : 'Morning · 07:00–10:00'}
+                  {selectedOrder.delivery_window === 'afternoon' ? 'Evening · 15:00–18:00' : 'Morning · 07:00–10:00'}
                 </Text>
                 <Text style={styles.emptyText}>
                   {selectedOrder.payment_method === 'cash_on_delivery'

@@ -236,7 +236,7 @@ function Orders() {
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery area</p><p className="font-bold">{open.area}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Phone</p><p className={cn('font-bold', isFarmRole(me.role) && 'text-ink-mute')}>{customerPhone(open, me.role)}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Shopping mode</p><p className="font-bold">{open.mode === 'wholesale' ? 'Wholesale' : 'Retail'}</p></div>
-              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery window</p><p className="font-bold">{open.deliveryWindow === 'afternoon' ? '15:00–18:00' : '07:00–10:00'}</p></div>
+              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery window</p><p className="font-bold">{open.deliveryWindow === 'afternoon' ? 'Evening · 15:00–18:00' : 'Morning · 07:00–10:00'}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Payment</p><p className="font-bold">{open.paymentMethod === 'cash_on_delivery' ? 'Cash on delivery' : 'Paid online'}</p></div>
             </div>
 

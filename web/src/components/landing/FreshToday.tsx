@@ -1,18 +1,27 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Sprout } from 'lucide-react';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { formatTZS } from '@/lib/format';
+import { formatTZS, localDayPeriod, type LocalDayPeriod } from '@/lib/format';
 import { useStorefrontProducts } from '@/lib/storefront';
 
 export function FreshToday() {
   const { products, loading, error, retry } = useStorefrontProducts(8);
+  const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
+
+  useEffect(() => {
+    const updateLocalPeriod = () => setLocalPeriod(localDayPeriod());
+    updateLocalPeriod();
+    const interval = setInterval(updateLocalPeriod, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <section id="fresh" className="py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-5">
         <h2 className="max-w-xl font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-          On the shelf this morning.
+          On the shelf {localPeriod ? `this ${localPeriod}` : 'today'}.
         </h2>
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
           Browse real farm listings, live prices and current availability.

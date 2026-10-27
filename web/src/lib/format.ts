@@ -7,6 +7,13 @@ export const TANZANIA_TIME_ZONE = 'Africa/Dar_es_Salaam';
 export const formatTZS = (n: number) => 'TSh ' + Math.round(n).toLocaleString('en-US');
 export const formatNum = (n: number) => (Math.round(n * 10) / 10).toLocaleString('en-US');
 
+export type LocalDayPeriod = 'morning' | 'afternoon' | 'evening';
+
+export function localDayPeriod(ts = Date.now()): LocalDayPeriod {
+  const hour = new Date(ts).getHours();
+  return hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+}
+
 export function tanzaniaHour(ts = Date.now()): number {
   return Number(new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',

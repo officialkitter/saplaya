@@ -138,7 +138,7 @@ export function Hero() {
             Farm-fresh food, at your door in hours.
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            Order vegetables and fruit picked this morning on farms around Dodoma. Buy a little for your kitchen or a lot for your shop. It is the same app and honest prices.
+            Order vegetables and fruit harvested by local farms around Dodoma. Buy a little for your kitchen or a lot for your shop. It is the same app and honest prices.
           </p>
 
           <div className="mt-9">

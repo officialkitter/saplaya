@@ -16,12 +16,25 @@ import { Product, Promo } from '../types';
 export default function HomeScreen({ navigation }: any) {
   const { mode } = useStore();
   const place = useDeliveryPlace();
+  const [localPeriod, setLocalPeriod] = useState<'morning' | 'afternoon' | 'evening'>(() => {
+    const hour = new Date().getHours();
+    return hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  });
   const [promos, setPromos] = useState<Promo[]>([]);
   const [items, setItems] = useState<Product[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updateLocalPeriod = () => {
+      const hour = new Date().getHours();
+      setLocalPeriod(hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening');
+    };
+    const interval = setInterval(updateLocalPeriod, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navigateToRoot = (screen: 'Account' | 'LocationPicker') => {
     const rootNavigation = navigation.getParent('RootStack');
@@ -111,7 +124,9 @@ export default function HomeScreen({ navigation }: any) {
       <Text style={styles.q}>How are you shopping today?</Text>
       <ModeToggle />
 
-      <Text style={styles.section}>{mode === 'retail' ? 'Fresh today' : 'Bulk prices'}</Text>
+      <Text style={styles.section}>
+        {mode === 'retail' ? `Fresh this ${localPeriod}` : 'Bulk prices'}
+      </Text>
     </View>
   );
 
