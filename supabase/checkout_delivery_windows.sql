@@ -157,7 +157,7 @@ create or replace function public.place_cash_on_delivery_order(
 ) returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_order uuid;
