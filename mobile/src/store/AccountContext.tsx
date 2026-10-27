@@ -14,7 +14,10 @@ import {
 } from '../lib/customer-auth';
 import type { CustomerIdentity } from '../lib/customer-auth.types';
 
-type AccountUser = CustomerIdentity;
+type AccountUser = CustomerIdentity & {
+  emailVerified?: boolean;
+  emailVerificationType?: 'signup' | 'email_change';
+};
 
 export type AccountProfile = {
   fullName: string;
@@ -50,6 +53,7 @@ type AccountContextValue = {
   signInWithProvider: (provider: 'google' | 'apple') => Promise<boolean>;
   continueAsGuest: () => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<boolean>;
+  requestEmailVerification: () => Promise<void>;
   sendPhoneOtp: (phone: string, fullName?: string) => Promise<void>;
   verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -87,6 +91,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       email: supabaseUser.email ?? null,
       phone: supabaseUser.phone ?? null,
       is_anonymous: Boolean(supabaseUser.is_anonymous),
+      emailVerified: Boolean(supabaseUser.email_confirmed_at),
+      emailVerificationType: supabaseUser.user_metadata?.email_pending_verification === true ? 'email_change' : 'signup',
     };
   }, []);
 
@@ -322,14 +328,20 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       const { data, error: updateError } = await supabase.auth.updateUser({
         email,
         password,
-        data: { full_name: fullName.trim() },
+        data: { full_name: fullName.trim(), email_pending_verification: true },
       });
       if (updateError) throw updateError;
-      if (data.user) {
-        setUser(mapSupabaseUser(data.user));
-        setCustomerId(data.user.id);
+      const { data: currentSession, error: currentSessionError } = await supabase.auth.getSession();
+      if (currentSessionError) throw currentSessionError;
+      const updatedUser = currentSession.session?.user ?? data.user;
+      if (updatedUser) {
+        setUser({
+          ...mapSupabaseUser(updatedUser)!,
+          emailVerificationType: 'email_change',
+        });
+        setCustomerId(updatedUser.id);
       }
-      return !data.user?.email_confirmed_at;
+      return !currentSession.session;
     }
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
@@ -343,6 +355,17 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     }
     return !data.session;
   }, [mapSupabaseUser]);
+
+  const requestEmailVerification = useCallback(async () => {
+    if (!user?.email) throw new Error('Add an email address to your account before requesting verification.');
+    if (user.emailVerified) throw new Error('This email address is already verified.');
+    const { error: resendError } = await supabase.auth.resend({
+      type: user.emailVerificationType ?? 'signup',
+      email: user.email,
+      options: { emailRedirectTo: Linking.createURL('auth/callback') },
+    });
+    if (resendError) throw resendError;
+  }, [user]);
 
   const sendPhoneOtp = useCallback(async (phone: string, fullName?: string) => {
     await sendCustomerPhoneOtp(phone, fullName);
@@ -458,6 +481,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     signInWithProvider,
     continueAsGuest,
     register,
+    requestEmailVerification,
     sendPhoneOtp,
     verifyPhoneOtp,
     signOut,
@@ -468,7 +492,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     removeAddress,
     addReview,
   }), [
-    user, profile, addresses, reviews, loading, error, signIn, signInWithProvider, continueAsGuest, register, sendPhoneOtp, verifyPhoneOtp, signOut,
+    user, profile, addresses, reviews, loading, error, signIn, signInWithProvider, continueAsGuest, register, requestEmailVerification, sendPhoneOtp, verifyPhoneOtp, signOut,
     saveProfile, uploadAvatar, addAddress, selectAddress, removeAddress, addReview,
   ]);
 

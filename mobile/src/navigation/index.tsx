@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { createNavigationContainerRef, NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,15 +19,33 @@ import { colors } from '../theme';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+export type RootStackParamList = {
+  Onboarding: undefined;
+  Tabs: undefined;
+  Account: undefined;
+  AccountDetail: { section: string };
+  Authentication: undefined;
+  LocationPicker: undefined;
+  Checkout: undefined;
+};
+
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
 const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: colors.cream, primary: colors.green } };
 
 /**
  * Product detail lives INSIDE the tab navigator as a hidden tab so the tab bar
  * (and therefore the cart icon the particle flies to) stays visible.
  */
-export default function Navigation({ initialRouteName = 'Tabs' }: { initialRouteName?: 'Tabs' | 'Onboarding' }) {
+export default function Navigation({
+  initialRouteName = 'Tabs',
+  onReady,
+}: {
+  initialRouteName?: 'Tabs' | 'Onboarding';
+  onReady?: () => void;
+}) {
   return (
-    <NavigationContainer theme={theme}>
+    <NavigationContainer ref={navigationRef} theme={theme} onReady={onReady}>
       <Stack.Navigator id="RootStack" initialRouteName={initialRouteName} screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors.cream } }}>
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Tabs" component={Tabs} />

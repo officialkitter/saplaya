@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { MotiText, MotiView } from 'moti';
 import { Easing } from 'react-native-reanimated';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import BrandMark from './BrandMark';
 import { colors } from '../theme';
 
 /**
@@ -13,8 +13,8 @@ export default function SplashMorph({ onFinish }: { onFinish: () => void }) {
   const [phase, setPhase] = useState<'seed' | 'logo'>('seed');
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('logo'), 1700);
-    const t2 = setTimeout(onFinish, 3300);
+    const t1 = setTimeout(() => setPhase('logo'), 650);
+    const t2 = setTimeout(onFinish, 1900);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -72,10 +72,7 @@ export default function SplashMorph({ onFinish }: { onFinish: () => void }) {
         >
           <View style={styles.logoWrap}>
             <View style={styles.logoCircle}>
-              <MaterialCommunityIcons name="sprout" size={76} color={colors.white} />
-              <View style={styles.cartBadge}>
-                <View style={styles.badgeDot} />
-              </View>
+              <BrandMark size={112} />
             </View>
           </View>
         </MotiView>
@@ -137,20 +134,6 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: colors.yellow,
   },
-  cartBadge: {
-    position: 'absolute',
-    right: -9,
-    bottom: -7,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.yellow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.cream,
-  },
-  badgeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.yellowDeep },
   brand: { marginTop: 28, fontSize: 38, fontWeight: '800', color: colors.green, letterSpacing: 0.5 },
   tag: { marginTop: 6, fontSize: 15, color: colors.muted },
 });

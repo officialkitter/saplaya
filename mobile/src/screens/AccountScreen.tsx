@@ -12,7 +12,7 @@ const sections = [
   { key: 'addresses', title: 'Saved addresses', subtitle: 'Choose where your fresh order goes', icon: 'location-outline' as const },
   { key: 'payments', title: 'Payment methods', subtitle: 'Secure online and delivery options', icon: 'card-outline' as const },
   { key: 'reviews', title: 'Reviews', subtitle: 'Share feedback with Saplaya', icon: 'star-outline' as const },
-  { key: 'supplier', title: 'Become a supplier', subtitle: 'Register your farm with Saplaya', icon: 'leaf-outline' as const },
+  { key: 'supplier', title: 'Become a supplier', subtitle: 'Register your farm with Saplaya', icon: 'storefront-outline' as const },
   { key: 'help', title: 'Help center', subtitle: 'FAQs and customer support', icon: 'help-circle-outline' as const },
   { key: 'legal', title: 'Terms & privacy', subtitle: 'How Saplaya protects your information', icon: 'shield-checkmark-outline' as const },
   { key: 'about', title: 'About Saplaya', subtitle: 'Our farm-to-home promise', icon: 'information-circle-outline' as const },

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, ImageBackground, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent,
+  Alert, FlatList, ImageBackground, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent,
   Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import GoogleMark from '../components/GoogleMark';
+import BrandMark from '../components/BrandMark';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAccount } from '../store/AccountContext';
 import { colors, radius } from '../theme';
@@ -22,7 +23,8 @@ const RESEND_SECONDS = 45;
 export default function AuthenticationScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
   const { signIn, register, signInWithProvider, continueAsGuest, sendPhoneOtp, verifyPhoneOtp } = useAccount();
-  const heroRef = useRef<ScrollView>(null);
+  const heroRef = useRef<FlatList<(typeof authSlides)[number]>>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
   const [creating, setCreating] = useState(false);
   const [method, setMethod] = useState<'email' | 'phone'>('email');
   const [name, setName] = useState('');
@@ -37,10 +39,14 @@ export default function AuthenticationScreen({ navigation }: any) {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      heroRef.current?.scrollTo({ x: ((Math.floor(Date.now() / 4200)) % authSlides.length) * width, animated: true });
-    }, 4200);
+      setHeroIndex((current) => {
+        const next = (current + 1) % authSlides.length;
+        heroRef.current?.scrollToIndex({ index: next, animated: true });
+        return next;
+      });
+    }, 4600);
     return () => clearInterval(timer);
-  }, [width]);
+  }, []);
 
   useEffect(() => {
     if (!resendIn) return;
@@ -49,8 +55,7 @@ export default function AuthenticationScreen({ navigation }: any) {
   }, [resendIn > 0]);
 
   const finish = () => {
-    if (navigation.canGoBack()) navigation.goBack();
-    else navigation.replace('Tabs');
+    navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
   };
   const requireTerms = () => {
     if (acceptedTerms) return true;
@@ -121,7 +126,10 @@ export default function AuthenticationScreen({ navigation }: any) {
       if (creating) {
         const confirmationRequired = await register(email.trim(), password, name);
         if (confirmationRequired) {
-          Alert.alert('Check your email', 'Follow the link in your email to finish creating your account.');
+          Alert.alert(
+            'Check your email',
+            'Email confirmation is required by the current account settings. Follow the link to finish creating your account. To allow immediate signup temporarily, turn off Confirm email in Supabase Authentication → Providers → Email.',
+          );
           return;
         }
       } else {
@@ -185,27 +193,32 @@ export default function AuthenticationScreen({ navigation }: any) {
       <ScreenHeader title={creating ? 'Create account' : 'Welcome'} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={styles.heroFrame}>
-            <ScrollView
+          <View style={[styles.heroFrame, { width: width - 36 }]}>
+            <FlatList
               ref={heroRef}
+              data={authSlides}
               horizontal
               pagingEnabled
-              scrollEnabled={false}
               showsHorizontalScrollIndicator={false}
-              style={styles.heroScroll}
-            >
-              {authSlides.map((slide) => (
-                <ImageBackground key={slide.title} source={{ uri: slide.image }} style={[styles.hero, { width: width - 36 }]} imageStyle={styles.heroImage}>
+              scrollEventThrottle={16}
+              decelerationRate="fast"
+              onMomentumScrollEnd={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+                setHeroIndex(Math.round(event.nativeEvent.contentOffset.x / (width - 36)));
+              }}
+              getItemLayout={(_, index) => ({ length: width - 36, offset: (width - 36) * index, index })}
+              keyExtractor={(slide) => slide.title}
+              renderItem={({ item: slide }) => (
+                <ImageBackground source={{ uri: slide.image }} style={[styles.hero, { width: width - 36 }]} imageStyle={styles.heroImage}>
                   <LinearGradient colors={['rgba(10,30,14,0.02)', 'rgba(10,30,14,0.73)']} style={StyleSheet.absoluteFill} />
                   <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 400 }} style={styles.heroCopy}>
-                    <View style={styles.heroPill}><Ionicons name="leaf" size={14} color={colors.green} /><Text style={styles.heroPillText}>SAPLAYA · FRESH DAILY</Text></View>
+                    <View style={styles.heroPill}><BrandMark size={16} /><Text style={styles.heroPillText}>SAPLAYA · FRESH DAILY</Text></View>
                     <Text style={styles.heroTitle}>{slide.title}</Text>
                   </MotiView>
                 </ImageBackground>
-              ))}
-            </ScrollView>
+              )}
+            />
             <View style={styles.heroDots}>
-              {authSlides.map((slide, index) => <View key={slide.title} style={[styles.heroDot, index === 0 && styles.heroDotActive]} />)}
+              {authSlides.map((slide, index) => <View key={slide.title} style={[styles.heroDot, index === heroIndex && styles.heroDotActive]} />)}
             </View>
           </View>
 
@@ -254,11 +267,22 @@ export default function AuthenticationScreen({ navigation }: any) {
             )}
 
             <View style={styles.termsRow}>
-              <Pressable onPress={() => setAcceptedTerms((value) => !value)} accessibilityRole="checkbox" accessibilityState={{ checked: acceptedTerms }} style={styles.checkbox}>
-                {acceptedTerms && <Ionicons name="checkmark" size={17} color={colors.white} />}
+              <Pressable
+                onPress={() => setAcceptedTerms((value) => !value)}
+                accessibilityRole="checkbox"
+                accessibilityLabel="I agree to Saplaya's Terms and Privacy Policy"
+                accessibilityState={{ checked: acceptedTerms }}
+                hitSlop={8}
+                style={styles.termsToggle}
+              >
+                <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                  {acceptedTerms && <Ionicons name="checkmark" size={16} color={colors.white} />}
+                </View>
+                <Text style={styles.termsText}>I agree to Saplaya's</Text>
               </Pressable>
-              <Text style={styles.termsText}>I agree to Saplaya's </Text>
-              <Pressable onPress={openLegal}><Text style={styles.termsLink}>Terms & Privacy</Text></Pressable>
+              <Pressable onPress={openLegal} hitSlop={8} accessibilityRole="link">
+                <Text style={styles.termsLink}>Terms & Privacy Policy</Text>
+              </Pressable>
             </View>
 
             <Pressable style={[styles.button, busy && styles.buttonDisabled]} onPress={submit} disabled={busy}>
@@ -308,8 +332,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   root: { flex: 1, backgroundColor: colors.cream },
   content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 32 },
-  heroFrame: { height: 242, overflow: 'hidden', borderRadius: 27, backgroundColor: colors.line },
-  heroScroll: { flex: 1 },
+  heroFrame: { height: 242, alignSelf: 'center', overflow: 'hidden', borderRadius: 27, backgroundColor: colors.line },
   hero: { height: 242, justifyContent: 'flex-end' },
   heroImage: { borderRadius: 27 },
   heroCopy: { paddingHorizontal: 19, paddingBottom: 23 },
@@ -334,8 +357,10 @@ const styles = StyleSheet.create({
   resendHint: { color: colors.muted, fontSize: 12 },
   resendText: { color: colors.green, fontWeight: '900', fontSize: 12 },
   disabledText: { color: '#9AA69A' },
-  termsRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', marginTop: 1, marginBottom: 7, flexWrap: 'wrap' },
-  checkbox: { width: 21, height: 21, marginRight: 8, borderWidth: 1.5, borderColor: colors.green, borderRadius: 6, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  termsRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', marginTop: 1, marginBottom: 7, flexWrap: 'wrap', gap: 5 },
+  termsToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingRight: 2 },
+  checkbox: { width: 22, height: 22, marginRight: 8, borderWidth: 1.5, borderColor: colors.green, borderRadius: 6, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: colors.green },
   termsText: { color: colors.muted, fontSize: 12 },
   termsLink: { color: colors.green, fontSize: 12, fontWeight: '900' },
   button: { height: 52, marginTop: 5, borderRadius: 15, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9 },

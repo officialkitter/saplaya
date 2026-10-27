@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { MotiView } from 'moti';
 import ScreenHeader from '../components/ScreenHeader';
+import BrandMark from '../components/BrandMark';
 import { deletePaymentMethod, fetchPaymentMethods, SavedPaymentMethod, savePaymentMethod, submitSupplierApplication } from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
@@ -46,10 +47,11 @@ export default function AccountDetailScreen({ route, navigation }: any) {
 }
 
 function ProfileDetails() {
-  const { user, profile, saveProfile, uploadAvatar } = useAccount();
+  const { user, profile, saveProfile, uploadAvatar, requestEmailVerification } = useAccount();
   const [fullName, setFullName] = useState(profile.fullName);
   const [phone, setPhone] = useState(profile.phone);
   const [busy, setBusy] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   const choosePhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -90,6 +92,19 @@ function ProfileDetails() {
     }
   };
 
+  const sendVerification = async () => {
+    setBusy(true);
+    try {
+      await requestEmailVerification();
+      setVerificationSent(true);
+      Alert.alert('Check your inbox', 'We sent a link to verify your email address.');
+    } catch (error) {
+      Alert.alert('Could not send verification email', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.avatarBlock}>
@@ -103,6 +118,28 @@ function ProfileDetails() {
       </View>
       <Field label="Full name" value={fullName} onChangeText={setFullName} autoComplete="name" />
       <Field label="Email address" value={user?.email ?? ''} editable={false} />
+      {user?.email && !user.is_anonymous && (
+        <View style={styles.emailVerificationCard}>
+          <View style={styles.emailVerificationIcon}>
+            <Ionicons name={user.emailVerified ? 'checkmark-circle' : 'mail-unread-outline'} size={21} color={colors.green} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{user.emailVerified ? 'Email verified' : 'Verify your email'}</Text>
+            <Text style={styles.cardBody}>
+              {user.emailVerified
+                ? 'Your email is ready for account updates.'
+                : verificationSent ? 'Verification link sent. Check your inbox.' : 'Add a verified email to help secure account access.'}
+            </Text>
+          </View>
+          {!user.emailVerified && (
+            <Pressable onPress={() => void sendVerification()} disabled={busy} hitSlop={8}>
+              <Text style={[styles.verificationAction, busy && styles.disabledAction]}>
+                {busy ? 'Sending…' : verificationSent ? 'Resend link' : 'Send link'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
       <Field label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
       <ActionButton title={busy ? 'Saving…' : 'Save details'} onPress={save} disabled={busy} />
       <Text style={styles.helper}>Your details are stored securely with your Saplaya account.</Text>
@@ -401,7 +438,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
   if (!isSignedIn) {
     return (
       <View style={styles.centerContent}>
-        <Ionicons name="leaf-outline" size={56} color={colors.green} />
+        <Ionicons name="storefront-outline" size={56} color={colors.green} />
         <Text style={styles.cardTitle}>Apply to sell on Saplaya</Text>
         <Text style={styles.intro}>Sign in or create an account before registering your farm.</Text>
         <ActionButton title="Sign in or create account" onPress={() => navigation.navigate('Authentication')} />
@@ -448,10 +485,45 @@ function HelpCenter() {
 function Legal() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <InfoCard icon="shield-checkmark-outline" title="Your privacy" body="Your account details and addresses are associated with your signed-in account. Payment details are handled securely by the payment provider and are not stored in Saplaya." />
-      <InfoCard icon="bag-handle-outline" title="Orders and delivery" body="Prices, stock and delivery charges are confirmed by the service at checkout. Online orders are placed after payment verification; cash-on-delivery orders are placed when you confirm." />
-      <InfoCard icon="leaf-outline" title="Local suppliers" body="Supplier applications are reviewed before a farm can sell through Saplaya. Submitting an application does not guarantee approval." />
-      <Text style={styles.helper}>Contact support from the Help center if you have a question about your information or an order.</Text>
+      <View style={styles.legalHero}>
+        <View style={styles.legalHeroIcon}><Ionicons name="shield-checkmark" size={23} color={colors.green} /></View>
+        <Text style={styles.legalTitle}>Your trust matters</Text>
+        <Text style={styles.legalIntro}>Here is how Saplaya orders work and how we use the information needed to serve you.</Text>
+        <Text style={styles.legalUpdated}>Saplaya customer terms and privacy</Text>
+      </View>
+      <LegalSection
+        icon="document-text-outline"
+        title="Using Saplaya"
+        body="Saplaya connects customers with participating local suppliers. Keep your account and contact details accurate, use the service lawfully, and protect your sign-in credentials. You may shop as a guest; guest order history remains associated with that guest session."
+      />
+      <LegalSection
+        icon="bag-handle-outline"
+        title="Orders, prices and availability"
+        body="Product availability and stock can change. The price, quantity tier, delivery charge and total are confirmed at checkout. A submitted online order is fulfilled after payment is verified; a cash-on-delivery order is submitted when you confirm it. Supplier applications are reviewed before a farm can sell through Saplaya."
+      />
+      <LegalSection
+        icon="time-outline"
+        title="Delivery and payment"
+        body="Choose an available delivery window at checkout and provide a delivery location where service is available. Online payment is processed through the payment provider's secure checkout. Saplaya does not request or store your card security code or mobile-money PIN. If payment status is pending, check order tracking before starting another payment."
+      />
+      <LegalSection
+        icon="person-circle-outline"
+        title="Information used to provide the service"
+        body="Depending on how you use Saplaya, your account may include your name, email or phone number, saved delivery addresses, saved mobile-money contact numbers, reviews and order details. We use this information to authenticate your account, prepare and deliver orders, provide support and show order history. Notification permission is optional."
+      />
+      <LegalSection
+        icon="share-social-outline"
+        title="Service partners"
+        body="Order details needed to prepare and deliver your purchase are shared with the relevant supplier and delivery operation. Payment details needed to complete an online transaction are sent to the payment provider. Each partner processes information according to its own service terms and privacy practices."
+      />
+      <LegalSection
+        icon="settings-outline"
+        title="Your choices"
+        body="You can update profile details, saved addresses and saved payment contact numbers in Account settings. You can decline notification permission in your device settings. Contact Saplaya through the Help center for questions about an order or your account information."
+      />
+      <Text style={styles.legalFootnote}>
+        These in-app terms explain the customer experience and are not a substitute for legal advice. Contact Saplaya support if you need help understanding how a specific order or account detail is handled.
+      </Text>
     </ScrollView>
   );
 }
@@ -459,7 +531,7 @@ function Legal() {
 function About() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.aboutMark}><Ionicons name="leaf" size={38} color={colors.white} /></View>
+      <View style={styles.aboutMark}><BrandMark size={72} /></View>
       <Text style={styles.aboutTitle}>Saplaya</Text>
       <Text style={styles.intro}>Fresh food from local farms, delivered with care.</Text>
       <InfoCard icon="storefront-outline" title="One easy shop" body="Shop seasonal produce from multiple local farms in one simple basket." />
@@ -533,6 +605,18 @@ function InfoCard({ icon, title, body }: { icon: React.ComponentProps<typeof Ion
   );
 }
 
+function LegalSection({ icon, title, body }: { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; body: string }) {
+  return (
+    <View style={styles.legalSection}>
+      <View style={styles.infoIcon}><Ionicons name={icon} size={21} color={colors.green} /></View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.legalSectionTitle}>{title}</Text>
+        <Text style={styles.legalSectionBody}>{body}</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
   content: { padding: 20, paddingBottom: 36 },
@@ -547,6 +631,10 @@ const styles = StyleSheet.create({
   input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white, paddingHorizontal: 14, color: colors.ink, fontSize: 15 },
   multiline: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 7 },
+  emailVerificationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginBottom: 14, borderRadius: radius.md, backgroundColor: colors.white },
+  emailVerificationIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF7EC' },
+  verificationAction: { color: colors.green, fontWeight: '900', fontSize: 12 },
+  disabledAction: { opacity: 0.55 },
   actionButton: { minHeight: 54, marginTop: 8, paddingHorizontal: 18, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
   actionText: { color: colors.white, fontWeight: '900', fontSize: 16 },
   addressCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, borderRadius: radius.md, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line },
@@ -569,6 +657,15 @@ const styles = StyleSheet.create({
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   infoCard: { flexDirection: 'row', gap: 12, padding: 16, marginBottom: 12, borderRadius: radius.md, backgroundColor: colors.white },
   infoIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EFF7EC', alignItems: 'center', justifyContent: 'center' },
-  aboutMark: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.green },
+  legalHero: { padding: 20, marginBottom: 16, borderRadius: radius.lg, backgroundColor: colors.green },
+  legalHeroIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
+  legalTitle: { marginTop: 16, color: colors.white, fontSize: 24, lineHeight: 30, fontWeight: '900' },
+  legalIntro: { marginTop: 6, color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 21 },
+  legalUpdated: { marginTop: 14, color: '#FBE89C', fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  legalSection: { flexDirection: 'row', gap: 12, padding: 16, marginBottom: 10, borderRadius: radius.md, backgroundColor: colors.white },
+  legalSectionTitle: { color: colors.ink, fontSize: 15, fontWeight: '900' },
+  legalSectionBody: { marginTop: 6, color: colors.muted, fontSize: 13, lineHeight: 20 },
+  legalFootnote: { paddingHorizontal: 4, paddingTop: 5, color: colors.muted, fontSize: 11, lineHeight: 17 },
+  aboutMark: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   aboutTitle: { color: colors.green, fontSize: 30, fontWeight: '900', marginTop: 12, marginBottom: 4 },
 });

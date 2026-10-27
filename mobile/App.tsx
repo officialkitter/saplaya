@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AnimatePresence, MotiView } from 'moti';
@@ -12,11 +13,29 @@ import { StoreProvider } from './src/store/StoreContext';
 import { AccountProvider } from './src/store/AccountContext';
 import { FlyProvider } from './src/store/FlyContext';
 import { DeliveryProvider } from './src/lib/location';
+import { navigationRef } from './src/navigation';
+import { supabase } from './src/lib/supabase';
+
+void SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
+  console.error('Could not hold the native splash screen:', error);
+});
 
 export default function App() {
   const [splash, setSplash] = useState(true);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
+  const pendingAuthNavigation = React.useRef(false);
   const finish = useCallback(() => setSplash(false), []);
+  const routeToShop = useCallback(() => {
+    if (!navigationRef.isReady()) {
+      pendingAuthNavigation.current = true;
+      return;
+    }
+    pendingAuthNavigation.current = false;
+    navigationRef.resetRoot({ index: 0, routes: [{ name: 'Tabs' }] });
+  }, []);
+  const handleNavigationReady = useCallback(() => {
+    if (pendingAuthNavigation.current) routeToShop();
+  }, [routeToShop]);
 
   useEffect(() => {
     let active = true;
@@ -31,8 +50,24 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user && !session.user.is_anonymous) {
+        routeToShop();
+      }
+    });
+    return () => authListener.subscription.unsubscribe();
+  }, [routeToShop]);
+
+  useEffect(() => {
+    if (hasSeenOnboarding === null) return;
+    void SplashScreen.hideAsync().catch((error: unknown) => {
+      console.error('Could not hide the native splash screen:', error);
+    });
+  }, [hasSeenOnboarding]);
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#F9FBF7' }}>
       <SafeAreaProvider>
         <AccountProvider>
           <DeliveryProvider>
@@ -40,7 +75,10 @@ export default function App() {
               <FlyProvider>
                 <StatusBar style="dark" />
                 {hasSeenOnboarding !== null && (
-                  <Navigation initialRouteName={hasSeenOnboarding ? 'Tabs' : 'Onboarding'} />
+                  <Navigation
+                    initialRouteName={hasSeenOnboarding ? 'Tabs' : 'Onboarding'}
+                    onReady={handleNavigationReady}
+                  />
                 )}
                 <AnimatePresence>
                   {splash && (

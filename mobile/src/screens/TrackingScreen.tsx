@@ -414,7 +414,7 @@ function OrderLine({ item }: Readonly<{ item: OrderItem }>) {
     <View style={styles.itemRow}>
       {item.products?.image_url
         ? <Image source={{ uri: item.products.image_url }} style={styles.itemImage} resizeMode="cover" />
-        : <View style={[styles.itemImage, styles.itemImageFallback]}><Ionicons name="leaf-outline" size={20} color={colors.green} /></View>}
+        : <View style={[styles.itemImage, styles.itemImageFallback]}><Ionicons name="basket-outline" size={20} color={colors.green} /></View>}
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.products?.name ?? 'Fresh item'}</Text>
         <Text style={styles.itemMeta}>
