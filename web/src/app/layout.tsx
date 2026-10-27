@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: 'Saplaya | Fresh from the farm to your door',
   description:
     'Saplaya brings vegetables and fruit from local farms to your door in hours. Shop retail or wholesale, and farms can join as suppliers.',
+  icons: {
+    icon: '/saplaya-icon.png',
+    shortcut: '/saplaya-icon.png',
+    apple: '/saplaya-icon.png',
+  },
 };
 
 export const viewport: Viewport = {

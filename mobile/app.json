@@ -8,15 +8,13 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#F9FBF7",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F9FBF7"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.saplaya.app",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.saplaya.app",
