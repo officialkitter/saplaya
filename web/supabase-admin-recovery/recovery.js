@@ -1,53 +1,60 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
-// Load variables from isolated .env file
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const targetUserId = process.env.TARGET_USER_ID;
-
-// Instantiate the administrative client
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
+// Connect to the master admin system layer
+const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false }
 });
 
-async function executeAdministrativePasswordReset() {
-  // Defensive validation checklist
-  if (!supabaseUrl || !supabaseServiceKey || !targetUserId) {
-    throw new Error("Initialization Failed: Environment variables are undefined.");
-  }
+async function createSupplierLoginAccount() {
+  const targetEmail = "codespace94@gmail.com"; // Pulled from your table row
+  const temporarySecurePassword = "MlimaniSecurePass2026!"; // The new login password
 
-  // Generate a highly secure, high-entropy unique password string
-  const temporarySecurePassword = "Temp_" + Math.random().toString(36).slice(-10) + "!" + Date.now();
-  
-  console.log(`[INITIATING]: Mutating password attributes for User UUID: ${targetUserId}`);
+  console.log(`[INITIATING]: Creating authentic login credentials for: ${targetEmail}`);
 
-  // Invoke the official RPC server-side wrapper mapping to updateUserById
-  const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
-    targetUserId,
-    { password: temporarySecurePassword }
-  );
+  // Instruct Supabase Auth to spin up a verified login user account
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: targetEmail,
+    password: temporarySecurePassword,
+    email_confirm: true // This bypasses email verification links so they can log in instantly
+  });
 
-  // Error trapping logic
   if (error) {
-    console.error("[TRANSACTION FAILURE]: Execution terminated via API response.");
+    // If the account already existed, let's just reset its password instead
+    if (error.message.includes("already exists") || error.code === "email_exists") {
+      console.log("[INFO]: Auth account exists. Diverting to password reset protocol...");
+      
+      const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+      const existingUser = listData.users.find(u => u.email === targetEmail);
+      
+      const { error: resetError } = await supabaseAdmin.auth.admin.updateUserById(
+        existingUser.id,
+        { password: temporarySecurePassword }
+      );
+      if (resetError) throw resetError;
+      
+      printSuccess(targetEmail, temporarySecurePassword);
+      return;
+    }
+    
+    console.error("[AUTHENTICATION ERROR]:");
     throw error;
   }
 
-  // Success Confirmation Outflow
-  console.log("\n==================================================");
-  console.log("[SUCCESS]: User state mutated safely inside auth.users scheme.");
-  console.log(`[TEMPORARY CREDENTIAL]: ${temporarySecurePassword}`);
-  console.log("==================================================\n");
-  console.log("CRITICAL DEPLOYMENT NOTE: Log in immediately via your client login portal and change this temporary key.");
+  printSuccess(targetEmail, temporarySecurePassword);
 }
 
-// Fire execution pipeline
-executeAdministrativePasswordReset().catch((err) => {
+function printSuccess(email, password) {
+  console.log("\n==================================================");
+  console.log("[SUCCESS]: Secure authentication account ready!");
+  console.log(`[LOGIN EMAIL]:    ${email}`);
+  console.log(`[LOGIN PASSWORD]: ${password}`);
+  console.log("==================================================\n");
+}
+
+createSupplierLoginAccount().catch((err) => {
   console.error("[RUNTIME EXCEPTION]:", err.message);
 });
+
