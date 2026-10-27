@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { EyeOff, PackagePlus, Pencil, Plus, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { RestockModal } from '@/components/admin/RestockModal';
 import { Button } from '@/components/ui/Button';
@@ -13,8 +13,9 @@ import { SmartImage } from '@/components/ui/SmartImage';
 import { cn, formatNum, formatTZS } from '@/lib/format';
 import { can } from '@/lib/roles';
 import { isLow } from '@/lib/stats';
+import { fetchAdmin } from '@/lib/supabase';
 import { useDB, useScope, useToast } from '@/lib/store';
-import type { Product } from '@/lib/types';
+import type { Product, Supplier } from '@/lib/types';
 
 const CATEGORIES = ['Vegetables', 'Leafy', 'Fruit', 'Grains'];
 const UNITS = ['kg', 'bunch', 'piece', 'head', 'cob'];
@@ -30,14 +31,39 @@ const fromProduct = (p: Product): Form => ({
   min: String(p.wholesaleMinQty), low: String(p.lowStockAt), image: p.image, opening: '0', active: p.active,
 });
 
+type StockableCatalogItem = {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  retail_price: number;
+  wholesale_price: number;
+  image_url: string | null;
+  price_approved: boolean;
+};
+type StockableListing = {
+  id: string;
+  catalog_product_id: string | null;
+  name: string;
+  stock: number;
+  active: boolean;
+};
+type StockableCatalogResponse = { items: StockableCatalogItem[]; listings: StockableListing[] };
+
 function Products() {
   const { me, farmId, suppliers, products } = useScope();
   const addProduct = useDB((s) => s.addProduct);
   const updateProduct = useDB((s) => s.updateProduct);
+  const stockCatalogProduct = useDB((s) => s.stockCatalogProduct);
+  const publishCatalogProduct = useDB((s) => s.publishCatalogProduct);
   const push = useToast((s) => s.push);
 
   const [q, setQ] = useState('');
   const [farm, setFarm] = useState('all');
+  const [stockFarmId, setStockFarmId] = useState(farmId ?? '');
+  const [stockCatalog, setStockCatalog] = useState<StockableCatalogResponse | null>(null);
+  const [stockCatalogLoading, setStockCatalogLoading] = useState(false);
+  const [stockCatalogBusyId, setStockCatalogBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
   const [restockId, setRestockId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(blank);
@@ -49,9 +75,80 @@ function Products() {
     return products.filter((p) => (farm === 'all' || p.supplierId === farm) && (!t || p.name.toLowerCase().includes(t) || p.category.toLowerCase().includes(t)));
   }, [products, q, farm]);
 
+  const activeFarms = useMemo(() => suppliers.filter((supplier) => supplier.status === 'active'), [suppliers]);
+  const stockTargetFarmId = farmId ?? stockFarmId;
+  const loadStockCatalog = useCallback(async () => {
+    if (!stockTargetFarmId) {
+      setStockCatalog(null);
+      return;
+    }
+    setStockCatalogLoading(true);
+    try {
+      const result = await fetchAdmin<StockableCatalogResponse>(
+        `/admin/stockable-catalog?supplier_id=${encodeURIComponent(stockTargetFarmId)}`,
+      );
+      setStockCatalog(result);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not load shared products.', 'bad');
+    } finally {
+      setStockCatalogLoading(false);
+    }
+  }, [push, stockTargetFarmId]);
+
+  useEffect(() => {
+    if (!farmId && !stockFarmId && activeFarms[0]) setStockFarmId(activeFarms[0].id);
+  }, [activeFarms, farmId, stockFarmId]);
+
+  useEffect(() => {
+    if (can(me?.role, 'stock.adjust')) void loadStockCatalog();
+  }, [loadStockCatalog, me?.role]);
+
   if (!me) return null;
   const canEdit = can(me.role, 'products.edit') && !!farmId;
-  const canStock = can(me.role, 'stock.adjust') && !!farmId;
+  const canStock = can(me.role, 'stock.adjust');
+  const visibleCatalog = (stockCatalog?.items ?? []).filter((item) => {
+    const text = q.trim().toLowerCase();
+    return !text || `${item.name} ${item.category}`.toLowerCase().includes(text);
+  });
+  const listingByCatalog = new Map((stockCatalog?.listings ?? []).map((listing) => [
+    listing.catalog_product_id ?? `name:${listing.name.trim().toLowerCase()}`,
+    listing,
+  ]));
+
+  async function addSharedStock(item: StockableCatalogItem) {
+    if (!stockTargetFarmId) {
+      push('Choose an active farm first.', 'bad');
+      return;
+    }
+    setStockCatalogBusyId(item.id);
+    try {
+      const result = await stockCatalogProduct(item.id, stockTargetFarmId, 10);
+      if (result.already_stocked) {
+        push(`${item.name} already has stock at this farm. No changes were made.`);
+      } else {
+        push(`${item.name} was added with 10 ${item.unit} of stock.`);
+      }
+      await loadStockCatalog();
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not add this product to the farm.', 'bad');
+    } finally {
+      setStockCatalogBusyId(null);
+    }
+  }
+
+  async function publishSharedProduct(item: StockableCatalogItem) {
+    if (!stockTargetFarmId) return;
+    setStockCatalogBusyId(item.id);
+    try {
+      await publishCatalogProduct(item.id, stockTargetFarmId);
+      push(`${item.name} is now available in the shop.`);
+      await loadStockCatalog();
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not make this product available.', 'bad');
+    } finally {
+      setStockCatalogBusyId(null);
+    }
+  }
 
   function openForm(p: Product | 'new') {
     setForm(p === 'new' ? blank : fromProduct(p));
@@ -117,6 +214,68 @@ function Products() {
           </div>
         )}
       </div>
+
+      {canStock && (
+        <section className="mb-7 rounded-[1.75rem] border border-line bg-white p-5 shadow-soft sm:p-6">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="font-display text-xl font-extrabold">Shared catalog</h2>
+              <p className="mt-1 text-[15px] text-ink-mute">Add a shared product to a farm with 10 units of stock. Products already stocked are left unchanged.</p>
+            </div>
+            {!farmId && (
+              <div className="w-full sm:w-64">
+                <Field label="Farm to stock">
+                  <Select value={stockFarmId} onChange={(event) => setStockFarmId(event.target.value)} aria-label="Choose a farm for shared catalog stock">
+                    <option value="">Choose an active farm</option>
+                    {activeFarms.map((supplier: Supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            )}
+          </div>
+          {!stockTargetFarmId ? (
+            <p className="rounded-2xl bg-milk p-4 text-ink-soft">Add or activate a farm before stocking shared products.</p>
+          ) : stockCatalogLoading && !stockCatalog ? (
+            <p role="status" className="p-4 text-center text-ink-mute">Loading shared products…</p>
+          ) : visibleCatalog.length === 0 ? (
+            <p className="rounded-2xl bg-milk p-4 text-ink-soft">{q ? 'No shared products match your search.' : 'The shared catalog is empty.'}</p>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {visibleCatalog.map((item) => {
+                const listing = listingByCatalog.get(item.id)
+                  ?? listingByCatalog.get(`name:${item.name.trim().toLowerCase()}`);
+                const stocked = Number(listing?.stock ?? 0) > 0;
+                const available = stocked && listing?.active === true && item.price_approved;
+                return (
+                  <li key={item.id} className="flex items-center gap-3 rounded-2xl border border-line p-3">
+                    <SmartImage src={item.image_url ?? ''} alt={item.name} emoji={EMOJI[item.category] ?? '🥬'} className="h-14 w-14 shrink-0 rounded-xl text-xl" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold">{item.name}</p>
+                      <p className="text-sm text-ink-mute">{item.category} · {formatTZS(item.retail_price)}/{item.unit}</p>
+                      {stocked && <p className="text-xs font-bold text-leaf-deep">Already stocked: {formatNum(Number(listing?.stock))} {item.unit}</p>}
+                      {stocked && !available && <p className="text-xs font-bold text-[#8A5A00]">Hidden from the shop</p>}
+                      {!item.price_approved && <p className="text-xs font-bold text-[#8A5A00]">Waiting for price approval</p>}
+                    </div>
+                    {available ? (
+                      <span className="shrink-0 rounded-full bg-leaf-soft px-3 py-1.5 text-xs font-extrabold text-leaf-deep">Stocked</span>
+                    ) : stocked && item.price_approved ? (
+                      <Button size="sm" variant="soft" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void publishSharedProduct(item); }}>
+                        {stockCatalogBusyId === item.id ? 'Saving…' : 'Show in shop'}
+                      </Button>
+                    ) : !item.price_approved ? (
+                      <Button size="sm" variant="soft" disabled>Price review</Button>
+                    ) : (
+                      <Button size="sm" variant="soft" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void addSharedStock(item); }}>
+                        {stockCatalogBusyId === item.id ? 'Adding…' : 'Add 10'}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       {visible.length === 0 ? (
         <EmptyState icon={<PackagePlus size={36} />} title="No products yet" hint={canEdit ? 'Add your first product and it appears in the shop as soon as it has stock.' : 'Nothing matches your search.'} action={canEdit ? <Button onClick={() => openForm('new')} icon={<Plus size={20} />}>Add product</Button> : undefined} />

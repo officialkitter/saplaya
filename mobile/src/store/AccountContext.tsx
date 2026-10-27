@@ -59,6 +59,7 @@ type AccountContextValue = {
   sendPhoneOtp: (phone: string, fullName?: string) => Promise<void>;
   verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
+  changePassword: (password: string) => Promise<void>;
   saveProfile: (profile: AccountProfile) => Promise<void>;
   uploadAvatar: (asset: ImagePickerAsset) => Promise<void>;
   addAddress: (address: Omit<SavedAddress, 'id' | 'isDefault'>) => Promise<void>;
@@ -456,6 +457,20 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     if (signOutError) throw signOutError;
   }, []);
 
+  const changePassword = useCallback(async (password: string) => {
+    if (!user || user.is_anonymous) throw new Error('Sign in to your account before changing its password.');
+    if (getCurrentPhoneIdentity()) {
+      throw new Error('Phone accounts sign in with a one-time code and do not use a password.');
+    }
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw new Error(sessionError.message);
+    if (!data.session || data.session.user.is_anonymous || data.session.user.id !== user.id) {
+      throw new Error('Sign in again before changing your password.');
+    }
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    if (updateError) throw new Error(updateError.message);
+  }, [user]);
+
   const saveProfile = useCallback(async (nextProfile: AccountProfile) => {
     const { client, userId } = await getCustomerDataContext();
     const result = await client.from('customer_profiles').upsert({
@@ -571,6 +586,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     sendPhoneOtp,
     verifyPhoneOtp,
     signOut,
+    changePassword,
     saveProfile,
     uploadAvatar,
     addAddress,
@@ -579,7 +595,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     addReview,
   }), [
     user, profile, addresses, reviews, loading, error, signIn, signInWithProvider, continueAsGuest, register, requestEmailVerification, requestPasswordReset, sendPhoneOtp, verifyPhoneOtp, signOut,
-    saveProfile, uploadAvatar, addAddress, selectAddress, removeAddress, addReview,
+    saveProfile, uploadAvatar, addAddress, selectAddress, removeAddress, addReview, changePassword,
   ]);
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;

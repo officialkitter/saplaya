@@ -51,7 +51,7 @@ function Inventory() {
   const productOptions = useMemo(() => products.filter((p) => farm === 'all' || p.supplierId === farm), [products, farm]);
 
   if (!me) return null;
-  const canStock = can(me.role, 'stock.adjust') && !!farmId;
+  const canStock = can(me.role, 'stock.adjust');
   const sold = flow.reduce((n, d) => n + d.sold, 0);
   const added = flow.reduce((n, d) => n + d.added, 0);
   const lowCount = products.filter((p) => isLow(p) && (farm === 'all' || p.supplierId === farm)).length;

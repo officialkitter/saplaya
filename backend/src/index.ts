@@ -64,8 +64,8 @@ const ALL: Perm[] = [
 ];
 
 const PERMISSIONS: Record<Role, Perm[]> = {
-  // The platform owner controls shared catalog prices, not farm-specific products or stock.
-  platform_owner: ALL.filter((p) => p !== 'products.edit' && p !== 'stock.adjust'),
+  // The platform owner can assign approved shared products to a farm and record its stock.
+  platform_owner: ALL.filter((p) => p !== 'products.edit'),
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
     'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage', 'team.view',
@@ -1134,6 +1134,26 @@ app.get('/admin/me', requirePerm(), (req: AuthedRequest, res: Response) => {
   res.json({ ...m, permissions: PERMISSIONS[m.role] });
 });
 
+app.patch('/admin/me', requirePerm(), async (req: AuthedRequest, res: Response) => {
+  const parsed = z.object({ full_name: z.string().trim().min(2).max(120) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const m = req.member!;
+  const { data, error } = await db
+    .from('team_members')
+    .update({ full_name: parsed.data.full_name })
+    .eq('id', m.id)
+    .eq('user_id', req.userId!)
+    .select('id, user_id, supplier_id, full_name, email, role, status')
+    .maybeSingle();
+  if (error) {
+    console.error('Could not update the signed-in team member profile:', error.message);
+    return res.status(500).json({ error: 'Could not save your profile.' });
+  }
+  if (!data) return res.status(404).json({ error: 'Your team profile could not be found.' });
+  req.member = data as Member;
+  return res.json({ ...data, permissions: PERMISSIONS[data.role as Role] });
+});
+
 // ======================================================================
 // Admin: orders. Platform roles see all farms; farm roles only their own.
 // ======================================================================
@@ -1287,6 +1307,108 @@ app.patch('/admin/products/:id', requirePerm('products.edit'), async (req: Authe
   res.json(data);
 });
 
+app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: AuthedRequest, res: Response) => {
+  const m = req.member!;
+  let supplierId = m.supplier_id;
+  if (!supplierId) {
+    if (m.role !== 'platform_owner') {
+      return res.status(403).json({ error: 'Only the owner can choose a farm for shared-catalog stock.' });
+    }
+    const parsedSupplierId = z.string().uuid().safeParse(req.query.supplier_id);
+    if (!parsedSupplierId.success) return res.status(400).json({ error: 'Choose a farm first.' });
+    supplierId = parsedSupplierId.data;
+  }
+
+  const [{ data: items, error: catalogError }, { data: listings, error: listingsError }] = await Promise.all([
+    db.from('catalog_products')
+      .select('id, name, category, unit, retail_price, wholesale_price, wholesale_min_qty, image_url, price_approved')
+      .order('category').order('name'),
+    db.from('products')
+      .select('id, catalog_product_id, name, stock, active')
+      .eq('supplier_id', supplierId)
+      .order('name'),
+  ]);
+  if (catalogError || listingsError) {
+    console.error('Could not load shared catalog stocking data:', catalogError?.message ?? listingsError?.message);
+    return res.status(500).json({ error: 'Could not load shared products for this farm.' });
+  }
+  return res.json({ items, listings });
+});
+
+const stockCatalogSchema = z.object({
+  supplier_id: z.string().uuid().optional(),
+  qty: z.number().positive().max(10000).default(10),
+});
+
+app.post('/admin/catalog/:id/stock', requirePerm('stock.adjust'), async (req: AuthedRequest, res: Response) => {
+  const catalogProductId = z.string().uuid().safeParse(req.params.id);
+  const parsed = stockCatalogSchema.safeParse(req.body);
+  if (!catalogProductId.success || !parsed.success) {
+    return res.status(400).json({ error: parsed.success ? 'Invalid shared product ID.' : parsed.error.flatten() });
+  }
+  const m = req.member!;
+  let supplierId = m.supplier_id;
+  if (!supplierId) {
+    if (m.role !== 'platform_owner' || !parsed.data.supplier_id) {
+      return res.status(400).json({ error: 'Choose a farm for this shared product.' });
+    }
+    supplierId = parsed.data.supplier_id;
+  } else if (parsed.data.supplier_id && parsed.data.supplier_id !== supplierId) {
+    return res.status(403).json({ error: 'You can only add stock to your own farm.' });
+  }
+
+  const { data, error } = await db.rpc('stock_catalog_product_for_farm', {
+    p_catalog_product_id: catalogProductId.data,
+    p_supplier_id: supplierId,
+    p_qty: parsed.data.qty,
+  });
+  if (error) {
+    console.error('Could not stock a shared catalog product:', error.message);
+    const status = error.message.includes('not found') ? 404
+      : error.message.includes('not been approved') || error.message.includes('active farm') ? 409
+        : 500;
+    return res.status(status).json({
+      error: status === 409
+        ? error.message
+        : status === 404 ? 'This shared product could not be found.' : 'Could not add stock to this farm.',
+    });
+  }
+  return res.json(data);
+});
+
+app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: AuthedRequest, res: Response) => {
+  const catalogProductId = z.string().uuid().safeParse(req.params.id);
+  const parsed = z.object({ supplier_id: z.string().uuid().optional() }).safeParse(req.body);
+  if (!catalogProductId.success || !parsed.success) {
+    return res.status(400).json({ error: parsed.success ? 'Invalid shared product ID.' : parsed.error.flatten() });
+  }
+  const m = req.member!;
+  let supplierId = m.supplier_id;
+  if (!supplierId) {
+    if (m.role !== 'platform_owner' || !parsed.data.supplier_id) {
+      return res.status(400).json({ error: 'Choose a farm for this shared product.' });
+    }
+    supplierId = parsed.data.supplier_id;
+  } else if (parsed.data.supplier_id && parsed.data.supplier_id !== supplierId) {
+    return res.status(403).json({ error: 'You can only publish products for your own farm.' });
+  }
+
+  const { data, error } = await db.rpc('publish_catalog_product_for_farm', {
+    p_catalog_product_id: catalogProductId.data,
+    p_supplier_id: supplierId,
+  });
+  if (error) {
+    console.error('Could not make a shared product available:', error.message);
+    const status = error.message.includes('not found') ? 404 : error.message.includes('not been approved') ? 409 : 500;
+    return res.status(status).json({
+      error: status === 409
+        ? error.message
+        : status === 404 ? 'This shared product is not ready to be shown.' : 'Could not make this product available.',
+    });
+  }
+  return res.json(data);
+});
+
 app.get('/admin/catalog', requirePerm('catalog.manage'), async (_req: AuthedRequest, res: Response) => {
   const [{ data: items, error: catalogError }, { data: proposals, error: proposalError }] = await Promise.all([
     db.from('catalog_products').select('*').order('category').order('name'),
@@ -1397,11 +1519,24 @@ app.post('/admin/restock', requirePerm('stock.adjust'), async (req: AuthedReques
   const parsed = restockSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
-  if (!m.supplier_id) return res.status(400).json({ error: 'Stock belongs to a farm.' });
+  let supplierId = m.supplier_id;
+  if (!supplierId) {
+    if (m.role !== 'platform_owner') return res.status(403).json({ error: 'Choose a farm product to add stock.' });
+    const { data: product, error: productError } = await db.from('products')
+      .select('supplier_id')
+      .eq('id', parsed.data.product_id)
+      .maybeSingle();
+    if (productError) {
+      console.error('Could not find the farm for this product restock:', productError.message);
+      return res.status(500).json({ error: 'Could not load this product.' });
+    }
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+    supplierId = product.supplier_id;
+  }
   const { data: stockAfter, error } = await db.rpc('restock_product', {
     p_product_id: parsed.data.product_id,
     p_qty: parsed.data.qty,
-    p_supplier_id: m.supplier_id,
+    p_supplier_id: supplierId,
   });
   if (error) {
     console.error('Could not restock product:', error.message);

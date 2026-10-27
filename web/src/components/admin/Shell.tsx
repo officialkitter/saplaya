@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon,
+  ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon, UserRound,
   Tractor, Users, Warehouse, X, Tags,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -95,6 +95,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             </Link>
           );
         })}
+        <Link
+          href="/admin/account"
+          onClick={onNavigate}
+          aria-current={pathname === '/admin/account' ? 'page' : undefined}
+          className={cn('flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-[17px] font-bold transition-colors', pathname === '/admin/account' ? 'bg-leaf text-white shadow-soft' : 'text-ink-soft hover:bg-leaf-soft')}
+        >
+          <UserRound size={23} />
+          <span>My account</span>
+        </Link>
       </nav>
 
       <div className="m-3 rounded-3xl border border-line bg-milk p-4">

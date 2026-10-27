@@ -8,6 +8,9 @@ import type {
 
 interface Actions {
   logout: () => void;
+  saveProfileName: (fullName: string) => Promise<void>;
+  stockCatalogProduct: (catalogProductId: string, supplierId: string, qty: number) => Promise<{ already_stocked: boolean; stock: number }>;
+  publishCatalogProduct: (catalogProductId: string, supplierId: string) => Promise<void>;
   setOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   restock: (productId: string, qty: number, by: string) => Promise<void>;
   addProduct: (p: Omit<Product, 'id' | 'stock' | 'harvestedHoursAgo'>, openingStock: number, by: string) => Promise<void>;
@@ -56,6 +59,34 @@ const createAdminStore: StateCreator<DB> = (set) => {
     sessionId: null,
 
     logout: () => set({ sessionId: null }),
+
+    saveProfileName: async (fullName) => {
+      await fetchAdmin('/admin/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ full_name: fullName }),
+      });
+      await reload();
+    },
+
+    stockCatalogProduct: async (catalogProductId, supplierId, qty) => {
+      const result = await fetchAdmin<{ already_stocked: boolean; stock: number }>(
+        `/admin/catalog/${encodeURIComponent(catalogProductId)}/stock`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ supplier_id: supplierId, qty }),
+        },
+      );
+      await reload();
+      return result;
+    },
+
+    publishCatalogProduct: async (catalogProductId, supplierId) => {
+      await fetchAdmin(`/admin/catalog/${encodeURIComponent(catalogProductId)}/publish`, {
+        method: 'POST',
+        body: JSON.stringify({ supplier_id: supplierId }),
+      });
+      await reload();
+    },
 
     setOrderStatus: async (orderId, status) => {
       await fetchAdmin(`/admin/supplier-orders/${encodeURIComponent(orderId)}/status`, {

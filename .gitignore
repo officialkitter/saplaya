@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Next.js
+**/.next/
+
 # Expo
 .expo/
 dist/

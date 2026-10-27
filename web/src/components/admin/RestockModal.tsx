@@ -16,6 +16,7 @@ export function RestockModal({
 }: { open: boolean; onClose: () => void; products: Product[]; productId?: string }) {
   const me = useMe();
   const restock = useDB((s) => s.restock);
+  const suppliers = useDB((s) => s.suppliers);
   const push = useToast((s) => s.push);
   const [id, setId] = useState(productId ?? '');
   const [qty, setQty] = useState('10');
@@ -28,6 +29,7 @@ export function RestockModal({
   }, [open, productId, products]);
 
   const product = products.find((p) => p.id === id);
+  const productFarm = product ? suppliers.find((supplier) => supplier.id === product.supplierId)?.name : undefined;
   const n = Number(qty);
   const valid = !!product && Number.isFinite(n) && n > 0;
 
@@ -47,13 +49,20 @@ export function RestockModal({
       <div className="space-y-4">
         <Field label="Which product arrived?">
           <Select value={id} onChange={(e) => setId(e.target.value)}>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}{!me?.supplierId && suppliers.length ? ` · ${suppliers.find((supplier) => supplier.id === p.supplierId)?.name ?? 'Farm'}` : ''}
+              </option>
+            ))}
           </Select>
         </Field>
         {product && (
           <div className="flex items-center gap-3 rounded-2xl bg-milk p-3">
             <SmartImage src={product.image} alt={product.name} emoji={product.emoji} className="h-14 w-14 rounded-xl text-xl" />
-            <p className="text-ink-soft">In stock now: <b className="text-ink">{formatNum(product.stock)} {product.unit}</b></p>
+            <p className="text-ink-soft">
+              {productFarm && !me?.supplierId ? <>{productFarm}<br /></> : null}
+              In stock now: <b className="text-ink">{formatNum(product.stock)} {product.unit}</b>
+            </p>
           </div>
         )}
         <Field label={`How much did you add${product ? ` (${product.unit})` : ''}?`}>

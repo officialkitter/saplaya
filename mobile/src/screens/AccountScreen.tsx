@@ -9,6 +9,7 @@ import { colors, radius, shadow } from '../theme';
 
 const sections = [
   { key: 'profile', title: 'Personal details', subtitle: 'Your name, phone and profile photo', icon: 'person-outline' as const },
+  { key: 'security', title: 'Password & security', subtitle: 'Change your account password', icon: 'lock-closed-outline' as const },
   { key: 'addresses', title: 'Saved addresses', subtitle: 'Choose where your fresh order goes', icon: 'location-outline' as const },
   { key: 'payments', title: 'Payment methods', subtitle: 'Secure online and delivery options', icon: 'card-outline' as const },
   { key: 'reviews', title: 'Reviews', subtitle: 'Share feedback with Saplaya', icon: 'star-outline' as const },
@@ -50,7 +51,8 @@ export default function AccountScreen({ navigation }: any) {
 
         <Text style={styles.sectionTitle}>Manage your account</Text>
         <View style={styles.menu}>
-          {sections.filter((section) => section.key !== 'payments' || isSignedIn).map((section, index, visibleSections) => (
+          {sections.filter((section) => (section.key !== 'payments' || isSignedIn)
+            && (section.key !== 'security' || isSignedIn)).map((section, index, visibleSections) => (
             <MotiView
               key={section.key}
               from={{ opacity: 0, translateY: 8 }}

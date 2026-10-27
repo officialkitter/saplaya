@@ -15,6 +15,7 @@ import { colors, radius, shadow } from '../theme';
 
 const TITLES: Record<string, string> = {
   profile: 'Personal details',
+  security: 'Password & security',
   addresses: 'Saved addresses',
   payments: 'Payment methods',
   reviews: 'Reviews',
@@ -33,6 +34,7 @@ export default function AccountDetailScreen({ route, navigation }: any) {
       <ScreenHeader title={title} onBack={() => navigation.goBack()} />
       <MotiView style={{ flex: 1 }} from={{ opacity: 0, translateX: 12 }} animate={{ opacity: 1, translateX: 0 }} transition={{ type: 'timing', duration: 220 }}>
         {section === 'profile' && <ProfileDetails />}
+        {section === 'security' && <AccountSecurity />}
         {section === 'addresses' && <Addresses />}
         {section === 'payments' && <PaymentMethods />}
         {section === 'reviews' && <Reviews />}
@@ -158,6 +160,68 @@ function ProfileDetails() {
       <Field label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
       <ActionButton title={busy ? 'Saving…' : 'Save details'} onPress={save} disabled={busy} />
       <Text style={styles.helper}>Your details are stored securely with your Saplaya account.</Text>
+    </ScrollView>
+  );
+}
+
+function AccountSecurity() {
+  const { user, changePassword } = useAccount();
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+
+  const save = async () => {
+    if (password.length < 8) {
+      Alert.alert('Choose a longer password', 'Use at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Passwords do not match', 'Check both password fields and try again.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await changePassword(password);
+      setPassword('');
+      setConfirmPassword('');
+      Alert.alert('Password changed', 'Your new password is ready to use.');
+    } catch (error) {
+      Alert.alert('Could not change password', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {user?.phone && !user.email ? (
+        <View style={styles.emailVerificationCard}>
+          <View style={styles.emailVerificationIcon}><Ionicons name="phone-portrait-outline" size={21} color={colors.green} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Sign-in by phone</Text>
+            <Text style={styles.cardBody}>Your account uses one-time SMS codes instead of a password.</Text>
+          </View>
+        </View>
+      ) : (
+        <>
+          <Text style={styles.cardBody}>Choose a new password with at least 8 characters.</Text>
+          <View style={styles.passwordField}>
+            <Field label="New password" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoComplete="new-password" />
+            <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.muted} />
+            </Pressable>
+          </View>
+          <View style={styles.passwordField}>
+            <Field label="Confirm new password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmation} autoComplete="new-password" />
+            <Pressable onPress={() => setShowConfirmation((value) => !value)} style={styles.passwordToggle} accessibilityRole="button" accessibilityLabel={showConfirmation ? 'Hide password' : 'Show password'}>
+              <Ionicons name={showConfirmation ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.muted} />
+            </Pressable>
+          </View>
+          <ActionButton title={busy ? 'Updating…' : 'Change password'} onPress={() => void save()} disabled={busy} />
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -648,6 +712,8 @@ const styles = StyleSheet.create({
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 7 },
   emailVerificationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginBottom: 14, borderRadius: radius.md, backgroundColor: colors.white },
   emailVerificationIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF7EC' },
+  passwordField: { position: 'relative' as const },
+  passwordToggle: { position: 'absolute' as const, right: 12, top: 31, width: 40, height: 44, alignItems: 'center' as const, justifyContent: 'center' as const },
   verificationAction: { color: colors.green, fontWeight: '900', fontSize: 12 },
   disabledAction: { opacity: 0.55 },
   actionButton: { minHeight: 54, marginTop: 8, paddingHorizontal: 18, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
