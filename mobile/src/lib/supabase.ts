@@ -1,3 +1,4 @@
+import './crypto-polyfill';
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import { authStorage } from './auth-storage';
@@ -13,7 +14,22 @@ if (!url || !publishableKey || !API_URL) {
 }
 
 export const supabase = createClient(url, publishableKey, {
-  auth: { storage: authStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+  auth: {
+    storage: authStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
+
+export const supabaseOAuth = createClient(url, publishableKey, {
+  auth: {
+    storage: authStorage,
+    autoRefreshToken: false,
+    persistSession: true,
+    detectSessionInUrl: false,
+    flowType: 'pkce',
+  },
 });
 
 // Keep guest checkout frictionless; guest sessions can later be upgraded to accounts.

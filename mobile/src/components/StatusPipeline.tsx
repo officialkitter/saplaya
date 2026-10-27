@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, OrderStatus, statusColor } from '../theme';
 

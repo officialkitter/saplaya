@@ -38,6 +38,13 @@
         }
       ],
       "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Saplaya uses your photo library to add a profile picture.",
+          "cameraPermission": "Saplaya uses your camera to take a profile picture."
+        }
+      ],
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
       "@react-native-firebase/messaging",

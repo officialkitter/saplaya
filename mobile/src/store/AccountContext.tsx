@@ -4,7 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 import type { User } from '@supabase/supabase-js';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import { ensureSession, supabase } from '../lib/supabase';
+import { ensureSession, supabase, supabaseOAuth } from '../lib/supabase';
 import {
   getCurrentPhoneIdentity,
   getCustomerDataContext,
@@ -55,6 +55,7 @@ type AccountContextValue = {
   continueAsGuest: () => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<boolean>;
   requestEmailVerification: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
   sendPhoneOtp: (phone: string, fullName?: string) => Promise<void>;
   verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -75,6 +76,25 @@ let latestAuthCodeExchange: Promise<User | null> | null = null;
 let latestAccessToken: string | null = null;
 let latestSessionExchange: Promise<User | null> | null = null;
 
+function getEmailCallbackUrl(): string {
+  const configuredUrl = process.env.EXPO_PUBLIC_AUTH_CALLBACK_URL;
+  if (configuredUrl) {
+    const callback = new URL(configuredUrl);
+    if (!callback.pathname.replace(/\/+$/, '').endsWith('/auth/callback')) {
+      throw new Error('EXPO_PUBLIC_AUTH_CALLBACK_URL must point to the deployed /auth/callback page.');
+    }
+    if (callback.protocol !== 'https:' && callback.hostname !== 'localhost') {
+      throw new Error('The authentication callback URL must use HTTPS.');
+    }
+    return callback.toString();
+  }
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/auth/callback`;
+  }
+  if (__DEV__) return Linking.createURL('auth/callback');
+  throw new Error('Email links are not configured. Set EXPO_PUBLIC_AUTH_CALLBACK_URL to the deployed /auth/callback page.');
+}
+
 function requireData<T>(data: T | null, error: { message: string } | null, message: string): T {
   if (error) throw new Error(error.message);
   if (data === null) throw new Error(message);
@@ -84,13 +104,22 @@ function requireData<T>(data: T | null, error: { message: string } | null, messa
 async function completeAuthUrl(url: string): Promise<User | null> {
   const parsed = Linking.parse(url);
   const code = parsed.queryParams?.code;
+  const callbackError = parsed.queryParams?.error_description ?? parsed.queryParams?.error;
+  if (typeof callbackError === 'string') throw new Error(callbackError);
   if (typeof code === 'string') {
     if (latestAuthCode === code && latestAuthCodeExchange) return latestAuthCodeExchange;
     latestAuthCode = code;
-    latestAuthCodeExchange = supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+    latestAuthCodeExchange = (async () => {
+      const { data, error } = await supabaseOAuth.auth.exchangeCodeForSession(code);
       if (error) throw error;
-      return data.user;
-    });
+      if (!data.session) return data.user;
+      const { data: syncedSession, error: syncError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      if (syncError) throw syncError;
+      return syncedSession.user ?? data.user;
+    })();
     try {
       return await latestAuthCodeExchange;
     } catch (error) {
@@ -104,6 +133,8 @@ async function completeAuthUrl(url: string): Promise<User | null> {
 
   const fragment = url.split('#')[1] ?? '';
   const params = new URLSearchParams(fragment);
+  const fragmentError = params.get('error_description') ?? params.get('error');
+  if (fragmentError) throw new Error(fragmentError);
   const accessToken = params.get('access_token');
   const refreshToken = params.get('refresh_token');
   if (!accessToken || !refreshToken) return null;
@@ -308,16 +339,23 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithProvider = useCallback(async (provider: 'google' | 'apple') => {
     await signOutPhoneAuth();
-    const redirectTo = Platform.OS === 'web' ? Linking.createURL('auth/callback') : nativeAuthRedirect;
-    const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+    const redirectTo = Platform.OS === 'web' ? getEmailCallbackUrl() : nativeAuthRedirect;
+    const { data, error: oauthError } = await supabaseOAuth.auth.signInWithOAuth({
       provider,
-      options: { redirectTo, skipBrowserRedirect: true },
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+        ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}),
+      },
     });
     if (oauthError) throw oauthError;
     if (!data.url) throw new Error(`Could not start ${provider === 'google' ? 'Google' : 'Apple'} sign-in.`);
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, { preferEphemeralSession: true });
-    if (result.type !== 'success' || !result.url) return false;
+    if (result.type === 'cancel' || result.type === 'dismiss') return false;
+    if (result.type !== 'success' || !result.url) {
+      throw new Error(`${provider === 'google' ? 'Google' : 'Apple'} sign-in returned without an authentication callback.`);
+    }
 
     const callback = Linking.parse(result.url);
     const callbackPath = callback.path?.replace(/^\/+/, '');
@@ -373,7 +411,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: Linking.createURL('auth/callback'), data: { full_name: fullName.trim() } },
+      options: { emailRedirectTo: getEmailCallbackUrl(), data: { full_name: fullName.trim() } },
     });
     if (signUpError) throw signUpError;
     if (data.session?.user) {
@@ -389,10 +427,17 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     const { error: resendError } = await supabase.auth.resend({
       type: user.emailVerificationType ?? 'signup',
       email: user.email,
-      options: { emailRedirectTo: Linking.createURL('auth/callback') },
+      options: { emailRedirectTo: getEmailCallbackUrl() },
     });
     if (resendError) throw resendError;
   }, [user]);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: getEmailCallbackUrl(),
+    });
+    if (resetError) throw resetError;
+  }, []);
 
   const sendPhoneOtp = useCallback(async (phone: string, fullName?: string) => {
     await sendCustomerPhoneOtp(phone, fullName);
@@ -425,20 +470,33 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const uploadAvatar = useCallback(async (asset: ImagePickerAsset) => {
-    let avatarUrl = asset.uri;
     const { client, userId } = await getCustomerDataContext();
-    const response = await fetch(asset.uri);
-    if (!response.ok) throw new Error('Could not read the selected photo.');
-    const file = await response.blob();
-    const extension = asset.mimeType?.split('/')[1] ?? 'jpg';
-    const path = `${userId}/${Date.now()}.${extension}`;
-    const { error: uploadError } = await client.storage.from('customer-avatars').upload(path, file, {
-      contentType: asset.mimeType ?? 'image/jpeg',
-      upsert: true,
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    if (!supportedTypes.includes(mimeType)) throw new Error('Choose a JPEG, PNG, WebP, or HEIC photo.');
+    if (!asset.base64) throw new Error('Could not prepare the selected photo. Please choose or take another photo.');
+    const binary = atob(asset.base64);
+    const file = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    if (file.length === 0) throw new Error('The selected photo is empty. Choose another photo and try again.');
+    if (file.byteLength > 10 * 1024 * 1024) throw new Error('Choose a photo smaller than 10 MB.');
+    const extension = mimeType.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'jpg';
+    const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+    const bucket = client.storage.from('customer-avatars');
+    const { error: uploadError } = await bucket.upload(path, file, {
+      contentType: mimeType,
+      upsert: false,
     });
     if (uploadError) throw new Error(uploadError.message);
-    avatarUrl = client.storage.from('customer-avatars').getPublicUrl(path).data.publicUrl;
-    await saveProfile({ ...profile, avatarUrl });
+    const avatarUrl = bucket.getPublicUrl(path).data.publicUrl;
+    try {
+      await saveProfile({ ...profile, avatarUrl });
+    } catch (saveError) {
+      const { error: removeError } = await bucket.remove([path]);
+      if (removeError) {
+        console.error('Could not remove the uploaded avatar after its profile save failed.', removeError.message);
+      }
+      throw saveError;
+    }
   }, [profile, saveProfile]);
 
   const addAddress = useCallback(async (input: Omit<SavedAddress, 'id' | 'isDefault'>) => {
@@ -509,6 +567,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     continueAsGuest,
     register,
     requestEmailVerification,
+    requestPasswordReset,
     sendPhoneOtp,
     verifyPhoneOtp,
     signOut,
@@ -519,7 +578,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     removeAddress,
     addReview,
   }), [
-    user, profile, addresses, reviews, loading, error, signIn, signInWithProvider, continueAsGuest, register, requestEmailVerification, sendPhoneOtp, verifyPhoneOtp, signOut,
+    user, profile, addresses, reviews, loading, error, signIn, signInWithProvider, continueAsGuest, register, requestEmailVerification, requestPasswordReset, sendPhoneOtp, verifyPhoneOtp, signOut,
     saveProfile, uploadAvatar, addAddress, selectAddress, removeAddress, addReview,
   ]);
 

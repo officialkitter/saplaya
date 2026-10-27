@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

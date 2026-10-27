@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import { confirmPayment, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';

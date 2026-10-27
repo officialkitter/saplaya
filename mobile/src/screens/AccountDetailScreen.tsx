@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import BrandMark from '../components/BrandMark';
 import { deletePaymentMethod, fetchPaymentMethods, SavedPaymentMethod, savePaymentMethod, submitSupplierApplication } from '../lib/api';
@@ -53,27 +53,42 @@ function ProfileDetails() {
   const [busy, setBusy] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
 
-  const choosePhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photo access needed', 'Allow photo library access to add a profile picture.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.85,
-    });
-    if (result.canceled) return;
+  const selectPhoto = async (source: 'camera' | 'library') => {
     setBusy(true);
     try {
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          source === 'camera' ? 'Camera access needed' : 'Photo access needed',
+          source === 'camera' ? 'Allow camera access to take a profile picture.' : 'Allow photo library access to choose a profile picture.',
+        );
+        return;
+      }
+      const picker = source === 'camera' ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+      const result = await picker({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+        base64: true,
+      });
+      if (result.canceled) return;
       await uploadAvatar(result.assets[0]);
     } catch (error) {
-      Alert.alert('Could not save photo', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not update photo', error instanceof Error ? error.message : 'Please try again.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const choosePhoto = () => {
+    Alert.alert('Profile photo', 'Choose how you would like to add your photo.', [
+      { text: 'Take a photo', onPress: () => void selectPhoto('camera') },
+      { text: 'Choose from library', onPress: () => void selectPhoto('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const save = async () => {

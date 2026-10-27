@@ -12,7 +12,11 @@ export function getSupabase(): SupabaseClient {
     throw new Error('Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.');
   }
   client ??= createClient(supabaseUrl, supabasePublishableKey, {
-    auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
   });
   return client;
 }

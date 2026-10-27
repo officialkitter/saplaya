@@ -2,7 +2,7 @@ import React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAccount } from '../store/AccountContext';
 import { colors, radius, shadow } from '../theme';

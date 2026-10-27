@@ -2,7 +2,7 @@ import React from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/StoreContext';
 import { useDeliveryPlace } from '../lib/location';

@@ -3,7 +3,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import { fetchProducts, fetchPromos } from '../lib/api';
 import { useDeliveryPlace } from '../lib/location';
 import { ModeBackdrop, ModeToggle } from '../components/ModeToggle';

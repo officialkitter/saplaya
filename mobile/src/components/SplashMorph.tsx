@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { MotiText, MotiView } from 'moti';
+import { Text as MotiText } from 'moti/build/components/text';
+import { View as MotiView } from 'moti/build/components/view';
 import { Easing } from 'react-native-reanimated';
 import BrandMark from './BrandMark';
 import { colors } from '../theme';

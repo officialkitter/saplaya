@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import { Product } from '../types';
 import { useStore } from '../store/StoreContext';
 import { colors, formatTZS, radius, shadow } from '../theme';

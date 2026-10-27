@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import GoogleMark from '../components/GoogleMark';
 import BrandMark from '../components/BrandMark';
 import ScreenHeader from '../components/ScreenHeader';
@@ -22,7 +22,7 @@ const RESEND_SECONDS = 45;
 
 export default function AuthenticationScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
-  const { signIn, register, signInWithProvider, continueAsGuest, sendPhoneOtp, verifyPhoneOtp } = useAccount();
+  const { signIn, register, signInWithProvider, continueAsGuest, sendPhoneOtp, verifyPhoneOtp, requestPasswordReset } = useAccount();
   const heroRef = useRef<FlatList<(typeof authSlides)[number]>>(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -62,19 +62,42 @@ export default function AuthenticationScreen({ navigation }: any) {
     Alert.alert('One more step', 'Please accept the Terms & Privacy notice to continue.');
     return false;
   };
-  const friendlyError = (error: unknown) => {
+  const friendlyError = (error: unknown, provider?: 'google' | 'apple') => {
     const message = error instanceof Error ? error.message : '';
-    if (/operation-not-allowed|billing-not-enabled|provider is disabled/i.test(message)) {
+    if (provider === 'google' && /access_denied|user_cancelled|user canceled/i.test(message)) {
+      return 'Google sign-in was cancelled. You can try again whenever you are ready.';
+    }
+    if (provider === 'google' && /already registered|identity.*already|account.*exists/i.test(message)) {
+      return 'An account already uses this email. Sign in with that account’s original method, or contact support to connect Google sign-in.';
+    }
+    if (/unsupported provider|operation-not-allowed|provider is disabled|provider.*not enabled/i.test(message)) {
+      if (provider) return `${provider === 'google' ? 'Google' : 'Apple'} sign-in is not configured yet. Try email or phone sign-in.`;
       return 'This sign-in option is not available right now. Try another sign-in method.';
+    }
+    if (/redirect.*(not allowed|invalid)|redirect_uri_not_allowed/i.test(message)) {
+      return 'Sign-in could not return to Saplaya. Please try again later.';
     }
     if (/anonymous_provider_disabled|anonymous.*disabled|anonymous sign-ins are disabled/i.test(message)) {
       return 'We could not start guest access. Try again, or sign in to your account.';
     }
-    if (/invalid-credential|wrong-password|user-not-found/i.test(message)) {
+    if (!provider && /invalid-credential|wrong-password|user-not-found/i.test(message)) {
       return 'Those sign-in details do not match an account. Check them and try again.';
     }
     if (/too-many-requests|quota-exceeded|resource-exhausted/i.test(message)) {
       return 'Please wait a little before trying again.';
+    }
+    if (provider === 'google' && /network|fetch|timeout|connection/i.test(message)) {
+      return 'We could not reach Google sign-in. Check your internet connection and try again.';
+    }
+    if (provider === 'google') {
+      if (/code verifier|pkce|exchange.*code/i.test(message)) {
+        return 'Google returned to Saplaya, but the secure sign-in could not be completed. Update the app and try again.';
+      }
+      if (/email.*(already|registered)|user.*already/i.test(message)) {
+        return 'That Google email already has a Saplaya account. Sign in with its original method first; verified matching emails are linked automatically.';
+      }
+      if (message) return `Google sign-in failed: ${message}`;
+      return 'Google could not complete sign-in. Check that you selected the right Google account and try again. New Google accounts are created automatically.';
     }
     return 'Please check your details and try again.';
   };
@@ -128,7 +151,7 @@ export default function AuthenticationScreen({ navigation }: any) {
         if (confirmationRequired) {
           Alert.alert(
             'Check your email',
-            'Email confirmation is required by the current account settings. Follow the link to finish creating your account. To allow immediate signup temporarily, turn off Confirm email in Supabase Authentication → Providers → Email.',
+            'Check your email for a link to finish creating your account. If it does not arrive, try again or contact support.',
           );
           return;
         }
@@ -149,7 +172,23 @@ export default function AuthenticationScreen({ navigation }: any) {
     try {
       if (await signInWithProvider(provider)) finish();
     } catch (error) {
-      Alert.alert('Could not sign in', friendlyError(error));
+      Alert.alert(`Could not sign in with ${provider === 'google' ? 'Google' : 'Apple'}`, friendlyError(error, provider));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert('Enter your email', 'Add the email address linked to your account first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestPasswordReset(email.trim());
+      Alert.alert('Check your email', 'We sent a secure link to reset your password.');
+    } catch (error) {
+      Alert.alert('Could not send reset link', friendlyError(error));
     } finally {
       setBusy(false);
     }
@@ -243,8 +282,13 @@ export default function AuthenticationScreen({ navigation }: any) {
             {method === 'email' ? (
               <>
                 {creating && <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" />}
-                <Field label="Email address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+                <Field label="Email address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="Enter your email" />
                 <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete={creating ? 'new-password' : 'current-password'} />
+                {!creating && (
+                  <Pressable style={styles.forgotPassword} onPress={() => void resetPassword()} disabled={busy}>
+                    <Text style={styles.resendText}>Forgot password?</Text>
+                  </Pressable>
+                )}
               </>
             ) : (
               <>
@@ -307,6 +351,7 @@ export default function AuthenticationScreen({ navigation }: any) {
                 <Ionicons name="logo-apple" size={20} color={colors.ink} /><Text style={styles.socialText}>Apple</Text>
               </Pressable>
             </View>
+            <Text style={styles.socialHint}>Use your Google account to sign in, or create a Saplaya account automatically if you’re new.</Text>
             <Pressable style={styles.guestButton} onPress={() => void guest()} disabled={busy}>
               <Ionicons name="person-outline" size={18} color={colors.green} />
               <Text style={styles.guestText}>Continue as guest</Text>
@@ -320,10 +365,30 @@ export default function AuthenticationScreen({ navigation }: any) {
 }
 
 function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = Boolean(props.secureTextEntry);
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput {...props} style={styles.input} placeholderTextColor="#89958A" />
+      <View style={styles.inputRow}>
+        <TextInput
+          {...props}
+          secureTextEntry={isPassword && !passwordVisible}
+          style={[styles.input, isPassword && styles.passwordInput]}
+          placeholderTextColor="#89958A"
+        />
+        {isPassword && (
+          <Pressable
+            style={styles.passwordToggle}
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+            hitSlop={8}
+          >
+            <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.muted} />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -352,8 +417,12 @@ const styles = StyleSheet.create({
   methodTextActive: { color: colors.green },
   fieldWrap: { marginBottom: 12 },
   label: { marginBottom: 6, fontSize: 12, fontWeight: '800', color: colors.ink },
+  inputRow: { position: 'relative', justifyContent: 'center' },
   input: { minHeight: 49, paddingHorizontal: 13, borderWidth: 1, borderColor: colors.line, borderRadius: 14, backgroundColor: '#FCFDFC', color: colors.ink, fontSize: 15 },
+  passwordInput: { paddingRight: 48 },
+  passwordToggle: { position: 'absolute', right: 12, width: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
   resendRow: { marginTop: -5, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  forgotPassword: { alignSelf: 'flex-end', paddingVertical: 8 },
   resendHint: { color: colors.muted, fontSize: 12 },
   resendText: { color: colors.green, fontWeight: '900', fontSize: 12 },
   disabledText: { color: '#9AA69A' },
@@ -374,6 +443,7 @@ const styles = StyleSheet.create({
   socialRow: { flexDirection: 'row', gap: 10 },
   socialButton: { flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderWidth: 1, borderColor: colors.line, borderRadius: 14, backgroundColor: colors.white },
   socialText: { color: colors.ink, fontWeight: '800', fontSize: 14 },
+  socialHint: { marginTop: 8, color: colors.muted, textAlign: 'center', fontSize: 11, lineHeight: 16 },
   guestButton: { minHeight: 48, marginTop: 10, borderRadius: 14, backgroundColor: '#EFF7EC', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   guestText: { color: colors.green, fontWeight: '900', fontSize: 14 },
   guestNote: { marginTop: 8, color: colors.muted, textAlign: 'center', fontSize: 11, lineHeight: 16 },

@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { CustomerOrder, fetchOrderHistory, OrderItem } from '../lib/api';

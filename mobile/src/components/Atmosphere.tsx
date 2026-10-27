@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Easing } from 'react-native-reanimated';
-import { MotiView } from 'moti';
+import { View as MotiView } from 'moti/build/components/view';
 
 type Props = {
   variant?: 'light' | 'photo';
