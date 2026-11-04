@@ -8,6 +8,7 @@ import { Field, Input } from '@/components/ui/Fields';
 import { formatTZS } from '@/lib/format';
 import { deliveryFee } from '@/lib/stats';
 import { useDB, useToast } from '@/lib/store';
+import { DELIVERY_ETAS, type DeliveryEta } from '@/lib/types';
 
 function SettingsPage() {
   const saved = useDB((s) => s.settings);
@@ -20,8 +21,16 @@ function SettingsPage() {
   useEffect(() => setF({ ...saved }), [saved]);
 
   const num = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((p) => ({ ...p, [k]: Number(e.target.value) }));
+  const setDeliveryFee = (eta: DeliveryEta, value: string) => {
+    const fee = value === '' ? null : Number(value);
+    setF((previous) => ({
+      ...previous,
+      deliveryOptionFees: { ...previous.deliveryOptionFees, [eta]: fee },
+    }));
+  };
   const fee = deliveryFee(km, f);
-  const valid = f.freeRadiusKm >= 0 && f.midRadiusKm > f.freeRadiusKm && f.midFee >= 0 && f.farFee >= f.midFee && f.commissionPct >= 0 && f.commissionPct <= 40;
+  const valid = f.freeRadiusKm >= 0 && f.midRadiusKm > f.freeRadiusKm && f.midFee >= 0 && f.farFee >= f.midFee && f.commissionPct >= 0 && f.commissionPct <= 40
+    && Object.values(f.deliveryOptionFees).every((price) => price === null || (Number.isSafeInteger(price) && price >= 0));
 
   async function save() {
     setSaving(true);
@@ -52,6 +61,26 @@ function SettingsPage() {
           </div>
           <div className="mt-6 flex justify-end">
             <Button icon={<Save size={20} />} disabled={!valid || saving} onClick={() => { void save(); }}>{saving ? 'Saving…' : 'Save settings'}</Button>
+          </div>
+        </Panel>
+
+        <Panel title="Delivery timeframes" subtitle="Enter an extra delivery charge in TZS to enable a timeframe. Blank options stay unavailable to customers.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {DELIVERY_ETAS.map((option) => (
+              <Field key={option.value} label={`${option.title} surcharge (TZS)`}>
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={f.deliveryOptionFees[option.value] ?? ''}
+                  onChange={(event) => setDeliveryFee(option.value, event.target.value)}
+                  placeholder="Not available"
+                />
+              </Field>
+            ))}
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Button icon={<Save size={20} />} disabled={!valid || saving} onClick={() => { void save(); }}>{saving ? 'Saving…' : 'Save delivery prices'}</Button>
           </div>
         </Panel>
 

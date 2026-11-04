@@ -10,6 +10,8 @@ export const colors = {
   line: '#E3EBE0',
   wood: '#B07A3E',
   woodDark: '#8A5A26',
+  bulk: '#009688',
+  bulkLight: '#E0F2F1',
 };
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';

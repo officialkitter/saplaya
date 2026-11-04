@@ -4,10 +4,12 @@ import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Product } from '../types';
 import { useStore } from '../store/StoreContext';
-import { colors, formatTZS, radius, shadow } from '../theme';
+import { colors, radius, shadow } from '../theme';
+import { useCurrency } from '../lib/currency';
 
 export default function ProductCard({ product, index, onPress }: { product: Product; index: number; onPress: () => void }) {
   const { mode, priceOf } = useStore();
+  const { formatPrice } = useCurrency();
   return (
     <MotiView
       from={{ opacity: 0, translateY: 18 }}
@@ -26,12 +28,12 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
         <View style={styles.body}>
           <Text numberOfLines={1} style={styles.name}>{product.name}</Text>
           <Text style={styles.price}>
-            {formatTZS(priceOf(product))}
+            {formatPrice(priceOf(product) ?? 0)}
             <Text style={styles.unit}> / {product.unit}</Text>
           </Text>
           {mode === 'wholesale' && <Text style={styles.min}>Min {product.wholesale_min_qty} {product.unit}</Text>}
           {product.stock < (mode === 'wholesale' ? product.wholesale_min_qty : 1) && (
-            <Text style={styles.soldOut}>{product.stock <= 0 ? 'Sold out' : 'Below wholesale minimum'}</Text>
+            <Text style={styles.soldOut}>Limited nearby stock · farther farms may have more</Text>
           )}
         </View>
       </Pressable>

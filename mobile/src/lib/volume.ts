@@ -1,0 +1,34 @@
+import { Mode, Product } from '../types';
+
+export type VolumeTier = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
+
+export function volumeTier(product: Product, qty: number, mode: Mode): VolumeTier {
+  const wholesaleMinimum = Math.max(1, product.wholesale_min_qty);
+  if (qty >= wholesaleMinimum * 100) return 'mega_bulk';
+  if (qty >= wholesaleMinimum * 10) return 'bulk';
+  if (mode === 'wholesale' || qty >= wholesaleMinimum) return 'wholesale';
+  return 'retail';
+}
+
+export function volumePrice(product: Product, qty: number, mode: Mode): number | null {
+  const tier = volumeTier(product, qty, mode);
+  if (tier === 'mega_bulk') {
+    return typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)
+      ? product.mega_bulk_price
+      : null;
+  }
+  if (tier === 'bulk') {
+    return typeof product.bulk_price === 'number' && Number.isFinite(product.bulk_price)
+      ? product.bulk_price
+      : null;
+  }
+  if (tier === 'wholesale') return product.wholesale_price;
+  return product.retail_price;
+}
+
+export function volumeTierLabel(tier: VolumeTier): string {
+  if (tier === 'mega_bulk') return 'Mega-bulk';
+  if (tier === 'bulk') return 'Bulk';
+  if (tier === 'wholesale') return 'Wholesale';
+  return 'Retail';
+}

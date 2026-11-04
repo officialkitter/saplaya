@@ -6,8 +6,9 @@ import { useState } from 'react';
 import { LinkButton } from '@/components/ui/Button';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { cn, formatTZS } from '@/lib/format';
+import { cn } from '@/lib/format';
 import { useStorefrontProducts, type StorefrontProduct } from '@/lib/storefront';
+import { useGlobalMarket } from '@/lib/global-market';
 
 /** The big slide toggle: same control the customer app uses. */
 function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: boolean) => void }) {
@@ -38,11 +39,13 @@ function Phone({
   products,
   loading,
   error,
+  formatPrice,
 }: {
   wholesale: boolean;
   products: StorefrontProduct[];
   loading: boolean;
   error: boolean;
+  formatPrice: (amountTzs: number) => string;
 }) {
   return (
     <div className="relative mx-auto h-[600px] w-[300px] rounded-[2.8rem] border-[10px] border-ink bg-milk shadow-lift">
@@ -104,7 +107,7 @@ function Phone({
                           initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }}
                           className="text-[14px] font-extrabold text-leaf"
                         >
-                          {formatTZS(wholesale ? it.wholesale_price : it.retail_price)}
+                          {formatPrice(wholesale ? it.wholesale_price : it.retail_price)}
                           <span className="text-[11px] font-medium text-ink-mute"> /{it.unit}</span>
                         </motion.p>
                       </AnimatePresence>
@@ -129,7 +132,8 @@ function Phone({
 
 export function Hero() {
   const [wholesale, setWholesale] = useState(false);
-  const { products, loading, error } = useStorefrontProducts(4);
+  const market = useGlobalMarket();
+  const { products, loading, error } = useStorefrontProducts(4, market.location);
   return (
     <section className="relative overflow-hidden">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr] lg:pb-28 lg:pt-20">
@@ -138,7 +142,7 @@ export function Hero() {
             Farm-fresh food, at your door in hours.
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            Order vegetables and fruit harvested by local farms around Dodoma. Buy a little for your kitchen or a lot for your shop. It is the same app and honest prices.
+            Find produce from nearby stocked farms first, with more suppliers shown as the search widens. Buy a little for your kitchen or a lot for your shop.
           </p>
 
           <div className="mt-9">
@@ -158,7 +162,7 @@ export function Hero() {
         <div className="relative">
           <div className="absolute inset-x-0 top-6 mx-auto h-[540px] w-[88%] rounded-[3rem] bg-leaf field-lines" aria-hidden />
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 18, stiffness: 90, delay: 0.15 }} className="relative">
-            <Phone wholesale={wholesale} products={products} loading={loading} error={error} />
+            <Phone wholesale={wholesale} products={products} loading={loading} error={error} formatPrice={market.formatPrice} />
           </motion.div>
 
           <div className="absolute -left-2 top-24 hidden animate-floaty items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold shadow-lift sm:flex">

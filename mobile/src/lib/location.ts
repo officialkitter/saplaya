@@ -5,7 +5,7 @@ import { STORE } from './delivery';
 
 export type Place = { lat: number; lng: number; label: string; approximate: boolean };
 
-const FALLBACK: Place = { lat: STORE.lat + 0.018, lng: STORE.lng, label: 'Dodoma', approximate: true };
+const FALLBACK: Place = { lat: STORE.lat + 0.018, lng: STORE.lng, label: 'Choose your location', approximate: true };
 const STORAGE_KEY = 'saplaya-delivery-place';
 const GENERIC_LOCATION_NAME = /(^|,\s*)(unnamed(?: road| street)?|unknown(?: location)?|your location|current area)(?=$|,\s*)/i;
 
@@ -45,7 +45,7 @@ async function readAreaLabel(lat: number, lng: number): Promise<string> {
 async function readCurrentLocation(): Promise<Place> {
   const { status } = await Location.requestForegroundPermissionsAsync();
   if (status !== 'granted') throw new Error('Allow location access or choose a saved delivery address.');
-  const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+  const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
   const label = await readAreaLabel(position.coords.latitude, position.coords.longitude);
   return {
     lat: position.coords.latitude,

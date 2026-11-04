@@ -18,6 +18,7 @@ interface Actions {
   decideApplication: (id: string, decision: 'approved' | 'rejected') => Promise<string | null>;
   addSupplier: (s: { name: string; region: string; contactName: string; contactEmail: string; contactPhone: string }) => Promise<void>;
   setSupplierStatus: (id: string, status: SupplierStatus) => Promise<void>;
+  setSupplierCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>;
   inviteMember: (m: { name: string; email: string; role: Role; supplierId: string | null }) => Promise<string | null>;
   setMemberStatus: (id: string, status: MemberStatus) => Promise<void>;
   saveSettings: (s: Settings) => Promise<void>;
@@ -55,6 +56,9 @@ const createAdminStore: StateCreator<DB> = (set) => {
       farFee: 4000,
       commissionPct: 8,
       wholesaleMinDefault: 10,
+      deliveryOptionFees: {
+        '12h': null, '24h': null, '48h': null, '72h': null, '7d': null, '10d': null, '14d': null,
+      },
     },
     sessionId: null,
 
@@ -172,6 +176,14 @@ const createAdminStore: StateCreator<DB> = (set) => {
       await reload();
     },
 
+    setSupplierCoordinates: async (id, latitude, longitude) => {
+      await fetchAdmin(`/admin/suppliers/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ latitude, longitude }),
+      });
+      await reload();
+    },
+
     inviteMember: async (member) => {
       try {
         await fetchAdmin('/admin/team', {
@@ -209,6 +221,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           far_fee: settings.farFee,
           commission_pct: settings.commissionPct,
           wholesale_min_default: settings.wholesaleMinDefault,
+          delivery_option_fees: settings.deliveryOptionFees,
         }),
       });
       await reload();

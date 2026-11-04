@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/Bits';
 import { useBoot, useDB } from '@/lib/store';
 import { getSupabase } from '@/lib/supabase';
 import { loadAdminData } from '@/lib/admin-data';
+import { GlobalMarketProvider } from '@/lib/global-market';
 
 function clearAdminData() {
   useDB.setState({
@@ -71,8 +72,10 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <MotionConfig reducedMotion="user">
-      {children}
-      <Toaster />
+      <GlobalMarketProvider>
+        {children}
+        <Toaster />
+      </GlobalMarketProvider>
     </MotionConfig>
   );
 }

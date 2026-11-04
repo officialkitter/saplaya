@@ -6,11 +6,12 @@ import { useState } from 'react';
 import { cn } from '@/lib/format';
 
 const QA = [
-  { q: 'How fast is delivery?', a: 'Most orders inside Dodoma arrive the same day. You can follow your order on a map in the app.' },
-  { q: 'When is delivery free?', a: 'Delivery is free within 5 km of our hub. From 5 to 10 km it costs TSh 2,000, and beyond 10 km it costs TSh 4,000. The app shows the price before you order.' },
+  { q: 'How fast is delivery?', a: 'Available delivery timeframes depend on the farms serving your location. The selected delivery option and any fees are shown before checkout.' },
+  { q: 'How are farms and delivery fees selected?', a: 'Nearby farms with available stock are prioritized first. If nearby stock is limited, the search widens to farther suppliers. Distance-based delivery charges are confirmed before you place an order.' },
+  { q: 'Can I see prices in my currency?', a: 'Saplaya can show an approximate conversion in a selected display currency using the latest available reference rate. Orders are currently priced and settled in Tanzanian shillings (TZS).' },
   { q: 'What does wholesale mode do?', a: 'It switches every price to the bulk price. Each item shows the smallest amount you can order, for example 10 kg of tomatoes.' },
   { q: 'Can the farm see my details?', a: 'The farm sees your first name and your delivery area so it can pack your order. It never sees your phone number.' },
-  { q: 'How do I pay?', a: 'You pay when your order arrives at your door.' },
+  { q: 'How do I pay?', a: 'Available payment methods are shown during checkout. Orders are currently settled in Tanzanian shillings (TZS).' },
   { q: 'How does a farm join?', a: 'Fill in the form in the farmers section. We call you within 2 working days, and after approval you get an email with your sign-in link.' },
 ];
 

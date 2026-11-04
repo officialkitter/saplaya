@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store/StoreContext';
 import { useFly } from '../store/FlyContext';
-import { colors, formatTZS, radius } from '../theme';
+import { colors, radius } from '../theme';
 import { Product } from '../types';
+import { volumeTierLabel } from '../lib/volume';
+import { useCurrency } from '../lib/currency';
 
 const H = Dimensions.get('window').height;
 
@@ -19,13 +21,17 @@ function harvestedText(iso: string) {
 
 export default function ProductDetailScreen({ route, navigation }: any) {
   const product: Product = route.params.product;
-  const { mode, priceOf, add } = useStore();
+  const { mode, priceOf, tierOf, add } = useStore();
+  const { formatPrice } = useCurrency();
   const { fly } = useFly();
   const insets = useSafeAreaInsets();
 
   const minQty = mode === 'wholesale' ? product.wholesale_min_qty : 1;
-  const unavailable = product.stock < minQty;
   const [qty, setQty] = useState(minQty);
+  const [qtyText, setQtyText] = useState(String(minQty));
+  const unitPrice = priceOf(product, qty);
+  const tier = tierOf(product, qty);
+  const unavailableTier = unitPrice === null;
   const [pressed, setPressed] = useState(false);
   const btn = useRef<View>(null);
 
@@ -34,7 +40,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     setPressed(true);
     setTimeout(() => setPressed(false), 140);
     btn.current?.measureInWindow((x, y, w, h) => fly({ x: x + w / 2, y: y + h / 2 }));
-    add(product, qty);
+    if (unitPrice !== null) add(product, qty);
   };
 
   return (
@@ -67,17 +73,46 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
         <Text style={styles.name}>{product.name}</Text>
         <Text style={styles.price}>
-          {formatTZS(priceOf(product))} <Text style={styles.unit}>per {product.unit}</Text>
+          {unitPrice === null ? 'Price not set' : formatPrice(unitPrice)} <Text style={styles.unit}>per {product.unit}</Text>
         </Text>
-        {mode === 'wholesale' && <Text style={styles.min}>Wholesale: minimum {product.wholesale_min_qty} {product.unit}</Text>}
+        <Text style={[styles.tier, (tier === 'bulk' || tier === 'mega_bulk') && styles.bulkTier]}>{volumeTierLabel(tier)} pricing</Text>
+        <Text style={styles.min}>
+          Wholesale from {product.wholesale_min_qty}; bulk from {product.wholesale_min_qty * 10}; mega-bulk from {product.wholesale_min_qty * 100} {product.unit}. Other farms may fulfill larger quantities.
+        </Text>
 
         <View style={styles.actions}>
           <View style={styles.stepper}>
-            <Pressable onPress={() => setQty((q) => Math.max(minQty, q - 1))} style={styles.stepBtn} accessibilityLabel="Less">
+            <Pressable onPress={() => {
+              const next = Math.max(minQty, qty - 1);
+              setQty(next);
+              setQtyText(String(next));
+            }} style={styles.stepBtn} accessibilityLabel="Less">
               <Ionicons name="remove" size={26} color={colors.green} />
             </Pressable>
-            <Text style={styles.qty}>{qty}</Text>
-            <Pressable onPress={() => setQty((q) => Math.min(product.stock, q + 1))} style={styles.stepBtn} accessibilityLabel="More" disabled={unavailable || qty >= product.stock}>
+            <TextInput
+              value={qtyText}
+              onChangeText={(value) => {
+                setQtyText(value);
+                if (/^\d*\.?\d*$/.test(value) && value !== '') {
+                  const parsed = Number(value);
+                  if (parsed > 0 && parsed <= 10000) setQty(parsed);
+                }
+              }}
+              keyboardType="decimal-pad"
+              onEndEditing={({ nativeEvent }) => {
+                const parsed = Number(nativeEvent.text);
+                const next = !Number.isFinite(parsed) || parsed < minQty || parsed > 10000 ? minQty : parsed;
+                setQty(next);
+                setQtyText(String(next));
+              }}
+              style={styles.qty}
+              accessibilityLabel="Enter product quantity"
+            />
+            <Pressable onPress={() => {
+              const next = Math.min(10000, qty + 1);
+              setQty(next);
+              setQtyText(String(next));
+            }} style={styles.stepBtn} accessibilityLabel="More" disabled={qty >= 10000}>
               <Ionicons name="add" size={26} color={colors.green} />
             </Pressable>
           </View>
@@ -87,9 +122,9 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               animate={{ scale: pressed ? 0.9 : 1 }}
               transition={{ type: 'spring', damping: 10, stiffness: 300 }}
             >
-              <Pressable onPress={onAdd} style={[styles.addBtn, unavailable && styles.disabled]} disabled={unavailable}>
+              <Pressable onPress={onAdd} style={[styles.addBtn, unavailableTier && styles.disabled]} disabled={unavailableTier}>
                 <Ionicons name="cart" size={22} color={colors.white} />
-                <Text style={styles.addText}>{unavailable ? 'Currently unavailable' : `Add · ${formatTZS(priceOf(product) * qty)}`}</Text>
+                <Text style={styles.addText}>{unitPrice === null ? 'Bulk price not set' : `Add · ${formatPrice(unitPrice * qty)}`}</Text>
               </Pressable>
             </MotiView>
           </View>
@@ -111,10 +146,12 @@ const styles = StyleSheet.create({
   price: { fontSize: 22, fontWeight: '800', color: colors.green, marginTop: 4 },
   unit: { fontSize: 15, color: colors.muted, fontWeight: '500' },
   min: { marginTop: 6, color: colors.yellowDeep, fontWeight: '800' },
+  tier: { marginTop: 8, color: colors.green, fontWeight: '800' },
+  bulkTier: { color: colors.bulk },
   actions: { flexDirection: 'row', gap: 12, marginTop: 'auto', marginBottom: 6, alignItems: 'center' },
   stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F8E9', borderRadius: radius.lg, padding: 4 },
   stepBtn: { width: 48, height: 52, alignItems: 'center', justifyContent: 'center' },
-  qty: { minWidth: 34, textAlign: 'center', fontSize: 20, fontWeight: '900', color: colors.ink },
+  qty: { minWidth: 48, textAlign: 'center', fontSize: 18, fontWeight: '900', color: colors.ink, paddingVertical: 8 },
   addBtn: { height: 60, borderRadius: radius.lg, backgroundColor: colors.green, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   disabled: { backgroundColor: colors.muted },
   addText: { color: colors.white, fontSize: 18, fontWeight: '900' },

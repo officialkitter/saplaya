@@ -10,6 +10,16 @@ export type Mode = 'retail' | 'wholesale';
 export type SupplierStatus = 'pending' | 'active' | 'suspended';
 export type MemberStatus = 'invited' | 'active' | 'suspended';
 export type MovementKind = 'sale' | 'restock' | 'adjustment' | 'cancel_return';
+export type DeliveryEta = '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
+export const DELIVERY_ETAS: { value: DeliveryEta; title: string }[] = [
+  { value: '12h', title: '12 hours' },
+  { value: '24h', title: '24 hours' },
+  { value: '48h', title: '48 hours' },
+  { value: '72h', title: '72 hours' },
+  { value: '7d', title: '7 days' },
+  { value: '10d', title: '10 days' },
+  { value: '14d', title: '14 days' },
+];
 
 export interface Supplier {
   id: string;
@@ -19,6 +29,8 @@ export interface Supplier {
   contactEmail: string;
   contactPhone: string;
   status: SupplierStatus;
+  latitude: number | null;
+  longitude: number | null;
   commissionPct: number;
   joinedAt: number;
   emoji: string;
@@ -33,6 +45,8 @@ export interface Product {
   retailPrice: number;
   wholesalePrice: number;
   wholesaleMinQty: number;
+  bulkPrice: number | null;
+  megaBulkPrice: number | null;
   stock: number;
   lowStockAt: number;
   image: string;
@@ -59,7 +73,7 @@ export interface SupplierOrder {
   customerPhone: string;
   customerEmail?: string;
   deliveryFee?: number;
-  deliveryWindow?: 'morning' | 'afternoon';
+  deliveryWindow?: DeliveryEta;
   paymentMethod?: 'pesapal' | 'cash_on_delivery';
   area: string;
   mode: Mode;
@@ -108,4 +122,5 @@ export interface Settings {
   farFee: number;
   commissionPct: number;
   wholesaleMinDefault: number;
+  deliveryOptionFees: Record<DeliveryEta, number | null>;
 }

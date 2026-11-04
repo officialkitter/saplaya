@@ -359,6 +359,48 @@ function deliveryFor(km: number, settings: {
   return Number(settings.far_fee);
 }
 
+const DELIVERY_ETAS = [
+  { value: '12h', title: 'Within 12 hours' },
+  { value: '24h', title: 'Within 24 hours' },
+  { value: '48h', title: 'Within 48 hours' },
+  { value: '72h', title: 'Within 72 hours' },
+  { value: '7d', title: 'Within 7 days' },
+  { value: '10d', title: 'Within 10 days' },
+  { value: '14d', title: 'Within 14 days' },
+] as const;
+
+function priceForQuantity(product: {
+  retail_price: number; wholesale_price: number; wholesale_min_qty: number;
+  bulk_price: number | null; mega_bulk_price: number | null;
+}, qty: number, mode: 'retail' | 'wholesale'): number | null {
+  const wholesaleMinimum = Math.max(1, Number(product.wholesale_min_qty));
+  if (qty >= wholesaleMinimum * 100) {
+    return typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)
+      ? Number(product.mega_bulk_price)
+      : null;
+  }
+  if (qty >= wholesaleMinimum * 10) {
+    return typeof product.bulk_price === 'number' && Number.isFinite(product.bulk_price)
+      ? Number(product.bulk_price)
+      : null;
+  }
+  if (mode === 'wholesale' || qty >= wholesaleMinimum) return Number(product.wholesale_price);
+  return Number(product.retail_price);
+}
+
+function distanceToSupplier(product: { suppliers?: unknown }, latitude: number, longitude: number): number | null {
+  const relation = product.suppliers;
+  const supplier = Array.isArray(relation) ? relation[0] : relation;
+  if (typeof supplier !== 'object' || supplier === null) return null;
+  const location = supplier as Record<string, unknown>;
+  if (
+    typeof location.latitude !== 'number' || !Number.isFinite(location.latitude)
+    || typeof location.longitude !== 'number' || !Number.isFinite(location.longitude)
+    || location.status !== 'active'
+  ) return null;
+  return haversineKm(location.latitude, location.longitude, latitude, longitude);
+}
+
 // ---------- Customer routes (suppliers are never exposed) ----------
 app.post('/auth/firebase/bootstrap', async (req, res) => {
   const token = req.headers.authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
@@ -416,13 +458,28 @@ app.get('/products', async (req, res) => {
   const requestedSize = Number(req.query.size ?? 20);
   const page = Number.isFinite(requestedPage) ? Math.max(0, Math.floor(requestedPage)) : 0;
   const size = Number.isFinite(requestedSize) ? Math.min(40, Math.max(1, Math.floor(requestedSize))) : 20;
+  const hasLatitude = req.query.lat !== undefined;
+  const hasLongitude = req.query.lng !== undefined;
+  const latitude = Number(req.query.lat);
+  const longitude = Number(req.query.lng);
+  if (hasLatitude !== hasLongitude || (hasLatitude && (
+    !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+  ))) {
+    return res.status(400).json({ error: 'Provide a valid latitude and longitude pair.' });
+  }
+  const hasCustomerLocation = hasLatitude && hasLongitude;
   const queryBatchSize = 500;
-  const products: Array<Record<string, unknown> & { id: string; name: string; stock: number }> = [];
+  const products: Array<Record<string, unknown> & {
+    id: string; name: string; stock: number; supplier_id: string; catalog_product_id: string | null;
+  }> = [];
 
   for (let offset = 0; ; offset += queryBatchSize) {
     const { data, error } = await db
-      .from('storefront_products')
+      .from('products')
       .select('*')
+      .eq('active', true)
+      .gt('stock', 0)
       .order('name')
       .order('stock', { ascending: false })
       .order('id')
@@ -432,15 +489,63 @@ app.get('/products', async (req, res) => {
     if ((data?.length ?? 0) < queryBatchSize) break;
   }
 
-  const uniqueProducts = new Map<string, (typeof products)[number]>();
+  const supplierIds = [...new Set(products.map((product) => product.supplier_id))];
+  const catalogIds = [...new Set(products.map((product) => product.catalog_product_id).filter((id): id is string => !!id))];
+  const [{ data: suppliers, error: supplierError }, { data: catalog, error: catalogError }] = await Promise.all([
+    supplierIds.length
+      ? db.from('suppliers').select('id, latitude, longitude, status').in('id', supplierIds)
+      : Promise.resolve({ data: [], error: null }),
+    catalogIds.length
+      ? db.from('catalog_products').select('id, price_approved').in('id', catalogIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (supplierError || catalogError) {
+    console.error('Could not load supplier locations for the storefront:', supplierError?.message ?? catalogError?.message);
+    return res.status(500).json({ error: 'Could not load available products.' });
+  }
+  const supplierById = new Map((suppliers ?? []).map((supplier) => [supplier.id, supplier]));
+  const approvedCatalogIds = new Set((catalog ?? []).filter((item) => item.price_approved).map((item) => item.id));
+  const uniqueProducts = new Map<string, { product: (typeof products)[number]; distance: number | null }>();
   for (const product of products) {
+    const supplier = supplierById.get(product.supplier_id);
+    if (!supplier || supplier.status !== 'active') continue;
+    if (product.catalog_product_id && !approvedCatalogIds.has(product.catalog_product_id)) continue;
+    if (hasCustomerLocation && (supplier.latitude === null || supplier.longitude === null)) continue;
     const normalizedName = product.name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
     const key = normalizedName || `id:${product.id}`;
-    if (!uniqueProducts.has(key)) uniqueProducts.set(key, product);
+    const distance = hasCustomerLocation
+      ? haversineKm(latitude, longitude, Number(supplier.latitude), Number(supplier.longitude))
+      : null;
+    const current = uniqueProducts.get(key);
+    const betterCandidate = !current
+      || (distance !== null && (current.distance === null || distance < current.distance))
+      || (distance === current.distance && Number(product.stock) > Number(current.product.stock));
+    if (betterCandidate) uniqueProducts.set(key, { product, distance });
   }
 
-  const items = [...uniqueProducts.values()].slice(page * size, (page + 1) * size);
-  res.json({ items, hasMore: uniqueProducts.size > (page + 1) * size });
+  const selectedProducts = [...uniqueProducts.values()].sort((a, b) => {
+    if (hasCustomerLocation) {
+      const distanceOrder = (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY);
+      if (distanceOrder !== 0) return distanceOrder;
+    }
+    return a.product.name.localeCompare(b.product.name);
+  });
+  const items = selectedProducts.slice(page * size, (page + 1) * size).map(({ product, distance }) => ({
+    id: product.id,
+    name: product.name,
+    category: product.category ?? '',
+    unit: product.unit,
+    retail_price: product.retail_price,
+    wholesale_price: product.wholesale_price,
+    wholesale_min_qty: product.wholesale_min_qty,
+    stock: product.stock,
+    image_url: product.image_url,
+    harvested_at: product.harvested_at,
+    bulk_price: product.bulk_price,
+    mega_bulk_price: product.mega_bulk_price,
+    farm_distance_km: distance === null ? null : Number(distance.toFixed(2)),
+  }));
+  res.json({ items, hasMore: selectedProducts.length > (page + 1) * size });
 });
 
 app.get('/promos', async (_req, res) => {
@@ -449,9 +554,80 @@ app.get('/promos', async (_req, res) => {
   res.json(data);
 });
 
+let exchangeRateCache: {
+  rates: Record<string, number>;
+  updatedAt: string;
+  expiresAt: number;
+} | null = null;
+
+app.get('/exchange-rates', async (_req, res) => {
+  if (exchangeRateCache && exchangeRateCache.expiresAt > Date.now()) {
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.json({ base: 'TZS', rates: exchangeRateCache.rates, updated_at: exchangeRateCache.updatedAt });
+  }
+
+  try {
+    const response = await fetch('https://open.er-api.com/v6/latest/TZS', {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) throw new Error(`Exchange-rate service returned ${response.status}.`);
+    const payload: unknown = await response.json();
+    if (
+      typeof payload !== 'object'
+      || payload === null
+      || !('result' in payload) || payload.result !== 'success'
+      || !('rates' in payload) || typeof payload.rates !== 'object' || payload.rates === null
+      || !('time_last_update_utc' in payload) || typeof payload.time_last_update_utc !== 'string'
+    ) {
+      throw new Error('Exchange-rate service returned an invalid response.');
+    }
+    const rates = Object.fromEntries(
+      Object.entries(payload.rates).filter((entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0,
+      ),
+    );
+    if (rates.TZS !== 1 || typeof rates.USD !== 'number') {
+      throw new Error('Exchange-rate response is missing required currencies.');
+    }
+    exchangeRateCache = {
+      rates,
+      updatedAt: payload.time_last_update_utc,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    };
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.json({ base: 'TZS', rates, updated_at: exchangeRateCache.updatedAt });
+  } catch (error) {
+    console.error('Could not load display exchange rates:', error);
+    return res.status(503).json({ error: 'Display exchange rates are temporarily unavailable.' });
+  }
+});
+
+app.get('/delivery-options', async (_req, res) => {
+  const { data, error } = await db
+    .from('platform_settings')
+    .select('delivery_option_fees')
+    .eq('id', 'primary')
+    .maybeSingle();
+  if (error || !data) {
+    console.error('Could not load delivery timeframe settings:', error?.message ?? 'Settings are not initialized.');
+    return res.status(503).json({ error: 'Delivery options are not configured.' });
+  }
+  const fees = data.delivery_option_fees;
+  const options = DELIVERY_ETAS.flatMap((option) => {
+    if (typeof fees !== 'object' || fees === null || Array.isArray(fees)) return [];
+    const fee = (fees as Record<string, unknown>)[option.value];
+    return typeof fee === 'number' && Number.isSafeInteger(fee) && fee >= 0
+      ? [{ ...option, fee }]
+      : [];
+  });
+  return res.json(options);
+});
+
 const checkoutSchema = z.object({
   mode: z.enum(['retail', 'wholesale']),
-  delivery_window: z.enum(['morning', 'afternoon']).default('morning'),
+  delivery_window: z.enum(['12h', '24h', '48h', '72h', '7d', '10d', '14d']),
+  delivery_fee_accepted: z.boolean().default(false),
+  quoted_delivery_fee: z.number().int().nonnegative(),
   items: z.array(z.object({
     product_id: z.string().uuid(),
     qty: z.number().positive().max(10000),
@@ -476,6 +652,140 @@ const checkoutSchema = z.object({
     phone: z.string().trim().min(5).max(32),
   }),
   payment_phone: z.string().trim().min(5).max(32).optional(),
+});
+
+const checkoutQuoteSchema = z.object({
+  mode: z.enum(['retail', 'wholesale']),
+  delivery_window: z.enum(['12h', '24h', '48h', '72h', '7d', '10d', '14d']),
+  items: checkoutSchema.shape.items,
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+
+function normalizedProductName(name: string) {
+  return name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+}
+
+app.post('/checkout/quote', async (req, res) => {
+  const parsed = checkoutQuoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { mode, delivery_window: deliveryWindow, items, lat, lng } = parsed.data;
+  const { data: requestedProducts, error: requestedError } = await db
+    .from('products')
+    .select('id, name, catalog_product_id')
+    .in('id', items.map((item) => item.product_id));
+  if (requestedError) {
+    console.error('Could not load products for checkout quote:', requestedError.message);
+    return res.status(500).json({ error: 'Could not prepare your delivery quote.' });
+  }
+  if (!requestedProducts || requestedProducts.length !== items.length) {
+    return res.status(409).json({ error: 'One or more basket items are no longer available.' });
+  }
+
+  const names = [...new Set(requestedProducts.map((product) => product.name))];
+  const catalogIds = [...new Set(requestedProducts.map((product) => product.catalog_product_id).filter((id): id is string => !!id))];
+  const candidateQueries = await Promise.all([
+    db.from('products')
+      .select('id, name, catalog_product_id, stock, active, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, suppliers!inner(latitude, longitude, status)')
+      .eq('active', true)
+      .gt('stock', 0)
+      .in('name', names),
+    catalogIds.length
+      ? db.from('products')
+          .select('id, name, catalog_product_id, stock, active, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, suppliers!inner(latitude, longitude, status)')
+          .eq('active', true)
+          .gt('stock', 0)
+          .in('catalog_product_id', catalogIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const candidateError = candidateQueries.find((result) => result.error)?.error;
+  if (candidateError) {
+    console.error('Could not load farm stock for checkout quote:', candidateError.message);
+    return res.status(500).json({ error: 'Could not prepare your delivery quote.' });
+  }
+  const candidates = new Map<string, NonNullable<(typeof candidateQueries)[number]['data']>[number]>();
+  for (const result of candidateQueries) {
+    for (const candidate of result.data ?? []) candidates.set(candidate.id, candidate);
+  }
+
+  let subtotal = 0;
+  let distance = 0;
+  const quotedItems: {
+    requested_product_id: string;
+    product_id: string;
+    qty: number;
+    unit_price: number;
+    distance_km: number;
+  }[] = [];
+
+  for (const item of items) {
+    const requested = requestedProducts.find((product) => product.id === item.product_id)!;
+    const matchingCandidates = [...candidates.values()].filter((candidate) =>
+      candidate.id === requested.id
+      || (requested.catalog_product_id !== null && candidate.catalog_product_id === requested.catalog_product_id)
+      || normalizedProductName(candidate.name) === normalizedProductName(requested.name),
+    );
+    const stockedCandidates = matchingCandidates.filter((candidate) =>
+      Number(candidate.stock) >= item.qty
+      && (mode !== 'wholesale' || item.qty >= Number(candidate.wholesale_min_qty)),
+    );
+    if (!stockedCandidates.length) {
+      return res.status(409).json({
+        error: mode === 'wholesale'
+          ? `No farm has enough stock at the wholesale minimum for ${requested.name}. Reduce the quantity or remove it from your basket.`
+          : `No farm currently has enough stock for ${requested.name}. Reduce the quantity or remove it from your basket.`,
+      });
+    }
+
+    const locatedCandidates = stockedCandidates.flatMap((candidate) => {
+      const candidateDistance = distanceToSupplier(candidate, lat, lng);
+      return candidateDistance === null ? [] : [{ product: candidate, distance: candidateDistance }];
+    });
+    if (!locatedCandidates.length) {
+      return res.status(409).json({ error: `Farm delivery coordinates are not available for ${requested.name}. Please choose another item or try again later.` });
+    }
+
+    locatedCandidates.sort((a, b) => a.distance - b.distance || Number(b.product.stock) - Number(a.product.stock));
+    const selected = locatedCandidates[0];
+    const unitPrice = priceForQuantity(selected.product, item.qty, mode);
+    if (unitPrice === null) {
+      return res.status(409).json({ error: `A bulk price is not configured for ${requested.name}. Reduce the quantity or contact Saplaya.` });
+    }
+    quotedItems.push({
+      requested_product_id: item.product_id,
+      product_id: selected.product.id,
+      qty: item.qty,
+      unit_price: unitPrice,
+      distance_km: Number(selected.distance.toFixed(2)),
+    });
+    subtotal += Math.round(unitPrice * item.qty);
+    distance = Math.max(distance, selected.distance);
+  }
+
+  const { data: settings, error: settingsError } = await db
+    .from('platform_settings')
+    .select('free_radius_km, mid_radius_km, mid_fee, far_fee, delivery_option_fees')
+    .eq('id', 'primary')
+    .maybeSingle();
+  if (settingsError || !settings) {
+    console.error('Could not load delivery pricing for checkout quote:', settingsError?.message ?? 'Settings are not initialized.');
+    return res.status(503).json({ error: 'Checkout pricing is not configured.' });
+  }
+  const speedFee = Number(settings.delivery_option_fees?.[deliveryWindow]);
+  if (!Number.isSafeInteger(speedFee) || speedFee < 0) {
+    return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
+  }
+
+  const distanceFee = deliveryFor(distance, settings);
+  return res.json({
+    items: quotedItems,
+    subtotal,
+    distance_km: Number(distance.toFixed(2)),
+    distance_fee: distanceFee,
+    speed_fee: speedFee,
+    delivery_fee: distanceFee + speedFee,
+    amount: subtotal + distanceFee + speedFee,
+  });
 });
 
 const applicationSchema = z.object({
@@ -530,7 +840,10 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
 
   const parsed = checkoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { mode, items, lat, lng, customer, delivery_window: deliveryWindow } = parsed.data;
+  const {
+    mode, items, lat, lng, customer, delivery_window: deliveryWindow,
+    delivery_fee_accepted: deliveryFeeAccepted, quoted_delivery_fee: quotedDeliveryFee,
+  } = parsed.data;
   const phone = normalizedTanzanianPhone(parsed.data.payment_phone ?? customer.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid Tanzanian mobile number.' });
 
@@ -549,7 +862,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
 
   const { data: products, error: productError } = await db
     .from('products')
-    .select('id, name, stock, active, retail_price, wholesale_price, wholesale_min_qty')
+    .select('id, name, stock, active, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, suppliers!inner(latitude, longitude, status)')
     .in('id', items.map((item) => item.product_id));
   if (productError) return res.status(500).json({ error: 'Could not validate the basket.' });
   if (!products || products.length !== items.length) {
@@ -557,6 +870,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
   }
 
   let subtotal = 0;
+  let distance = 0;
   const pricedItems: { product_id: string; qty: number; unit_price: number }[] = [];
   for (const item of items) {
     const product = products.find((candidate) => candidate.id === item.product_id);
@@ -569,22 +883,39 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     if (mode === 'wholesale' && item.qty < Number(product.wholesale_min_qty)) {
       return res.status(400).json({ error: `Wholesale minimum for ${product.name} is ${product.wholesale_min_qty}.` });
     }
-    const price = Math.round(Number(mode === 'wholesale' ? product.wholesale_price : product.retail_price));
+    const price = priceForQuantity(product, item.qty, mode);
+    if (price === null) {
+      return res.status(409).json({ error: `A bulk price is not configured for ${product.name}.` });
+    }
+    const supplierDistance = distanceToSupplier(product, lat, lng);
+    if (supplierDistance === null) {
+      return res.status(409).json({ error: `Accurate delivery coordinates are not available for ${product.name}.` });
+    }
+    distance = Math.max(distance, supplierDistance);
     pricedItems.push({ product_id: item.product_id, qty: item.qty, unit_price: price });
     subtotal += Math.round(price * item.qty);
   }
 
   const { data: deliverySettings, error: settingsError } = await db
     .from('platform_settings')
-    .select('free_radius_km, mid_radius_km, mid_fee, far_fee')
+    .select('free_radius_km, mid_radius_km, mid_fee, far_fee, delivery_option_fees')
     .eq('id', 'primary')
     .maybeSingle();
   if (settingsError || !deliverySettings) {
     console.error('Could not load delivery pricing settings:', settingsError?.message ?? 'Settings are not initialized.');
     return res.status(503).json({ error: 'Checkout pricing is not configured.' });
   }
-  const distance = haversineKm(Number(STORE_LAT), Number(STORE_LNG), lat, lng);
-  const fee = deliveryFor(distance, deliverySettings);
+  const configuredSpeedFee = Number(deliverySettings.delivery_option_fees?.[deliveryWindow]);
+  if (!Number.isSafeInteger(configuredSpeedFee) || configuredSpeedFee < 0) {
+    return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
+  }
+  const fee = deliveryFor(distance, deliverySettings) + configuredSpeedFee;
+  if (fee !== quotedDeliveryFee) {
+    return res.status(409).json({ error: 'The delivery charge changed. Review the refreshed quote before continuing.' });
+  }
+  if (fee > 0 && !deliveryFeeAccepted) {
+    return res.status(409).json({ error: 'Accept the quoted delivery charge before continuing.' });
+  }
   const amount = subtotal + fee;
   const transactionRef = `saplaya-${randomUUID()}`;
   const { error: paymentError } = await db.from('checkout_payments').insert({
@@ -593,6 +924,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     mode,
     items: pricedItems,
     delivery_fee: fee,
+    delivery_speed_fee: configuredSpeedFee,
     distance_km: Number(distance.toFixed(2)),
     dest_lat: lat,
     dest_lng: lng,
@@ -673,11 +1005,14 @@ const cashCheckoutSchema = checkoutSchema.extend({
 app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   const parsed = cashCheckoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { mode, items, lat, lng, customer, delivery_window: deliveryWindow, request_key: requestKey } = parsed.data;
+  const {
+    mode, items, lat, lng, customer, delivery_window: deliveryWindow,
+    delivery_fee_accepted: deliveryFeeAccepted, quoted_delivery_fee: quotedDeliveryFee, request_key: requestKey,
+  } = parsed.data;
 
   const { data: products, error: productError } = await db
     .from('products')
-    .select('id, name, stock, active, retail_price, wholesale_price, wholesale_min_qty')
+    .select('id, name, stock, active, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, suppliers!inner(latitude, longitude, status)')
     .in('id', items.map((item) => item.product_id));
   if (productError) {
     console.error('Could not validate cash-on-delivery basket:', productError.message);
@@ -688,6 +1023,7 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   }
 
   let subtotal = 0;
+  let distance = 0;
   const pricedItems: { product_id: string; qty: number; unit_price: number }[] = [];
   for (const item of items) {
     const product = products.find((candidate) => candidate.id === item.product_id);
@@ -700,23 +1036,40 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
     if (mode === 'wholesale' && item.qty < Number(product.wholesale_min_qty)) {
       return res.status(400).json({ error: `Wholesale minimum for ${product.name} is ${product.wholesale_min_qty}.` });
     }
-    const price = Math.round(Number(mode === 'wholesale' ? product.wholesale_price : product.retail_price));
+    const price = priceForQuantity(product, item.qty, mode);
+    if (price === null) {
+      return res.status(409).json({ error: `A bulk price is not configured for ${product.name}.` });
+    }
+    const supplierDistance = distanceToSupplier(product, lat, lng);
+    if (supplierDistance === null) {
+      return res.status(409).json({ error: `Accurate delivery coordinates are not available for ${product.name}.` });
+    }
+    distance = Math.max(distance, supplierDistance);
     pricedItems.push({ product_id: item.product_id, qty: item.qty, unit_price: price });
     subtotal += Math.round(price * item.qty);
   }
 
   const { data: deliverySettings, error: settingsError } = await db
     .from('platform_settings')
-    .select('free_radius_km, mid_radius_km, mid_fee, far_fee')
+    .select('free_radius_km, mid_radius_km, mid_fee, far_fee, delivery_option_fees')
     .eq('id', 'primary')
     .maybeSingle();
   if (settingsError || !deliverySettings) {
     console.error('Could not load cash checkout delivery settings:', settingsError?.message ?? 'Settings are not initialized.');
     return res.status(503).json({ error: 'Checkout pricing is not configured.' });
   }
+  const configuredSpeedFee = Number(deliverySettings.delivery_option_fees?.[deliveryWindow]);
+  if (!Number.isSafeInteger(configuredSpeedFee) || configuredSpeedFee < 0) {
+    return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
+  }
 
-  const distance = haversineKm(Number(STORE_LAT), Number(STORE_LNG), lat, lng);
-  const fee = deliveryFor(distance, deliverySettings);
+  const fee = deliveryFor(distance, deliverySettings) + configuredSpeedFee;
+  if (fee !== quotedDeliveryFee) {
+    return res.status(409).json({ error: 'The delivery charge changed. Review the refreshed quote before placing your order.' });
+  }
+  if (fee > 0 && !deliveryFeeAccepted) {
+    return res.status(409).json({ error: 'Accept the quoted delivery charge before placing your order.' });
+  }
   const { data: orderId, error: orderError } = await db.rpc('place_cash_on_delivery_order', {
     p_customer: req.userId,
     p_request_key: requestKey,
@@ -1341,7 +1694,7 @@ app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: Au
 
   const [{ data: items, error: catalogError }, { data: listings, error: listingsError }] = await Promise.all([
     db.from('catalog_products')
-      .select('id, name, category, unit, retail_price, wholesale_price, wholesale_min_qty, image_url, price_approved')
+      .select('id, name, category, unit, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, image_url, price_approved')
       .order('category').order('name'),
     db.from('products')
       .select('id, catalog_product_id, name, stock, active')
@@ -1448,11 +1801,19 @@ const catalogCreateSchema = z.object({
   retail_price: z.number().int().positive(),
   wholesale_price: z.number().int().positive(),
   wholesale_min_qty: z.number().int().positive(),
+  bulk_price: z.number().int().positive().nullable().default(null),
+  mega_bulk_price: z.number().int().positive().nullable().default(null),
   image_url: z.string().url().nullable(),
   price_approved: z.boolean().default(false),
 }).refine((value) => value.wholesale_price < value.retail_price, {
   message: 'Wholesale price must be lower than retail price.',
   path: ['wholesale_price'],
+}).refine((value) => (
+  (value.bulk_price === null || value.bulk_price <= value.wholesale_price)
+  && (value.mega_bulk_price === null || (value.bulk_price !== null && value.mega_bulk_price <= value.bulk_price))
+), {
+  message: 'Set a bulk price no higher than wholesale, and a mega-bulk price no higher than bulk.',
+  path: ['bulk_price'],
 });
 
 app.post('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
@@ -1473,11 +1834,19 @@ const catalogUpdateSchema = z.object({
   retail_price: z.number().int().positive(),
   wholesale_price: z.number().int().positive(),
   wholesale_min_qty: z.number().int().positive(),
+  bulk_price: z.number().int().positive().nullable(),
+  mega_bulk_price: z.number().int().positive().nullable(),
   image_url: z.string().url().nullable(),
   price_approved: z.boolean(),
 }).refine((value) => value.wholesale_price < value.retail_price, {
   message: 'Wholesale price must be lower than retail price.',
   path: ['wholesale_price'],
+}).refine((value) => (
+  (value.bulk_price === null || value.bulk_price <= value.wholesale_price)
+  && (value.mega_bulk_price === null || (value.bulk_price !== null && value.mega_bulk_price <= value.bulk_price))
+), {
+  message: 'Set a bulk price no higher than wholesale, and a mega-bulk price no higher than bulk.',
+  path: ['bulk_price'],
 });
 
 app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
@@ -1486,20 +1855,16 @@ app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: Authe
   if (!id.success || !parsed.success) {
     return res.status(400).json({ error: parsed.success ? 'Invalid catalog product ID.' : parsed.error.flatten() });
   }
-  const { data, error } = await db.rpc('admin_update_catalog_product', {
-    p_id: id.data,
-    p_category: parsed.data.category,
-    p_unit: parsed.data.unit,
-    p_retail_price: parsed.data.retail_price,
-    p_wholesale_price: parsed.data.wholesale_price,
-    p_wholesale_min_qty: parsed.data.wholesale_min_qty,
-    p_image_url: parsed.data.image_url,
-    p_price_approved: parsed.data.price_approved,
-  });
-  if (error || !data) {
-    console.error('Could not update central catalog pricing:', error?.message ?? 'Catalog product not found.');
-    return res.status(error?.message.includes('not found') ? 404 : 400).json({ error: 'Could not update this catalog product.' });
+  const { data, error } = await db.from('catalog_products')
+    .update(parsed.data)
+    .eq('id', id.data)
+    .select()
+    .maybeSingle();
+  if (error) {
+    console.error('Could not update central catalog pricing:', error.message);
+    return res.status(500).json({ error: 'Could not update this catalog product.' });
   }
+  if (!data) return res.status(404).json({ error: 'Catalog product not found.' });
   return res.json(data);
 });
 
@@ -1575,9 +1940,18 @@ app.get('/admin/suppliers', requirePerm('suppliers.view_all'), async (_req: Auth
 });
 
 app.patch('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
-  const parsed = z.object({ status: z.enum(['pending', 'active', 'suspended']) }).safeParse(req.body);
+  const parsed = z.object({
+    status: z.enum(['pending', 'active', 'suspended']).optional(),
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
+  }).refine((value) => (
+    (value.latitude === undefined) === (value.longitude === undefined)
+    && Object.values(value).some((entry) => entry !== undefined)
+  ), {
+    message: 'Provide both farm coordinates, or update the farm status.',
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { data, error } = await db.from('suppliers').update({ status: parsed.data.status }).eq('id', req.params.id).select().maybeSingle();
+  const { data, error } = await db.from('suppliers').update(parsed.data).eq('id', req.params.id).select().maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -1727,6 +2101,15 @@ const settingsSchema = z.object({
   far_fee: z.number().int().nonnegative(),
   commission_pct: z.number().min(0).max(40),
   wholesale_min_default: z.number().int().positive(),
+  delivery_option_fees: z.object({
+    '12h': z.number().int().nonnegative().nullable(),
+    '24h': z.number().int().nonnegative().nullable(),
+    '48h': z.number().int().nonnegative().nullable(),
+    '72h': z.number().int().nonnegative().nullable(),
+    '7d': z.number().int().nonnegative().nullable(),
+    '10d': z.number().int().nonnegative().nullable(),
+    '14d': z.number().int().nonnegative().nullable(),
+  }),
 }).refine((settings) => settings.mid_radius_km > settings.free_radius_km, {
   message: 'The standard delivery distance must exceed the free distance.',
   path: ['mid_radius_km'],
@@ -1754,6 +2137,7 @@ app.put('/admin/settings', requirePerm('settings.manage'), async (req: AuthedReq
     far_fee: parsed.data.far_fee,
     commission_pct: parsed.data.commission_pct,
     wholesale_min_default: parsed.data.wholesale_min_default,
+    delivery_option_fees: parsed.data.delivery_option_fees,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' }).select().single();
   if (error) return res.status(500).json({ error: 'Could not save platform settings.' });

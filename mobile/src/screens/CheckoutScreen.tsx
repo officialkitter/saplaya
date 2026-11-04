@@ -8,21 +8,21 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
-import { confirmPayment, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
-import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
-import { STORE, deliveryTier, distanceKm } from '../lib/delivery';
+import { CheckoutQuote, confirmPayment, DeliveryEta, DeliveryOption, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
+import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, formatTZS, radius, shadow } from '../theme';
+import { colors, radius, shadow } from '../theme';
+import { useCurrency } from '../lib/currency';
 
 WebBrowser.maybeCompleteAuthSession();
 
 type PaymentSession = Awaited<ReturnType<typeof initializePayment>>;
-type DeliveryWindow = 'morning' | 'afternoon';
 type CheckoutPayment = 'online' | 'cash_on_delivery';
 
 export default function CheckoutScreen({ navigation }: any) {
   const { lines, mode, subtotal, priceOf, clear, setLastOrderId } = useStore();
+  const { currency, formatPrice, ratesUpdatedAt, ratesUnavailable } = useCurrency();
   const { profile, user, addresses, isSignedIn, selectAddress } = useAccount();
   const place = useDeliveryPlace();
   const { setPlace } = useDeliveryActions();
@@ -33,18 +33,37 @@ export default function CheckoutScreen({ navigation }: any) {
   const [savedPaymentMethods, setSavedPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
-  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryWindow>('morning');
+  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('24h');
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
+  const [quote, setQuote] = useState<CheckoutQuote | null>(null);
+  const [quoteError, setQuoteError] = useState('');
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteRefreshVersion, setQuoteRefreshVersion] = useState(0);
+  const [acceptedDeliveryFee, setAcceptedDeliveryFee] = useState(false);
   const [checkoutPayment, setCheckoutPayment] = useState<CheckoutPayment>('online');
   const [cashRequestKey, setCashRequestKey] = useState('');
   const [pendingVerification, setPendingVerification] = useState<{ txRef: string; orderTrackingId: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const km = distanceKm(STORE.lat, STORE.lng, place.lat, place.lng);
-  const tier = deliveryTier(km);
-  const estimate = subtotal + tier.fee;
+  const km = quote?.distance_km;
+  const speedFee = quote?.speed_fee;
+  const estimate = quote?.amount ?? 0;
+  const unpricedLines = lines.filter((line) => priceOf(line.product, line.qty) === null);
+  const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
+  const quoteKey = useMemo(
+    () => JSON.stringify({
+      mode,
+      lines: lines.map(({ product, qty }) => [product.id, qty]),
+      lat: place.lat,
+      lng: place.lng,
+      approximate: place.approximate,
+      deliveryWindow,
+    }),
+    [mode, lines, place.lat, place.lng, place.approximate, deliveryWindow],
+  );
   const basketKey = useMemo(
-    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, name, email, phone, deliveryWindow, checkoutPayment }),
-    [mode, lines, place.lat, place.lng, name, email, phone, deliveryWindow, checkoutPayment],
+    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, approximate: place.approximate, name, email, phone, deliveryWindow, checkoutPayment }),
+    [mode, lines, place.lat, place.lng, place.approximate, name, email, phone, deliveryWindow, checkoutPayment],
   );
 
   useEffect(() => {
@@ -52,6 +71,43 @@ export default function CheckoutScreen({ navigation }: any) {
     setPayment(null);
     setCashRequestKey('');
   }, [basketKey, pendingVerification]);
+
+  useEffect(() => {
+    let active = true;
+    setQuote(null);
+    setQuoteError('');
+    setAcceptedDeliveryFee(false);
+    if (place.approximate) {
+      setQuoteError('Choose a saved address or enable precise GPS before checkout.');
+      setQuoteLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    if (!lines.length || !deliveryOptions.some((option) => option.value === deliveryWindow)) {
+      setQuoteLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    setQuoteLoading(true);
+    void fetchCheckoutQuote({
+      mode,
+      delivery_window: deliveryWindow,
+      items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
+      lat: place.lat,
+      lng: place.lng,
+    }).then((result) => {
+      if (active) setQuote(result);
+    }).catch((error: unknown) => {
+      if (active) setQuoteError(error instanceof Error ? error.message : 'Could not prepare your delivery quote.');
+    }).finally(() => {
+      if (active) setQuoteLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [quoteKey, quoteRefreshVersion, deliveryOptions, lines, mode, deliveryWindow, place.lat, place.lng, place.approximate]);
 
   useEffect(() => {
     if (!name && profile.fullName) setName(profile.fullName);
@@ -78,6 +134,22 @@ export default function CheckoutScreen({ navigation }: any) {
     };
   }, [isSignedIn]);
 
+  useEffect(() => {
+    let active = true;
+    void fetchDeliveryOptions().then((options) => {
+      if (!active) return;
+      setDeliveryOptions(options);
+      if (options.length && !options.some((option) => option.value === deliveryWindow)) {
+        setDeliveryWindow(options[0].value);
+      }
+    }).catch((error: unknown) => {
+      console.error('Could not load delivery options:', error);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const chooseAddress = async (id: string) => {
     const saved = addresses.find((address) => address.id === id);
     if (!saved) return;
@@ -95,9 +167,24 @@ export default function CheckoutScreen({ navigation }: any) {
       Alert.alert('Your basket is empty', 'Add an item before starting checkout.');
       return false;
     }
-    const unavailable = lines.find((line) => line.qty > line.product.stock);
-    if (unavailable) {
-      Alert.alert('Stock changed', `${unavailable.product.name} no longer has enough stock. Update your basket before checkout.`);
+    if (place.approximate) {
+      Alert.alert('Precise delivery location required', 'Choose a saved address or enable GPS before checkout so we can locate the closest stocked farms.');
+      return false;
+    }
+    if (!deliveryOptions.length || speedFee === undefined) {
+      Alert.alert('Delivery options unavailable', 'No delivery times have a configured price yet. Please try again later.');
+      return false;
+    }
+    if (!quote || quoteLoading) {
+      Alert.alert('Delivery quote unavailable', quoteError || 'Wait for the latest farm stock and delivery price to load, then try again.');
+      return false;
+    }
+    if (paidDelivery && !acceptedDeliveryFee) {
+      Alert.alert('Confirm delivery charge', 'Accept the server-quoted delivery charge to continue, or change the delivery address.');
+      return false;
+    }
+    if (unpricedLines.length) {
+      Alert.alert('Volume price unavailable', 'A bulk or mega-bulk price is not configured for every item. Reduce the quantities or contact Saplaya.');
       return false;
     }
     if (!name.trim() || !email.trim() || !phone.trim()) {
@@ -130,14 +217,16 @@ export default function CheckoutScreen({ navigation }: any) {
         id: result.order_id,
         mode,
         status: 'pending' as const,
-        subtotal: payment?.subtotal ?? subtotal,
-        delivery_fee: payment?.delivery_fee ?? tier.fee,
+        subtotal: payment?.subtotal ?? quote?.subtotal ?? subtotal,
+        delivery_fee: payment?.delivery_fee ?? quote?.delivery_fee ?? 0,
         created_at: new Date().toISOString(),
         delivery_window: deliveryWindow,
         payment_method: 'pesapal' as const,
         order_items: lines.map((line) => ({
           qty: line.qty,
-          unit_price: payment?.items.find((item) => item.product_id === line.product.id)?.unit_price ?? priceOf(line.product),
+          unit_price: payment?.items.find((item) =>
+            item.product_id === quote?.items.find((quoted) => quoted.requested_product_id === line.product.id)?.product_id,
+          )?.unit_price ?? quote?.items.find((item) => item.requested_product_id === line.product.id)?.unit_price ?? priceOf(line.product, line.qty) ?? 0,
           products: { name: line.product.name, unit: line.product.unit, image_url: line.product.image_url },
         })),
       };
@@ -164,8 +253,10 @@ export default function CheckoutScreen({ navigation }: any) {
         const result = await placeCashOrder({
           mode,
           delivery_window: deliveryWindow,
+          delivery_fee_accepted: acceptedDeliveryFee,
+          quoted_delivery_fee: quote!.delivery_fee,
           request_key: requestKey,
-          items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
+          items: quote!.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
           lat: place.lat,
           lng: place.lng,
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
@@ -181,7 +272,9 @@ export default function CheckoutScreen({ navigation }: any) {
           payment_method: 'cash_on_delivery' as const,
           order_items: lines.map((line) => ({
             qty: line.qty,
-            unit_price: result.items.find((item) => item.product_id === line.product.id)?.unit_price ?? priceOf(line.product),
+            unit_price: result.items.find((item) =>
+              item.product_id === quote?.items.find((quoted) => quoted.requested_product_id === line.product.id)?.product_id,
+            )?.unit_price ?? quote?.items.find((item) => item.requested_product_id === line.product.id)?.unit_price ?? priceOf(line.product, line.qty) ?? 0,
             products: { name: line.product.name, unit: line.product.unit, image_url: line.product.image_url },
           })),
         };
@@ -195,7 +288,9 @@ export default function CheckoutScreen({ navigation }: any) {
         const initialized = await initializePayment({
           mode,
           delivery_window: deliveryWindow,
-          items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
+          delivery_fee_accepted: acceptedDeliveryFee,
+          quoted_delivery_fee: quote!.delivery_fee,
+          items: quote!.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
           lat: place.lat,
           lng: place.lng,
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
@@ -219,7 +314,13 @@ export default function CheckoutScreen({ navigation }: any) {
       }
       await completeOrder(txRef, orderTrackingId);
     } catch (error) {
-      Alert.alert('Could not start checkout', error instanceof Error ? error.message : 'Please check your connection and try again.');
+      const message = error instanceof Error ? error.message : 'Please check your connection and try again.';
+      if (/delivery charge changed|stock|price .* changed|not enough stock/i.test(message)) {
+        setQuote(null);
+        setAcceptedDeliveryFee(false);
+        setQuoteRefreshVersion((version) => version + 1);
+      }
+      Alert.alert('Could not start checkout', message);
     } finally {
       setBusy(false);
     }
@@ -268,7 +369,12 @@ export default function CheckoutScreen({ navigation }: any) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.label}>Delivering to</Text>
                 <Text style={styles.address}>{place.label}</Text>
-                <Text style={styles.helper}>{km.toFixed(1)} km from our hub{place.approximate ? ' · approximate location' : ''}</Text>
+                <Text style={styles.helper}>
+                  {km === undefined
+                    ? quoteLoading ? 'Checking available farms and delivery distance…' : 'Farm distance is unavailable'}
+                    : `${km.toFixed(1)} km to the furthest selected farm`}
+                  {place.approximate ? ' · approximate delivery address' : ''}
+                </Text>
               </View>
               <Pressable onPress={() => navigation.navigate('LocationPicker')} accessibilityLabel="Change delivery location">
                 <Text style={styles.change}>Change</Text>
@@ -289,46 +395,80 @@ export default function CheckoutScreen({ navigation }: any) {
             )}
           </View>
 
-          <Text style={styles.heading}>Choose a delivery window</Text>
-          <Text style={styles.subheading}>Your order will arrive in the selected time slot.</Text>
+          <Text style={styles.heading}>Choose a delivery timeframe</Text>
+          <Text style={styles.subheading}>Delivery options are shown only after their price has been configured.</Text>
           <View style={styles.choiceRow}>
-            {([
-              { value: 'morning', title: 'Morning', time: '07:00–10:00', icon: 'sunny-outline' },
-              { value: 'afternoon', title: 'Evening', time: '15:00–18:00', icon: 'partly-sunny-outline' },
-            ] as const).map((option) => (
+            {deliveryOptions.map((option) => (
               <Pressable
                 key={option.value}
                 style={[styles.choiceCard, deliveryWindow === option.value && styles.choiceSelected]}
                 onPress={() => {
                   setDeliveryWindow(option.value);
                   setPayment(null);
+                  setAcceptedDeliveryFee(false);
                 }}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: deliveryWindow === option.value }}
               >
-                <Ionicons name={option.icon} size={20} color={deliveryWindow === option.value ? colors.green : colors.muted} />
+                <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? colors.green : colors.muted} />
                 <Text style={styles.choiceTitle}>{option.title}</Text>
-                <Text style={styles.choiceHint}>{option.time}</Text>
+                <Text style={styles.choiceHint}>{option.fee === 0 ? 'No timeframe surcharge' : `+${formatPrice(option.fee)}`}</Text>
               </Pressable>
             ))}
           </View>
+          {deliveryOptions.length === 0 && (
+            <Text style={styles.warning}>Delivery timeframes are temporarily unavailable because no delivery prices are configured.</Text>
+          )}
+          {quoteError.length > 0 && <Text style={styles.warning}>{quoteError}</Text>}
+          {quoteLoading && <Text style={styles.helper}>Refreshing stock, farm distance and delivery price…</Text>}
+          {paidDelivery && (
+            <Pressable
+              style={styles.acceptDelivery}
+              onPress={() => setAcceptedDeliveryFee((accepted) => !accepted)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: acceptedDeliveryFee }}
+            >
+              <Ionicons name={acceptedDeliveryFee ? 'checkbox' : 'square-outline'} size={22} color={acceptedDeliveryFee ? colors.green : colors.muted} />
+              <Text style={styles.choiceHint}>I accept the delivery and selected-timeframe charges.</Text>
+            </Pressable>
+          )}
 
           <Text style={styles.heading}>Your order</Text>
           {lines.map((line) => {
-            const unitPrice = payment?.items.find((item) => item.product_id === line.product.id)?.unit_price ?? priceOf(line.product);
+            const quotedItem = quote?.items.find((item) => item.requested_product_id === line.product.id);
+            const unitPrice = payment?.items.find((item) => item.product_id === quotedItem?.product_id)?.unit_price
+              ?? quotedItem?.unit_price
+              ?? priceOf(line.product, line.qty);
             return (
               <View key={line.product.id} style={styles.orderLine}>
                 <Text style={styles.orderName}>{line.qty} × {line.product.name}</Text>
-                <Text style={styles.orderPrice}>{formatTZS(unitPrice * line.qty)}</Text>
+                <Text style={styles.orderPrice}>{unitPrice === null ? 'Price not set' : formatPrice(unitPrice * line.qty)}</Text>
               </View>
             );
           })}
           <View style={styles.totalCard}>
-            <SummaryRow label="Items" value={formatTZS(payment?.subtotal ?? subtotal)} />
-            <SummaryRow label={tier.label} value={payment ? (payment.delivery_fee === 0 ? 'FREE' : formatTZS(payment.delivery_fee)) : (tier.free ? 'FREE' : formatTZS(tier.fee))} />
+            <SummaryRow label="Items" value={formatPrice(payment?.subtotal ?? quote?.subtotal ?? 0)} />
+            <SummaryRow
+              label={`Distance-based delivery · ${km === undefined ? 'pending' : `${km.toFixed(1)} km`}`}
+              value={quote ? quote.distance_fee === 0 ? 'FREE' : formatPrice(quote.distance_fee) : 'Unavailable'}
+            />
+            <SummaryRow label={`${deliveryWindow} delivery surcharge`} value={speedFee === undefined ? 'Unavailable' : speedFee === 0 ? 'FREE' : formatPrice(speedFee)} />
+            {payment && <SummaryRow label="Confirmed delivery fee" value={payment.delivery_fee === 0 ? 'FREE' : formatPrice(payment.delivery_fee)} />}
             <View style={styles.divider} />
-            <SummaryRow label="Estimated total" value={formatTZS(payment?.amount ?? estimate)} bold />
-            {payment && <Text style={styles.confirmText}>Server-confirmed total · {payment.currency}</Text>}
+            <SummaryRow
+              label="Estimated total"
+              value={payment ? formatPrice(payment.amount) : quote ? formatPrice(estimate) : quoteLoading ? 'Calculating…' : 'Unavailable'}
+              bold
+            />
+            <Text style={styles.confirmText}>
+              {ratesUnavailable
+                ? 'Exchange rate unavailable · values shown in TZS.'
+                : currency === 'TZS'
+                  ? 'Order and payment currency · TZS'
+                  : `Approximate ${currency} display · exchange rate dated ${ratesUpdatedAt}`}
+              {' · '}Charged and settled in TZS.
+            </Text>
+            {payment && <Text style={styles.confirmText}>Server-confirmed amount · {payment.currency}</Text>}
           </View>
 
           <Text style={styles.heading}>Payment method</Text>
@@ -406,13 +546,17 @@ export default function CheckoutScreen({ navigation }: any) {
               {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryText}>Retry payment verification</Text>}
             </Pressable>
           ) : (
-            <Pressable style={[styles.primaryButton, busy && styles.disabled]} onPress={startCheckout} disabled={busy}>
+            <Pressable
+              style={[styles.primaryButton, (busy || quoteLoading || !quote || unpricedLines.length > 0) && styles.disabled]}
+              onPress={startCheckout}
+              disabled={busy || quoteLoading || !quote || unpricedLines.length > 0}
+            >
               {busy
                 ? <ActivityIndicator color={colors.white} />
                 : <Text style={styles.primaryText}>
                   {checkoutPayment === 'cash_on_delivery'
-                    ? `Place order · ${formatTZS(estimate)}`
-                    : payment ? `Continue to payment · ${formatTZS(payment.amount)}` : 'Review secure payment'}
+                    ? `Place order · ${formatPrice(estimate)}`
+                    : payment ? `Continue to payment · ${formatPrice(payment.amount)}` : 'Review secure payment'}
                 </Text>}
             </Pressable>
           )}
@@ -456,11 +600,13 @@ const styles = StyleSheet.create({
   label: { marginBottom: 6, color: colors.ink, fontSize: 13, fontWeight: '800' },
   input: { minHeight: 51, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, color: colors.ink, fontSize: 15 },
   deliveryCard: { marginVertical: 10, padding: 15, borderRadius: radius.md, backgroundColor: colors.white, ...shadow },
-  choiceRow: { flexDirection: 'row', gap: 10, marginBottom: 13 },
-  choiceCard: { flex: 1, minHeight: 102, padding: 13, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, alignItems: 'flex-start', justifyContent: 'center', gap: 5 },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 13 },
+  choiceCard: { flexGrow: 1, flexBasis: '42%', minWidth: 130, minHeight: 102, padding: 13, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, alignItems: 'flex-start', justifyContent: 'center', gap: 5 },
   choiceSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },
   choiceTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   choiceHint: { color: colors.muted, fontSize: 11, lineHeight: 15 },
+  warning: { color: '#A15C00', fontWeight: '700', marginBottom: 12 },
+  acceptDelivery: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginBottom: 8 },
   savedMethods: { marginBottom: 10, padding: 13, borderRadius: radius.md, backgroundColor: colors.white },
   savedMethod: { minHeight: 54, marginTop: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, flexDirection: 'row', alignItems: 'center', gap: 10 },
   savedMethodSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },

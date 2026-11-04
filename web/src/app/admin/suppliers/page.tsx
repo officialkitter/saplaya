@@ -26,12 +26,15 @@ function Farms() {
   const applications = useDB((s) => s.applications);
   const decide = useDB((s) => s.decideApplication);
   const setSupplierStatus = useDB((s) => s.setSupplierStatus);
+  const setSupplierCoordinates = useDB((s) => s.setSupplierCoordinates);
   const addSupplier = useDB((s) => s.addSupplier);
   const push = useToast((s) => s.push);
 
   const [tab, setTab] = useState<'farms' | 'applications'>('farms');
   const [adding, setAdding] = useState(false);
   const [toggle, setToggle] = useState<Supplier | null>(null);
+  const [locationEditing, setLocationEditing] = useState<Supplier | null>(null);
+  const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
   const [form, setForm] = useState({ name: '', region: 'Dodoma', contactName: '', contactEmail: '', contactPhone: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -74,6 +77,23 @@ function Farms() {
       setAdding(false);
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not add this farm.', 'bad');
+    }
+  }
+
+  async function saveCoordinates() {
+    if (!locationEditing) return;
+    const latitude = Number(coordinates.latitude);
+    const longitude = Number(coordinates.longitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      push('Enter a valid farm latitude and longitude.', 'bad');
+      return;
+    }
+    try {
+      await setSupplierCoordinates(locationEditing.id, latitude, longitude);
+      push(`GPS coordinates saved for ${locationEditing.name}.`);
+      setLocationEditing(null);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not save farm coordinates.', 'bad');
     }
   }
 
@@ -149,6 +169,23 @@ function Farms() {
                 </div>
                 {canManage && (
                   <div className="mt-4">
+                    <p className="mb-2 text-sm text-ink-mute">
+                      GPS: {s.latitude === null || s.longitude === null ? 'Not configured — products are not location-matched' : `${s.latitude.toFixed(5)}, ${s.longitude.toFixed(5)}`}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="soft"
+                      icon={<MapPin size={16} />}
+                      onClick={() => {
+                        setCoordinates({
+                          latitude: s.latitude === null ? '' : String(s.latitude),
+                          longitude: s.longitude === null ? '' : String(s.longitude),
+                        });
+                        setLocationEditing(s);
+                      }}
+                    >
+                      Set farm GPS
+                    </Button>
                     <Button size="sm" variant={s.status === 'suspended' ? 'soft' : 'danger'} icon={s.status === 'suspended' ? <Play size={16} /> : <Pause size={16} />} onClick={() => setToggle(s)}>
                       {s.status === 'suspended' ? 'Let this farm sell again' : 'Pause this farm'}
                     </Button>
@@ -200,6 +237,18 @@ function Farms() {
             <Field label="Owner's phone" error={errors.contactPhone}><Input value={form.contactPhone} onChange={set('contactPhone')} inputMode="tel" /></Field>
           </div>
           <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setAdding(false)}>Cancel</Button><Button onClick={() => { void saveFarm(); }}>Add farm</Button></div>
+        </div>
+      </Modal>
+
+      <Modal open={!!locationEditing} onClose={() => setLocationEditing(null)} title={`Farm GPS${locationEditing ? ` · ${locationEditing.name}` : ''}`}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-soft">Enter the farm’s verified decimal coordinates. The customer app uses them for nearest-farm matching and delivery distance; farm identity remains private.</p>
+          <Field label="Latitude"><Input type="number" step="any" value={coordinates.latitude} onChange={(event) => setCoordinates((current) => ({ ...current, latitude: event.target.value }))} placeholder="-6.1630" /></Field>
+          <Field label="Longitude"><Input type="number" step="any" value={coordinates.longitude} onChange={(event) => setCoordinates((current) => ({ ...current, longitude: event.target.value }))} placeholder="35.7516" /></Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setLocationEditing(null)}>Cancel</Button>
+            <Button onClick={() => { void saveCoordinates(); }}>Save GPS</Button>
+          </div>
         </div>
       </Modal>
 

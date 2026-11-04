@@ -28,6 +28,10 @@ function number(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function timestamp(value: unknown): number {
   const parsed = Date.parse(text(value));
   return Number.isFinite(parsed) ? parsed : Date.now();
@@ -78,6 +82,8 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       contactEmail: text(supplier.contact_email),
       contactPhone: text(supplier.contact_phone),
       status: text(supplier.status, 'pending') as 'pending' | 'active' | 'suspended',
+      latitude: numberOrNull(supplier.latitude),
+      longitude: numberOrNull(supplier.longitude),
       commissionPct: number(supplier.commission_pct, 8),
       joinedAt: timestamp(supplier.created_at),
       emoji: '🌱',
@@ -94,6 +100,8 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       retailPrice: number(product.retail_price),
       wholesalePrice: number(product.wholesale_price),
       wholesaleMinQty: number(product.wholesale_min_qty, 10),
+      bulkPrice: numberOrNull(product.bulk_price),
+      megaBulkPrice: numberOrNull(product.mega_bulk_price),
       stock: number(product.stock),
       lowStockAt: number(product.low_stock_at, 10),
       image: text(product.image_url),
@@ -117,7 +125,9 @@ export async function loadAdminData(): Promise<Partial<DB>> {
         customerName: text(order.customer_name, 'Customer'),
         customerPhone: text(order.customer_phone),
         deliveryFee: number(relatedOrder?.delivery_fee),
-        deliveryWindow: relatedOrder?.delivery_window === 'afternoon' ? 'afternoon' : 'morning',
+        deliveryWindow: ['12h', '24h', '48h', '72h', '7d', '10d', '14d'].includes(String(relatedOrder?.delivery_window))
+          ? relatedOrder?.delivery_window as import('./types').DeliveryEta
+          : '24h',
         paymentMethod: relatedOrder?.payment_method === 'cash_on_delivery' ? 'cash_on_delivery' : 'pesapal',
         area: text(order.area, 'Delivery location'),
         mode: text(relatedOrder?.mode, 'retail') as 'retail' | 'wholesale',
@@ -183,6 +193,15 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       farFee: number(settings.far_fee, 4000),
       commissionPct: number(settings.commission_pct, 8),
       wholesaleMinDefault: number(settings.wholesale_min_default, 10),
+      deliveryOptionFees: {
+        '12h': numberOrNull((settings.delivery_option_fees as Row | null)?.['12h']),
+        '24h': numberOrNull((settings.delivery_option_fees as Row | null)?.['24h']),
+        '48h': numberOrNull((settings.delivery_option_fees as Row | null)?.['48h']),
+        '72h': numberOrNull((settings.delivery_option_fees as Row | null)?.['72h']),
+        '7d': numberOrNull((settings.delivery_option_fees as Row | null)?.['7d']),
+        '10d': numberOrNull((settings.delivery_option_fees as Row | null)?.['10d']),
+        '14d': numberOrNull((settings.delivery_option_fees as Row | null)?.['14d']),
+      },
     };
   }
 

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { CartLine, Mode, Product } from '../types';
+import { volumePrice, volumeTier } from '../lib/volume';
 
 type Ctx = {
   mode: Mode;
@@ -9,7 +10,8 @@ type Ctx = {
   setQty: (id: string, qty: number) => void;
   clear: () => void;
   count: number;
-  priceOf: (p: Product) => number;
+  priceOf: (p: Product, qty?: number) => number | null;
+  tierOf: (p: Product, qty: number) => ReturnType<typeof volumeTier>;
   subtotal: number;
   lastOrderId: string | null;
   setLastOrderId: (id: string | null) => void;
@@ -23,10 +25,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
 
-  const priceOf = useCallback(
-    (p: Product) => (mode === 'wholesale' ? p.wholesale_price : p.retail_price),
-    [mode]
-  );
+  const priceOf = useCallback((p: Product, qty = 1) => volumePrice(p, qty, mode), [mode]);
+  const tierOf = useCallback((p: Product, qty: number) => volumeTier(p, qty, mode), [mode]);
 
   const add = useCallback((product: Product, qty: number) => {
     setLines((prev) => {
@@ -54,9 +54,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       lastOrderId,
       setLastOrderId,
       count: lines.reduce((n, l) => n + l.qty, 0),
-      subtotal: lines.reduce((n, l) => n + priceOf(l.product) * l.qty, 0),
+      tierOf,
+      subtotal: lines.reduce((n, l) => n + (priceOf(l.product, l.qty) ?? 0) * l.qty, 0),
     }),
-    [mode, lines, add, setQty, clear, priceOf, lastOrderId]
+    [mode, lines, add, setQty, clear, priceOf, tierOf, lastOrderId]
   );
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

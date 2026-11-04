@@ -14,8 +14,10 @@ import { StoreProvider } from './src/store/StoreContext';
 import { AccountProvider } from './src/store/AccountContext';
 import { FlyProvider } from './src/store/FlyContext';
 import { DeliveryProvider } from './src/lib/location';
+import { CurrencyProvider } from './src/lib/currency';
 import { navigationRef } from './src/navigation';
 import { supabase } from './src/lib/supabase';
+import { preloadStartupData } from './src/lib/startup';
 
 void SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
   console.error('Could not hold the native splash screen:', error);
@@ -25,6 +27,7 @@ export default function App() {
   const [splash, setSplash] = useState(true);
   const [splashAnimationFinished, setSplashAnimationFinished] = useState(false);
   const [navigationReady, setNavigationReady] = useState(false);
+  const [startupReady, setStartupReady] = useState(false);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
   const pendingAuthNavigation = React.useRef(false);
   const finish = useCallback(() => setSplashAnimationFinished(true), []);
@@ -55,6 +58,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void preloadStartupData().then(() => {
+      if (active) setStartupReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user && !session.user.is_anonymous) {
         routeToShop();
@@ -64,46 +77,48 @@ export default function App() {
   }, [routeToShop]);
 
   useEffect(() => {
-    if (hasSeenOnboarding === null) return;
+    if (hasSeenOnboarding === null || !startupReady) return;
     void SplashScreen.hideAsync().catch((error: unknown) => {
       console.error('Could not hide the native splash screen:', error);
     });
-  }, [hasSeenOnboarding]);
+  }, [hasSeenOnboarding, startupReady]);
 
   useEffect(() => {
-    if (splashAnimationFinished && navigationReady) setSplash(false);
-  }, [navigationReady, splashAnimationFinished]);
+    if (splashAnimationFinished && navigationReady && startupReady) setSplash(false);
+  }, [navigationReady, splashAnimationFinished, startupReady]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#F9FBF7' }}>
       <SafeAreaProvider>
         <AccountProvider>
           <DeliveryProvider>
-            <StoreProvider>
-              <FlyProvider>
-                <StatusBar style="dark" />
-                {hasSeenOnboarding !== null && (
-                  <Navigation
-                    initialRouteName={hasSeenOnboarding ? 'Tabs' : 'Onboarding'}
-                    onReady={handleNavigationReady}
-                  />
-                )}
-                <AnimatePresence>
-                  {splash && (
-                    <MotiView
-                      key="splash"
-                      style={StyleSheet.absoluteFill}
-                      from={{ opacity: 1 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ type: 'timing', duration: 400 }}
-                    >
-                      <SplashMorph onFinish={finish} />
-                    </MotiView>
+            <CurrencyProvider>
+              <StoreProvider>
+                <FlyProvider>
+                  <StatusBar style="dark" />
+                  {hasSeenOnboarding !== null && (
+                    <Navigation
+                      initialRouteName={hasSeenOnboarding ? 'Tabs' : 'Onboarding'}
+                      onReady={handleNavigationReady}
+                    />
                   )}
-                </AnimatePresence>
-              </FlyProvider>
-            </StoreProvider>
+                  <AnimatePresence>
+                    {splash && (
+                      <MotiView
+                        key="splash"
+                        style={StyleSheet.absoluteFill}
+                        from={{ opacity: 1 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ type: 'timing', duration: 400 }}
+                      >
+                        <SplashMorph onFinish={finish} />
+                      </MotiView>
+                    )}
+                  </AnimatePresence>
+                </FlyProvider>
+              </StoreProvider>
+            </CurrencyProvider>
           </DeliveryProvider>
         </AccountProvider>
       </SafeAreaProvider>

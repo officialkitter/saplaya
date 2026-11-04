@@ -20,7 +20,8 @@ import StatusPipeline from '../components/StatusPipeline';
 import { useAccount } from '../store/AccountContext';
 import { formatTanzaniaDate, formatTanzaniaDateTime } from '../lib/date-time';
 import { useStore } from '../store/StoreContext';
-import { colors, formatTZS, OrderStatus, radius, statusColor, statusLabel } from '../theme';
+import { colors, OrderStatus, radius, statusColor, statusLabel } from '../theme';
+import { useCurrency } from '../lib/currency';
 
 const ONGOING_STATUSES = new Set<OrderStatus>(['pending', 'packing', 'en_route']);
 
@@ -34,6 +35,7 @@ export default function TrackingScreen({ route }: any) {
   const { width } = useWindowDimensions();
   const { isSignedIn } = useAccount();
   const { lastOrderId } = useStore();
+  const { formatPrice } = useCurrency();
   const routeOrder: CustomerOrder | undefined = route?.params?.order;
   const routeOrderId: string | null = route?.params?.orderId ?? routeOrder?.id ?? lastOrderId;
   const [orders, setOrders] = useState<CustomerOrder[]>(routeOrder ? [routeOrder] : []);
@@ -185,7 +187,7 @@ export default function TrackingScreen({ route }: any) {
               <View style={styles.detailsCard}>
                 <Text style={styles.detailsTitle}>This delivery</Text>
                 <Text style={styles.detailsDate}>
-                  {selectedOrder.delivery_window === 'afternoon' ? 'Evening · 15:00–18:00' : 'Morning · 07:00–10:00'}
+                  Within {selectedOrder.delivery_window ?? '24h'}
                 </Text>
                 <Text style={styles.emptyText}>
                   {selectedOrder.payment_method === 'cash_on_delivery'
@@ -198,7 +200,7 @@ export default function TrackingScreen({ route }: any) {
                 <View style={[styles.amountRow, styles.grandTotal]}>
                   <Text style={styles.grandTotalLabel}>Order total</Text>
                   <Text style={styles.grandTotalValue}>
-                    {formatTZS(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
+                    {formatPrice(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
                   </Text>
                 </View>
               </View>
@@ -287,16 +289,16 @@ export default function TrackingScreen({ route }: any) {
                     )}
                     <View style={styles.amountRow}>
                       <Text style={styles.amountLabel}>Items subtotal</Text>
-                      <Text style={styles.amountValue}>{formatTZS(Number(selectedOrder.subtotal))}</Text>
+                      <Text style={styles.amountValue}>{formatPrice(Number(selectedOrder.subtotal))}</Text>
                     </View>
                     <View style={styles.amountRow}>
                       <Text style={styles.amountLabel}>Delivery</Text>
-                      <Text style={styles.amountValue}>{Number(selectedOrder.delivery_fee) === 0 ? 'FREE' : formatTZS(Number(selectedOrder.delivery_fee))}</Text>
+                      <Text style={styles.amountValue}>{Number(selectedOrder.delivery_fee) === 0 ? 'FREE' : formatPrice(Number(selectedOrder.delivery_fee))}</Text>
                     </View>
                     <View style={[styles.amountRow, styles.grandTotal]}>
                       <Text style={styles.grandTotalLabel}>Order total</Text>
                       <Text style={styles.grandTotalValue}>
-                        {formatTZS(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
+                        {formatPrice(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
                       </Text>
                     </View>
                   </MotiView>
@@ -321,6 +323,7 @@ function OrderCard({
   width: number;
   onPress: () => void;
 }>) {
+  const { formatPrice } = useCurrency();
   const previewImage = order.order_items?.find((item) => item.products?.image_url)?.products?.image_url;
   const status = order.status;
 
@@ -349,7 +352,7 @@ function OrderCard({
           <Ionicons name={selected ? 'checkmark-circle' : 'chevron-forward-circle-outline'} size={24} color={colors.green} />
         </View>
         <Text style={styles.orderCardMeta}>{order.order_items?.length ?? 0} items · {order.mode}</Text>
-        <Text style={styles.orderCardTotal}>{formatTZS(Number(order.subtotal) + Number(order.delivery_fee))}</Text>
+        <Text style={styles.orderCardTotal}>{formatPrice(Number(order.subtotal) + Number(order.delivery_fee))}</Text>
       </View>
     </Pressable>
   );
@@ -411,6 +414,7 @@ function OrderViewToggle({
 }
 
 function OrderLine({ item }: Readonly<{ item: OrderItem }>) {
+  const { formatPrice } = useCurrency();
   return (
     <View style={styles.itemRow}>
       {item.products?.image_url
@@ -419,10 +423,10 @@ function OrderLine({ item }: Readonly<{ item: OrderItem }>) {
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.products?.name ?? 'Fresh item'}</Text>
         <Text style={styles.itemMeta}>
-          {item.qty} × {item.products?.unit ?? 'item'} at {formatTZS(Number(item.unit_price))}
+          {item.qty} × {item.products?.unit ?? 'item'} at {formatPrice(Number(item.unit_price))}
         </Text>
       </View>
-      <Text style={styles.itemTotal}>{formatTZS(Number(item.unit_price) * Number(item.qty))}</Text>
+      <Text style={styles.itemTotal}>{formatPrice(Number(item.unit_price) * Number(item.qty))}</Text>
     </View>
   );
 }

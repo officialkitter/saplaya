@@ -1,22 +1,18 @@
-import React from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/StoreContext';
-import { useDeliveryPlace } from '../lib/location';
-import { deliveryTier, distanceKm, STORE } from '../lib/delivery';
-import ScooterBanner from '../components/ScooterBanner';
-import { colors, formatTZS, radius, shadow } from '../theme';
+import { colors, radius, shadow } from '../theme';
+import { volumeTierLabel } from '../lib/volume';
+import { useCurrency } from '../lib/currency';
 
 export default function CartScreen({ navigation }: any) {
-  const { lines, setQty, subtotal, priceOf } = useStore();
-  const place = useDeliveryPlace();
-
-  const km = distanceKm(STORE.lat, STORE.lng, place.lat, place.lng);
-  const tier = deliveryTier(km);
-  const total = subtotal + tier.fee;
+  const { lines, setQty, subtotal, priceOf, tierOf } = useStore();
+  const { formatPrice } = useCurrency();
+  const hasUnpricedTier = lines.some((line) => priceOf(line.product, line.qty) === null);
 
   const openCheckout = () => {
     const rootNavigation = navigation.getParent('RootStack');
@@ -49,7 +45,6 @@ export default function CartScreen({ navigation }: any) {
         data={lines}
         keyExtractor={(l) => l.product.id}
         contentContainerStyle={{ padding: 20, paddingBottom: 160 }}
-        ListHeaderComponent={tier.free ? <ScooterBanner km={km} /> : null}
         renderItem={({ item }) => (
           <View style={[styles.line, shadow]}>
             {item.product.image_url ? (
@@ -61,10 +56,15 @@ export default function CartScreen({ navigation }: any) {
             )}
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.name} numberOfLines={1}>{item.product.name}</Text>
-              <Text style={styles.price}>{formatTZS(priceOf(item.product) * item.qty)}</Text>
+              <Text style={styles.price}>
+                {priceOf(item.product, item.qty) === null ? 'Bulk price not set' : formatPrice((priceOf(item.product, item.qty) ?? 0) * item.qty)}
+              </Text>
+              <Text style={[styles.tierLabel, (tierOf(item.product, item.qty) === 'bulk' || tierOf(item.product, item.qty) === 'mega_bulk') && styles.bulkTier]}>
+                {volumeTierLabel(tierOf(item.product, item.qty))}
+              </Text>
               <View style={styles.stepper}>
                 <Pressable onPress={() => setQty(item.product.id, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={colors.green} /></Pressable>
-                <Text style={styles.qty}>{item.qty}</Text>
+                <QuantityInput qty={item.qty} onChange={(qty) => setQty(item.product.id, qty)} />
                 <Pressable onPress={() => setQty(item.product.id, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={colors.green} /></Pressable>
               </View>
               <Pressable style={styles.remove} onPress={() => setQty(item.product.id, 0)} accessibilityRole="button">
@@ -76,22 +76,50 @@ export default function CartScreen({ navigation }: any) {
         )}
         ListFooterComponent={
           <View style={styles.summary}>
-            <Row label="Items" value={formatTZS(subtotal)} />
-            <Row label={tier.label} value={tier.free ? 'FREE' : formatTZS(tier.fee)} accent={tier.free} />
-            <Text style={styles.dist}>{km.toFixed(1)} km from our hub{place.approximate ? ' (approx. — enable location for exact)' : ''}</Text>
+            <Row label="Items" value={formatPrice(subtotal)} />
+            <Text style={styles.dist}>Farm availability, delivery distance and fees are confirmed at checkout.</Text>
           </View>
         }
       />
       <View style={styles.bar}>
         <View>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.total}>{formatTZS(total)}</Text>
+          <Text style={styles.totalLabel}>Items</Text>
+          <Text style={styles.total}>{formatPrice(subtotal)}</Text>
         </View>
-        <Pressable style={[styles.cta, { flex: 1, marginLeft: 16 }]} onPress={openCheckout}>
-          <Text style={styles.ctaText}>Continue to checkout</Text>
+        <Pressable style={[styles.cta, hasUnpricedTier && styles.disabled, { flex: 1, marginLeft: 16 }]} onPress={openCheckout} disabled={hasUnpricedTier}>
+          <Text style={styles.ctaText}>{hasUnpricedTier ? 'Bulk price not available' : 'Continue to checkout'}</Text>
         </Pressable>
       </View>
     </SafeAreaView>
+  );
+}
+
+function QuantityInput({ qty, onChange }: { qty: number; onChange: (qty: number) => void }) {
+  const [value, setValue] = useState(String(qty));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setValue(String(qty));
+  }, [qty, editing]);
+
+  return (
+    <TextInput
+      value={value}
+      onChangeText={(text) => {
+        setValue(text);
+        if (/^\d*\.?\d*$/.test(text) && Number(text) > 0 && Number(text) <= 10000) onChange(Number(text));
+      }}
+      onFocus={() => setEditing(true)}
+      onEndEditing={() => {
+        const parsed = Number(value);
+        const next = Number.isFinite(parsed) && parsed > 0 && parsed <= 10000 ? parsed : qty;
+        setValue(String(next));
+        onChange(next);
+        setEditing(false);
+      }}
+      keyboardType="decimal-pad"
+      accessibilityLabel="Enter basket quantity"
+      style={styles.qtyInput}
+    />
   );
 }
 
@@ -115,9 +143,11 @@ const styles = StyleSheet.create({
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 17, fontWeight: '800', color: colors.ink },
   price: { fontSize: 16, fontWeight: '800', color: colors.green, marginTop: 2 },
+  tierLabel: { color: colors.green, fontWeight: '800', fontSize: 12, marginTop: 3 },
+  bulkTier: { color: colors.bulk },
   stepper: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 8, backgroundColor: '#F1F8E9', borderRadius: 14 },
   sBtn: { width: 38, height: 34, alignItems: 'center', justifyContent: 'center' },
-  qty: { minWidth: 26, textAlign: 'center', fontWeight: '900', color: colors.ink },
+  qtyInput: { minWidth: 54, textAlign: 'center', fontWeight: '900', color: colors.ink, paddingVertical: 6 },
   remove: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, paddingVertical: 7 },
   removeText: { color: '#C62828', fontSize: 12, fontWeight: '800' },
   summary: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, marginTop: 4 },
@@ -129,5 +159,6 @@ const styles = StyleSheet.create({
   totalLabel: { color: colors.muted, fontSize: 13 },
   total: { fontSize: 22, fontWeight: '900', color: colors.ink },
   cta: { minHeight: 58, borderRadius: radius.lg, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  disabled: { opacity: 0.65 },
   ctaText: { color: colors.white, fontSize: 16, fontWeight: '900', textAlign: 'center' },
 });

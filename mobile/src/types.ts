@@ -9,6 +9,9 @@ export type Product = {
   retail_price: number;
   wholesale_price: number;
   wholesale_min_qty: number;
+  bulk_price: number | null;
+  mega_bulk_price: number | null;
+  farm_distance_km?: number | null;
   stock: number;
   image_url: string | null;
   harvested_at: string;

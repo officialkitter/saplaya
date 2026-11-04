@@ -4,8 +4,13 @@ import { Mode, Product, Promo } from '../types';
 
 const PAGE = 20;
 
-export async function fetchProducts(page: number): Promise<{ items: Product[]; hasMore: boolean }> {
-  const response = await fetch(`${API_URL}/products?page=${page}&size=${PAGE}`);
+export async function fetchProducts(page: number, location?: { lat: number; lng: number }): Promise<{ items: Product[]; hasMore: boolean }> {
+  const query = new URLSearchParams({ page: String(page), size: String(PAGE) });
+  if (location) {
+    query.set('lat', String(location.lat));
+    query.set('lng', String(location.lng));
+  }
+  const response = await fetch(`${API_URL}/products?${query.toString()}`);
   if (!response.ok) throw new Error('Could not load items');
   return response.json();
 }
@@ -44,13 +49,62 @@ async function authenticatedRequest<T>(path: string, options: AuthenticatedOptio
 
 export type CheckoutInput = {
   mode: Mode;
-  delivery_window: 'morning' | 'afternoon';
+  delivery_window: DeliveryEta;
+  delivery_fee_accepted: boolean;
+  quoted_delivery_fee: number;
   items: { product_id: string; qty: number }[];
   lat: number;
   lng: number;
   customer: { name: string; email: string; phone: string };
   payment_phone?: string;
 };
+
+export type DeliveryEta = '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
+export type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
+export type CheckoutQuote = {
+  items: {
+    requested_product_id: string;
+    product_id: string;
+    qty: number;
+    unit_price: number;
+    distance_km: number;
+  }[];
+  subtotal: number;
+  distance_km: number;
+  distance_fee: number;
+  speed_fee: number;
+  delivery_fee: number;
+  amount: number;
+};
+
+export async function fetchCheckoutQuote(input: {
+  mode: Mode;
+  delivery_window: DeliveryEta;
+  items: { product_id: string; qty: number }[];
+  lat: number;
+  lng: number;
+}): Promise<CheckoutQuote> {
+  const response = await fetch(`${API_URL}/checkout/quote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const result = await response.json() as CheckoutQuote | { error?: string };
+  if (!response.ok) {
+    throw new Error(
+      typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
+        ? result.error
+        : 'Could not prepare your delivery quote.',
+    );
+  }
+  return result as CheckoutQuote;
+}
+
+export async function fetchDeliveryOptions(): Promise<DeliveryOption[]> {
+  const response = await fetch(`${API_URL}/delivery-options`);
+  if (!response.ok) throw new Error('Could not load delivery options.');
+  return response.json();
+}
 
 export type SavedPaymentMethod = {
   id: string;
@@ -73,7 +127,7 @@ export type CustomerOrder = {
   subtotal: number;
   delivery_fee: number;
   created_at: string;
-  delivery_window?: 'morning' | 'afternoon';
+  delivery_window?: DeliveryEta;
   payment_method?: 'pesapal' | 'cash_on_delivery';
   customer_email?: string;
   order_items: OrderItem[];
@@ -99,7 +153,7 @@ export function placeCashOrder(input: CheckoutInput & { request_key: string }) {
     subtotal: number;
     delivery_fee: number;
     amount: number;
-    delivery_window: 'morning' | 'afternoon';
+    delivery_window: DeliveryEta;
     created_at: string;
     items: { product_id: string; qty: number; unit_price: number }[];
   }>('/orders/cash', { method: 'POST', body: input });

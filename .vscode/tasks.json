@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Check Supabase migration status",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"--yes",
+				"supabase@latest",
+				"migration",
+				"list",
+				"--project-ref",
+				"gycjliqtcstomzegfcbz"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check remote Supabase migrations (dry run only)",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"const {spawnSync}=require('node:child_process'); const specs=[['MIGRATION LIST',['--yes','supabase@latest','migration','list','--remote','gycjliqtcstomzegfcbz']],['DB PUSH DRY RUN',['--yes','supabase@latest','db','push','--dry-run','--remote','gycjliqtcstomzegfcbz']]]; for (const [label,args] of specs) { const r=spawnSync('npx',args,{encoding:'utf8',shell:true}); let s=((r.stdout||'')+(r.stderr||'')); s=s.replace(/sbp_[A-Za-z0-9_-]+/g,'[REDACTED_TOKEN]').replace(/eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+/g,'[REDACTED_JWT]').replace(/(SUPABASE_ACCESS_TOKEN|access_token|password|secret)(\\s*[=:]\\s*)\\S+/gi,'$1$2[REDACTED]'); console.log('=== '+label+' ==='); console.log(s.trimEnd()); console.log('EXIT_CODE='+(r.status===null?'null':r.status)); if(r.error) console.log('SPAWN_ERROR='+String(r.error)); }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

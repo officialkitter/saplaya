@@ -41,7 +41,7 @@ export function Footer() {
           <a href="#faq" className="hover:text-leaf">Questions</a>
           <Link href="/login" className="hover:text-leaf">Farm and team sign in</Link>
         </nav>
-        <p className="text-sm text-ink-mute">&copy; 2026 Saplaya. Dodoma, Tanzania.</p>
+        <p className="text-sm text-ink-mute">&copy; 2026 Saplaya. Farm availability and distance are location-aware.</p>
       </div>
     </footer>
   );
