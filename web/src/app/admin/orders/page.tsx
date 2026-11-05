@@ -13,7 +13,7 @@ import { cn, formatNum, formatTZS, nextStatus, STATUS, STATUS_ALL, STATUS_FLOW, 
 import { can, isFarmRole } from '@/lib/roles';
 import { customerLabel, customerPhone, orderTotal } from '@/lib/stats';
 import { useDB, useScope, useToast } from '@/lib/store';
-import type { OrderStatus, Role, SupplierOrder } from '@/lib/types';
+import type { OrderStatus, Perm, Role, SupplierOrder } from '@/lib/types';
 
 const NODES = [
   { status: 'pending' as const, icon: ClipboardList, label: 'Received' },
@@ -23,8 +23,8 @@ const NODES = [
 ];
 
 /** What this person may do to an order right now. */
-function actionsFor(role: Role, status: OrderStatus) {
-  const allowed = can(role, 'orders.update_status');
+function actionsFor(role: Role, status: OrderStatus, permissions?: Perm[]) {
+  const allowed = can(role, 'orders.update_status', permissions);
   const next = nextStatus(status);
   const driver = role === 'driver';
   return {
@@ -109,7 +109,7 @@ function Orders() {
   const tabs: (OrderStatus | 'all')[] = me.role === 'driver' ? ['all', 'packing', 'en_route', 'delivered'] : ['all', ...STATUS_ALL];
 
   async function advance(o: SupplierOrder) {
-    const a = actionsFor(me!.role, o.status);
+    const a = actionsFor(me!.role, o.status, me!.permissions);
     if (!a.next) return;
     try {
       await setOrderStatus(o.id, a.next);
@@ -131,7 +131,7 @@ function Orders() {
   }
 
   function ActionButtons({ o, size = 'sm' }: { o: SupplierOrder; size?: 'sm' | 'md' }) {
-    const a = actionsFor(me!.role, o.status);
+    const a = actionsFor(me!.role, o.status, me!.permissions);
     if (!a.next && !a.cancel) return null;
     return (
       <div className="flex flex-wrap gap-2">
@@ -203,7 +203,7 @@ function Orders() {
                 </button>
                 <button onClick={() => setOpenId(o.id)} className="min-w-0 text-left">
                   <p className="font-display text-lg font-extrabold">{o.code}{!farmId && <span className="ml-2 text-[15px] font-semibold text-leaf">{farmName.get(o.supplierId)}</span>}</p>
-                  <p className="truncate text-ink-soft">{customerLabel(o, me.role)} · {o.area} · {o.mode === 'wholesale' ? 'Wholesale' : 'Retail'}</p>
+                  <p className="truncate text-ink-soft">{customerLabel(o, me.role, me.roleScope)} · {o.area} · {o.mode === 'wholesale' ? 'Wholesale' : 'Retail'}</p>
                   <p className="text-sm text-ink-mute">{timeAgo(o.placedAt)}</p>
                 </button>
                 <p className="hidden text-ink-soft md:block">{o.items.length} item{o.items.length === 1 ? '' : 's'}: {o.items.map((it) => byId.get(it.productId)?.name).filter(Boolean).slice(0, 2).join(', ')}{o.items.length > 2 ? '…' : ''}</p>
@@ -232,15 +232,15 @@ function Orders() {
             <div className="rounded-3xl bg-white p-5 shadow-soft"><Pipeline status={open.status} /></div>
 
             <div className="grid grid-cols-2 gap-3 text-[15px]">
-              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Customer</p><p className="font-bold">{customerLabel(open, me.role)}</p></div>
+              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Customer</p><p className="font-bold">{customerLabel(open, me.role, me.roleScope)}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery area</p><p className="font-bold">{open.area}</p></div>
-              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Phone</p><p className={cn('font-bold', isFarmRole(me.role) && 'text-ink-mute')}>{customerPhone(open, me.role)}</p></div>
+              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Phone</p><p className={cn('font-bold', isFarmRole(me.role, me.roleScope) && 'text-ink-mute')}>{customerPhone(open, me.role, me.roleScope)}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Shopping mode</p><p className="font-bold">{open.mode === 'wholesale' ? 'Wholesale' : 'Retail'}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery timeframe</p><p className="font-bold">{open.deliveryWindow ? `Within ${open.deliveryWindow}` : 'Within 24h'}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Payment</p><p className="font-bold">{open.paymentMethod === 'cash_on_delivery' ? 'Cash on delivery' : 'Paid online'}</p></div>
             </div>
 
-            {isFarmRole(me.role) && (
+            {isFarmRole(me.role, me.roleScope) && (
               <p className="flex items-start gap-3 rounded-2xl bg-sun-soft p-4 text-[15px] text-ink-soft">
                 <Lock size={18} className="mt-0.5 shrink-0 text-sun-deep" />
                 To protect customers, farms only see a first name and the delivery area. The driver has the phone number.

@@ -48,12 +48,11 @@ export function FreshToday() {
           On the shelf {localPeriod ? `this ${localPeriod}` : 'today'}.
         </h2>
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
-          Nearby stocked farms appear first; results widen to farther suppliers when nearby options are limited.
+          Browsing {market.countryName ?? 'the global marketplace'}. Share your location if you want nearby stocked farms prioritized.
         </p>
         {market.location && (
           <p className="mt-2 text-sm font-semibold text-leaf-deep">
-            Current location {market.location.lat.toFixed(4)}, {market.location.lng.toFixed(4)}
-            {' · '}GPS accuracy about {Math.round(market.location.accuracy)} m · sorted closest first
+            Nearby farms are prioritized{market.countryName ? ` for ${market.countryName}` : ''}. Your exact location is not shown.
           </p>
         )}
         {market.ratesLoading && market.currency !== 'TZS' ? (
@@ -104,25 +103,41 @@ export function FreshToday() {
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   {section.products.map((product) => (
-                    <article key={product.id} className="group relative aspect-[4/5] overflow-hidden rounded-[1.75rem] bg-line">
-                      <SmartImage
-                        src={product.image_url ?? undefined}
-                        alt={product.name}
-                        className="absolute inset-0 text-6xl"
-                        imgClassName="transition duration-700 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/10 to-transparent" />
-                      <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-leaf-deep">
-                        <Sprout size={14} /> Harvested {Math.max(0, Math.floor((Date.now() - Date.parse(product.harvested_at)) / 3_600_000))} hours ago
+                    <article key={product.id} className="group overflow-hidden rounded-[1.75rem] bg-white shadow-soft">
+                      <div className="relative aspect-[4/3] overflow-hidden bg-line">
+                        <SmartImage
+                          src={product.image_url ?? undefined}
+                          alt={product.name}
+                          className="absolute inset-0 text-6xl"
+                          imgClassName="transition duration-700 group-hover:scale-105"
+                        />
+                        <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-leaf-deep">
+                          <Sprout size={14} /> Harvested {Math.max(0, Math.floor((Date.now() - Date.parse(product.harvested_at)) / 3_600_000))} hours ago
+                        </div>
                       </div>
-                      <div className="absolute inset-x-4 bottom-4 text-white">
-                        <h4 className="font-display text-xl font-extrabold">{product.name}</h4>
-                        <p className="mt-0.5 font-bold text-sun">
-                          {market.formatPrice(product.retail_price)} <span className="text-sm font-medium text-white/80">per {product.unit}</span>
+                      <div className="p-3 sm:p-4">
+                        <h4 className="truncate font-display text-lg font-extrabold text-ink sm:text-xl">{product.name}</h4>
+                        <p className="mt-0.5 font-bold text-leaf-deep">
+                          {market.formatPrice(product.retail_price)} <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
                         </p>
                         {typeof product.farm_distance_km === 'number' && (
-                          <p className="text-xs font-semibold text-white/80">{product.farm_distance_km.toFixed(1)} km away</p>
+                          <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>
                         )}
+                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Available volume price tiers">
+                          <span className="rounded-full bg-leaf-soft px-2 py-1 text-[10px] font-bold text-leaf-deep">
+                            Wholesale · {market.formatPrice(product.wholesale_price)} from {product.wholesale_min_qty}
+                          </span>
+                          {product.bulk_price !== null && (
+                            <span className="rounded-full bg-[#E0F2F1] px-2 py-1 text-[10px] font-bold text-[#00796B]">
+                              Bulk · {market.formatPrice(product.bulk_price)} from {product.wholesale_min_qty * 10}
+                            </span>
+                          )}
+                          {product.mega_bulk_price !== null && (
+                            <span className="rounded-full bg-[#B2DFDB] px-2 py-1 text-[10px] font-bold text-[#00695C]">
+                              Mega-bulk · {market.formatPrice(product.mega_bulk_price)} from {product.wholesale_min_qty * 100}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </article>
                   ))}

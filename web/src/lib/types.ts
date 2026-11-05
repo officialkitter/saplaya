@@ -1,9 +1,30 @@
-export type Role =
+export type BuiltinRole =
   | 'platform_owner'
   | 'platform_manager'
   | 'supplier_owner'
   | 'supplier_staff'
   | 'driver';
+export type Role = BuiltinRole | (string & {});
+export type DepartmentScope = 'platform' | 'farm';
+export type Perm =
+  | 'dashboard.view'
+  | 'orders.view'
+  | 'orders.update_status'
+  | 'products.view'
+  | 'products.edit'
+  | 'catalog.manage'
+  | 'stock.adjust'
+  | 'inventory.view'
+  | 'suppliers.view_all'
+  | 'suppliers.manage'
+  | 'team.view'
+  | 'team.manage'
+  | 'settings.manage'
+  | 'finance.view'
+  | 'marketing.view'
+  | 'stores.view'
+  | 'system.view'
+  | 'team.roles.manage';
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';
 export type Mode = 'retail' | 'wholesale';
@@ -53,6 +74,7 @@ export interface Product {
   emoji: string;
   harvestedHoursAgo: number;
   active: boolean;
+  approvalStatus?: 'approved' | 'pending' | 'unlinked';
 }
 
 export interface OrderItem {
@@ -98,6 +120,12 @@ export interface TeamMember {
   name: string;
   email: string;
   role: Role;
+  roleLabel?: string;
+  roleScope?: DepartmentScope;
+  permissions?: Perm[];
+  departmentId?: string;
+  department?: string;
+  departmentTheme?: string;
   status: MemberStatus;
 }
 

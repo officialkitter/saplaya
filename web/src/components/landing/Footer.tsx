@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import { Smartphone } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
+import { useGlobalMarket } from '@/lib/global-market';
 
 export function Download() {
   return (
@@ -31,17 +34,21 @@ export function Download() {
 }
 
 export function Footer() {
+  const { countryName, marketAccent } = useGlobalMarket();
   return (
     <footer className="border-t border-line bg-white">
       <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-5 py-10 sm:flex-row sm:items-center">
         <Logo />
+        <p className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: marketAccent }}>
+          {countryName ? `Browser region: ${countryName}` : 'Global marketplace'}
+        </p>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-[15px] font-semibold text-ink-soft" aria-label="Footer">
           <a href="#how" className="hover:text-leaf">How it works</a>
           <a href="#farmers" className="hover:text-leaf">Sell on Saplaya</a>
           <a href="#faq" className="hover:text-leaf">Questions</a>
-          <Link href="/login" className="hover:text-leaf">Farm and team sign in</Link>
+          <Link href="/login" className="hover:text-leaf">Member sign in</Link>
         </nav>
-        <p className="text-sm text-ink-mute">&copy; 2026 Saplaya. Farm availability and distance are location-aware.</p>
+        <p className="text-sm text-ink-mute">&copy; 2026 Saplaya. Location access is optional and used to prioritize nearby farms.</p>
       </div>
     </footer>
   );

@@ -10,9 +10,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Logo, LogoMark } from '@/components/ui/Logo';
 import { cn, initials } from '@/lib/format';
-import { can, isFarmRole, ROLE_INFO, type Perm } from '@/lib/roles';
+import { can, isFarmRole, roleInfo } from '@/lib/roles';
 import { getSupabase } from '@/lib/supabase';
 import { useBoot, useDB, useMe, useScope, useToast } from '@/lib/store';
+import type { Perm } from '@/lib/types';
 
 interface NavItem { href: string; label: string; icon: typeof Package; perm: Perm; exact?: boolean }
 
@@ -38,9 +39,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const push = useToast((s) => s.push);
   if (!me) return null;
 
-  const info = ROLE_INFO[me.role];
+  const info = roleInfo(me.role, me.roleLabel, me.roleScope);
   const farm = farmId ? suppliers.find((s) => s.id === farmId) : null;
-  const items = navFor(isFarmRole(me.role)).filter((i) => can(me.role, i.perm));
+  const items = navFor(isFarmRole(me.role, me.roleScope)).filter((i) => can(me.role, i.perm, me.permissions));
   const newOrders = orders.filter((o) => o.status === 'pending').length;
   const newApps = applications.filter((a) => a.status === 'new').length;
 
@@ -64,7 +65,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col">
       <div className="px-5 pb-4 pt-6">
         <Link href="/admin" onClick={onNavigate} aria-label="Saplaya home"><Logo /></Link>
-        <p className="mt-4 rounded-2xl bg-leaf-soft px-3.5 py-2 text-sm font-bold text-leaf-deep">
+        <p className="mt-4 rounded-2xl px-3.5 py-2 text-sm font-bold text-white" style={{ backgroundColor: me.departmentTheme ?? '#2E7D32' }}>
           {farm ? farm.name : 'Saplaya team'}
         </p>
       </div>

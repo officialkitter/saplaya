@@ -4,10 +4,10 @@ import { motion } from 'framer-motion';
 import { ClipboardList, DoorOpen, ShoppingBag, Truck } from 'lucide-react';
 
 const STEPS = [
-  { icon: ClipboardList, color: '#FFB300', title: 'We get your order', text: 'The moment you tap Place order, the farm that grew your food is told.' },
-  { icon: ShoppingBag, color: '#0288D1', title: 'The farm packs it', text: 'Your items are picked, weighed and packed in paper bags.' },
-  { icon: Truck, color: '#7B1FA2', title: 'On the way', text: 'A Saplaya van brings it to you. Watch it move on the map.' },
-  { icon: DoorOpen, color: '#2E7D32', title: 'At your door', text: 'Fresh food, delivered. Pay when it arrives.' },
+  { icon: ClipboardList, color: '#FFB300', title: 'Confirm your basket', text: 'The available stock, selected farm locations, item prices and delivery charges are checked before checkout.' },
+  { icon: ShoppingBag, color: '#0288D1', title: 'The farm prepares it', text: 'Your selected farm receives the order details needed to prepare the items.' },
+  { icon: Truck, color: '#7B1FA2', title: 'Choose delivery speed', text: 'Review the delivery timeframe and any extra charge before confirming your order.' },
+  { icon: DoorOpen, color: '#2E7D32', title: 'Track your order', text: 'Follow order status updates from your customer account.' },
 ];
 
 /** The same four stages, in the same colours, that customers see in the app. */
@@ -16,10 +16,10 @@ export function Pipeline() {
     <section id="how" className="bg-white py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-5">
         <h2 className="max-w-2xl font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-          Follow your order from the field to your front door.
+          From nearby farm stock to your delivery address.
         </h2>
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
-          Every step lights up in the app as it happens, so you never have to call and ask.
+          Nearby farms are prioritized when they have enough stock. If needed, the search widens to farther suppliers and refreshes the distance-based quote.
         </p>
 
         <motion.ol

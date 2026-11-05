@@ -71,8 +71,8 @@ function Phone({
               <Truck size={18} />
             </motion.span>
             <div className="leading-tight">
-              <p className="text-[11px] text-ink-mute">Local farm delivery</p>
-              <p className="text-[15px] font-extrabold">Check your area in the app</p>
+              <p className="text-[11px] text-ink-mute">Location-aware farm search</p>
+              <p className="text-[15px] font-extrabold">Nearest stocked farms first</p>
             </div>
           </div>
 
@@ -112,6 +112,9 @@ function Phone({
                         </motion.p>
                       </AnimatePresence>
                     </div>
+                    {typeof it.farm_distance_km === 'number' && (
+                      <p className="text-[10px] font-semibold text-ink-mute">{it.farm_distance_km.toFixed(1)} km away</p>
+                    )}
                     <AnimatePresence initial={false}>
                       {wholesale && (
                         <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-sun-deep">
@@ -119,6 +122,16 @@ function Phone({
                         </motion.p>
                       )}
                     </AnimatePresence>
+                    {it.bulk_price !== null && (
+                      <p className="mt-1 truncate text-[10px] font-bold text-[#00796B]">
+                        Bulk {formatPrice(it.bulk_price)} · {it.wholesale_min_qty * 10}+ {it.unit}
+                      </p>
+                    )}
+                    {it.mega_bulk_price !== null && (
+                      <p className="truncate text-[10px] font-bold text-[#00695C]">
+                        Mega {formatPrice(it.mega_bulk_price)} · {it.wholesale_min_qty * 100}+ {it.unit}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -142,7 +155,7 @@ export function Hero() {
             Farm-fresh food, at your door in hours.
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            Find produce from nearby stocked farms first, with more suppliers shown as the search widens. Buy a little for your kitchen or a lot for your shop.
+            {market.countryName ? `Region: ${market.countryName}. ` : ''}Share your location to prioritize nearby stocked farms, or browse without it. Buy a little for your kitchen or a lot for your shop.
           </p>
 
           <div className="mt-9">

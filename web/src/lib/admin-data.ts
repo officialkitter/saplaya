@@ -1,6 +1,6 @@
 import type { DB } from '@/lib/store';
 import { fetchAdmin } from '@/lib/supabase';
-import type { Role } from '@/lib/types';
+import type { Perm, Role } from '@/lib/types';
 
 type MemberResponse = {
   id: string;
@@ -8,8 +8,13 @@ type MemberResponse = {
   full_name: string;
   email: string;
   role: Role;
+  role_label: string;
+  role_scope: 'platform' | 'farm';
+  permissions: Perm[];
+  department_id: string;
+  department: string;
+  department_theme: string;
   status: 'active' | 'invited' | 'suspended';
-  permissions: string[];
 };
 
 type Row = Record<string, unknown>;
@@ -42,7 +47,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
   const permissions = new Set(member.permissions);
   const jobs: Promise<unknown>[] = [];
   const keys: string[] = [];
-  const enqueue = (permission: string, key: string, path: string) => {
+  const enqueue = (permission: Perm, key: string, path: string) => {
     if (permissions.has(permission)) {
       keys.push(key);
       jobs.push(fetchAdmin<unknown>(path));
@@ -68,6 +73,12 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       name: member.full_name,
       email: member.email,
       role: member.role,
+      roleLabel: member.role_label,
+      roleScope: member.role_scope,
+      permissions: member.permissions,
+      departmentId: member.department_id,
+      department: member.department,
+      departmentTheme: member.department_theme,
       status: member.status,
     }],
     sessionId: member.id,
@@ -108,6 +119,9 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       emoji: '🌿',
       harvestedHoursAgo: Math.max(0, (Date.now() - timestamp(product.harvested_at)) / 3_600_000),
       active: product.active !== false,
+      approvalStatus: product.approval_status === 'approved'
+        ? 'approved'
+        : product.approval_status === 'pending' ? 'pending' : 'unlinked',
     }));
   }
 
@@ -160,6 +174,12 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       name: text(person.full_name),
       email: text(person.email),
       role: text(person.role) as Role,
+      roleLabel: text(person.role_label, text(person.role)),
+      roleScope: text(person.role_scope, person.supplier_id ? 'farm' : 'platform') as 'platform' | 'farm',
+      permissions: Array.isArray(person.permissions) ? person.permissions as Perm[] : [],
+      departmentId: text(person.department_id),
+      department: text(person.department, 'Unassigned'),
+      departmentTheme: text(person.department_theme, '#6B7A6C'),
       status: text(person.status, 'invited') as 'active' | 'invited' | 'suspended',
     }));
     mapped.sessionId = member.id;
@@ -186,7 +206,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
 
   if (settings) {
     mapped.settings = {
-      hubName: text(settings.hub_name, 'Dodoma Central Hub'),
+      hubName: text(settings.hub_name, 'Saplaya Operations Hub'),
       freeRadiusKm: number(settings.free_radius_km, 5),
       midRadiusKm: number(settings.mid_radius_km, 10),
       midFee: number(settings.mid_fee, 2000),

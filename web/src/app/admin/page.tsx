@@ -9,11 +9,12 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Guarded, Panel } from '@/components/admin/Guard';
+import { DepartmentDashboards } from '@/components/admin/DepartmentDashboards';
 import { RestockModal } from '@/components/admin/RestockModal';
 import { Button, LinkButton } from '@/components/ui/Button';
 import { CountUp, StatusPill } from '@/components/ui/Bits';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { formatNum, formatTZS, STATUS, timeAgo, tanzaniaHour } from '@/lib/format';
+import { formatNum, formatTZS, STATUS, timeAgo, localHour } from '@/lib/format';
 import { photoUrl } from '@/lib/images';
 import { can } from '@/lib/roles';
 import { customerLabel, isLow, modeSplitByDay, orderTotal, ordersByArea, ordersByHour, salesByCategory, salesByDay, salesByFarm, statusCounts, topProducts, weekChange, countsAsSale } from '@/lib/stats';
@@ -23,7 +24,7 @@ const AXIS = { fontSize: 12, fill: '#6B7A6C' };
 const TIP = { borderRadius: 14, border: '1px solid #E3EBE0', boxShadow: '0 10px 24px -12px rgba(27,94,32,.35)', fontWeight: 600 } as const;
 
 function greeting() {
-  const h = tanzaniaHour();
+  const h = localHour();
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
@@ -39,7 +40,7 @@ function Dashboard() {
   const statuses = useMemo(() => statusCounts(orders), [orders]);
   const top = useMemo(() => topProducts(orders, products, 6), [orders, products]);
   const byFarm = useMemo(() => salesByFarm(orders, suppliers), [orders, suppliers]);
-  const low = useMemo(() => products.filter(isLow).sort((a, b) => a.stock / a.lowStockAt - b.stock / b.lowStockAt), [products]);
+  const low = useMemo(() => products.filter((p) => p.approvalStatus !== 'pending' && isLow(p)).sort((a, b) => a.stock / a.lowStockAt - b.stock / b.lowStockAt), [products]);
   const delivered = orders.filter((o) => o.status === 'delivered').length;
   const done = orders.filter((o) => o.status !== 'cancelled').length;
   const avg = done ? total14 / done : 0;
@@ -54,7 +55,7 @@ function Dashboard() {
 
   if (!me) return null;
   const first = me.name.split(' ')[0];
-  const canRestock = can(me.role, 'stock.adjust');
+  const canRestock = can(me.role, 'stock.adjust', me.permissions);
 
   const todo: string[] = [];
   if (pending > 0) todo.push(`${pending} new order${pending === 1 ? '' : 's'} waiting to be packed`);
@@ -112,6 +113,8 @@ function Dashboard() {
           <p className="mt-1 text-sm text-ink-mute">{platform ? `${suppliers.filter((s) => s.status === 'active').length} farms selling` : `${products.filter((p) => p.active).length} products in the shop`}</p>
         </div>
       </section>
+
+      <DepartmentDashboards member={me} />
 
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
@@ -292,7 +295,7 @@ function Dashboard() {
                 })}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-bold">{o.code} <span className="font-medium text-ink-mute">· {customerLabel(o, me.role)}, {o.area}</span></p>
+                <p className="font-bold">{o.code} <span className="font-medium text-ink-mute">· {customerLabel(o, me.role, me.roleScope)}, {o.area}</span></p>
                 <p className="text-sm text-ink-mute">{timeAgo(o.placedAt)}</p>
               </div>
               <p className="font-extrabold">{formatTZS(orderTotal(o))}</p>

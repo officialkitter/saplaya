@@ -1,27 +1,13 @@
-import type { Role } from './types';
+import type { BuiltinRole, Perm, Role } from './types';
 
-export type Perm =
-  | 'dashboard.view'
-  | 'orders.view'
-  | 'orders.update_status'
-  | 'products.view'
-  | 'products.edit'
-  | 'catalog.manage'
-  | 'stock.adjust'
-  | 'inventory.view'
-  | 'suppliers.view_all'
-  | 'suppliers.manage'
-  | 'team.view'
-  | 'team.manage'
-  | 'settings.manage';
-
-/** Keep this table identical to PERMISSIONS in backend/src/index.ts. The backend is the real gatekeeper. */
-export const PERMS: Record<Role, Perm[]> = {
+/** Fallback permissions for built-in roles. The backend remains the authorization gatekeeper. */
+export const PERMS: Record<BuiltinRole, Perm[]> = {
   platform_owner: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
     'catalog.manage', 'stock.adjust',
     'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
     'team.manage', 'settings.manage',
+    'finance.view', 'marketing.view', 'stores.view', 'system.view', 'team.roles.manage',
   ],
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
@@ -38,11 +24,12 @@ export const PERMS: Record<Role, Perm[]> = {
   driver: ['orders.view', 'orders.update_status'],
 };
 
-export const can = (role: Role | undefined | null, perm: Perm): boolean =>
-  !!role && PERMS[role].includes(perm);
+export const can = (role: Role | undefined | null, perm: Perm, assignedPermissions?: Perm[]): boolean =>
+  !!role && (PERMS[role as BuiltinRole]?.includes(perm) ?? !!assignedPermissions?.includes(perm));
 
-export const isFarmRole = (role: Role) => role === 'supplier_owner' || role === 'supplier_staff';
-export const isPlatformRole = (role: Role) => !isFarmRole(role);
+export const isFarmRole = (role: Role, scope?: 'platform' | 'farm') =>
+  scope ? scope === 'farm' : role === 'supplier_owner' || role === 'supplier_staff';
+export const isPlatformRole = (role: Role, scope?: 'platform' | 'farm') => !isFarmRole(role, scope);
 
 export interface RoleInfo {
   label: string;
@@ -52,7 +39,7 @@ export interface RoleInfo {
   cannot: string[];
 }
 
-export const ROLE_INFO: Record<Role, RoleInfo> = {
+export const ROLE_INFO: Record<BuiltinRole, RoleInfo> = {
   platform_owner: {
     label: 'Owner',
     scope: 'Saplaya team',
@@ -90,7 +77,7 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
   },
 };
 
-export const ROLE_ORDER: Role[] = [
+export const ROLE_ORDER: BuiltinRole[] = [
   'platform_owner',
   'platform_manager',
   'supplier_owner',
@@ -112,13 +99,30 @@ export const PERM_ROWS: { perm: Perm; label: string }[] = [
   { perm: 'team.view', label: 'See team members' },
   { perm: 'team.manage', label: 'Invite or pause team members' },
   { perm: 'settings.manage', label: 'Change delivery fees and settings' },
+  { perm: 'finance.view', label: 'See finance and payment summaries' },
+  { perm: 'marketing.view', label: 'See product and customer demand analytics' },
+  { perm: 'stores.view', label: 'See farm/store performance summaries' },
+  { perm: 'system.view', label: 'See platform administration metrics' },
+  { perm: 'team.roles.manage', label: 'Create departments and configurable roles' },
 ];
 
 /** Which roles a person is allowed to hand out. Nobody can create a role above their own. */
-export const ASSIGNABLE: Record<Role, Role[]> = {
+export const ASSIGNABLE: Record<BuiltinRole, BuiltinRole[]> = {
   platform_owner: ['platform_manager', 'driver', 'supplier_owner', 'supplier_staff'],
   platform_manager: [],
   supplier_owner: ['supplier_staff'],
   supplier_staff: [],
   driver: [],
 };
+
+export function roleInfo(role: Role, label?: string, scope?: 'platform' | 'farm'): RoleInfo {
+  const builtin = ROLE_INFO[role as BuiltinRole];
+  if (builtin) return builtin;
+  return {
+    label: label ?? role.replace(/[_-]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    scope: scope === 'farm' ? 'Farm team' : 'Saplaya team',
+    blurb: 'Custom role managed by your Saplaya administrator.',
+    badge: 'bg-[#E3F2FD] text-[#0D47A1]',
+    cannot: [],
+  };
+}

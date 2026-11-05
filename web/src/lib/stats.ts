@@ -1,5 +1,5 @@
 import type { Movement, OrderStatus, Product, Role, Supplier, SupplierOrder, Settings, TeamMember } from './types';
-import { STATUS_ALL, TANZANIA_TIME_ZONE, shortDate } from './format';
+import { STATUS_ALL, shortDate } from './format';
 import { isFarmRole } from './roles';
 
 const DAY = 86_400_000;
@@ -8,18 +8,15 @@ export const orderTotal = (o: SupplierOrder) => o.items.reduce((n, i) => n + i.q
 export const countsAsSale = (o: SupplierOrder) => o.status !== 'cancelled';
 
 export function dayKeys(days: number, now = Date.now()) {
-  const out: { start: number; label: string }[] = [];
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone: TANZANIA_TIME_ZONE,
-  }).formatToParts(new Date(now));
-  const part = (type: 'year' | 'month' | 'day') => Number(parts.find((item) => item.type === type)?.value);
-  const todayStart = Date.UTC(part('year'), part('month') - 1, part('day')) - 3 * 60 * 60 * 1000;
+  const out: { start: number; end: number; label: string }[] = [];
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
   for (let i = days - 1; i >= 0; i--) {
-    const start = todayStart - i * DAY;
-    out.push({ start, label: shortDate(start) });
+    const start = new Date(today);
+    start.setDate(today.getDate() - i);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 1);
+    out.push({ start: start.getTime(), end: end.getTime(), label: shortDate(start.getTime()) });
   }
   return out;
 }
@@ -28,14 +25,14 @@ export function salesByDay(orders: SupplierOrder[], days = 14) {
   return dayKeys(days).map((d) => ({
     day: d.label,
     sales: orders
-      .filter((o) => countsAsSale(o) && o.placedAt >= d.start && o.placedAt < d.start + DAY)
+      .filter((o) => countsAsSale(o) && o.placedAt >= d.start && o.placedAt < d.end)
       .reduce((n, o) => n + orderTotal(o), 0),
   }));
 }
 
 export function stockFlowByDay(movements: Movement[], days = 14) {
   return dayKeys(days).map((d) => {
-    const inDay = movements.filter((m) => m.at >= d.start && m.at < d.start + DAY);
+    const inDay = movements.filter((m) => m.at >= d.start && m.at < d.end);
     return {
       day: d.label,
       sold: inDay.filter((m) => m.kind === 'sale').reduce((n, m) => n + -m.qtyChange, 0),
@@ -78,7 +75,6 @@ export function ordersByHour(orders: SupplierOrder[]) {
   const hourFormatter = new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',
     hourCycle: 'h23',
-    timeZone: TANZANIA_TIME_ZONE,
   });
   orders.filter(countsAsSale).forEach((o) => {
     counts[Number(hourFormatter.format(new Date(o.placedAt)))] += 1;
@@ -111,7 +107,7 @@ export function ordersByArea(orders: SupplierOrder[], n = 7) {
 /** Retail vs wholesale sales per day, for the stacked chart. */
 export function modeSplitByDay(orders: SupplierOrder[], days = 14) {
   return dayKeys(days).map((d) => {
-    const inDay = orders.filter((o) => countsAsSale(o) && o.placedAt >= d.start && o.placedAt < d.start + DAY);
+    const inDay = orders.filter((o) => countsAsSale(o) && o.placedAt >= d.start && o.placedAt < d.end);
     return {
       day: d.label,
       retail: inDay.filter((o) => o.mode === 'retail').reduce((n, o) => n + orderTotal(o), 0),
@@ -131,11 +127,11 @@ export function weekChange(orders: SupplierOrder[], now = Date.now()): number | 
 }
 
 // ---------- Privacy: what each role may see about a customer ----------
-export function customerLabel(o: SupplierOrder, role: Role): string {
-  return isFarmRole(role) ? o.customerName.split(' ')[0] : o.customerName;
+export function customerLabel(o: SupplierOrder, role: Role, scope?: 'platform' | 'farm'): string {
+  return isFarmRole(role, scope) ? o.customerName.split(' ')[0] : o.customerName;
 }
-export function customerPhone(o: SupplierOrder, role: Role): string {
-  return isFarmRole(role) ? 'Hidden to protect the customer' : o.customerPhone;
+export function customerPhone(o: SupplierOrder, role: Role, scope?: 'platform' | 'farm'): string {
+  return isFarmRole(role, scope) ? 'Hidden to protect the customer' : o.customerPhone;
 }
 
 // ---------- Delivery fee preview (matches the app and the backend) ----------
@@ -147,8 +143,7 @@ export function deliveryFee(km: number, s: Settings): number {
 
 // ---------- Who can a person pause or change? ----------
 export function canManageMember(me: TeamMember, target: TeamMember): boolean {
-  if (me.id === target.id) return false;
-  if (me.role === 'platform_owner') return true;
-  if (me.role === 'supplier_owner') return target.supplierId === me.supplierId && target.role === 'supplier_staff';
-  return false;
+  if (me.id === target.id || !me.permissions?.includes('team.manage')) return false;
+  if (me.roleScope === 'farm' && (target.roleScope !== 'farm' || me.supplierId !== target.supplierId)) return false;
+  return (target.permissions ?? []).every((permission) => me.permissions?.includes(permission));
 }

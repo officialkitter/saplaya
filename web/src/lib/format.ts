@@ -2,7 +2,6 @@ import clsx, { type ClassValue } from 'clsx';
 import type { OrderStatus } from './types';
 
 export const cn = (...inputs: ClassValue[]) => clsx(inputs);
-export const TANZANIA_TIME_ZONE = 'Africa/Dar_es_Salaam';
 
 export const formatTZS = (n: number) => 'TSh ' + Math.round(n).toLocaleString('en-US');
 export const formatNum = (n: number) => (Math.round(n * 10) / 10).toLocaleString('en-US');
@@ -14,12 +13,8 @@ export function localDayPeriod(ts = Date.now()): LocalDayPeriod {
   return hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
 }
 
-export function tanzaniaHour(ts = Date.now()): number {
-  return Number(new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    hourCycle: 'h23',
-    timeZone: TANZANIA_TIME_ZONE,
-  }).format(new Date(ts)));
+export function localHour(ts = Date.now()): number {
+  return new Date(ts).getHours();
 }
 
 export function timeAgo(ts: number, now = Date.now()): string {
@@ -35,15 +30,13 @@ export function shortDate(ts: number): string {
   return new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'short',
-    timeZone: TANZANIA_TIME_ZONE,
   }).format(new Date(ts));
 }
 
-export function tanzaniaDateTime(ts: number | string): string {
+export function localDateTime(ts: number | string): string {
   return new Intl.DateTimeFormat('en-GB', {
     dateStyle: 'medium',
     timeStyle: 'short',
-    timeZone: TANZANIA_TIME_ZONE,
   }).format(new Date(ts));
 }
 

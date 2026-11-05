@@ -64,6 +64,7 @@ function Products() {
   const [stockCatalog, setStockCatalog] = useState<StockableCatalogResponse | null>(null);
   const [stockCatalogLoading, setStockCatalogLoading] = useState(false);
   const [stockCatalogBusyId, setStockCatalogBusyId] = useState<string | null>(null);
+  const [stockQuantity, setStockQuantity] = useState('10');
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
   const [restockId, setRestockId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(blank);
@@ -100,16 +101,18 @@ function Products() {
   }, [activeFarms, farmId, stockFarmId]);
 
   useEffect(() => {
-    if (can(me?.role, 'stock.adjust')) void loadStockCatalog();
+    if (can(me?.role, 'stock.adjust', me?.permissions)) void loadStockCatalog();
   }, [loadStockCatalog, me?.role]);
 
   if (!me) return null;
-  const canEdit = can(me.role, 'products.edit') && !!farmId;
-  const canStock = can(me.role, 'stock.adjust');
+  const canEdit = can(me.role, 'products.edit', me.permissions) && !!farmId;
+  const canStock = can(me.role, 'stock.adjust', me.permissions);
   const visibleCatalog = (stockCatalog?.items ?? []).filter((item) => {
     const text = q.trim().toLowerCase();
     return !text || `${item.name} ${item.category}`.toLowerCase().includes(text);
   });
+  const pendingApproval = visible.filter((product) => product.approvalStatus === 'pending');
+  const approvedListings = visible.filter((product) => product.approvalStatus !== 'pending');
   const listingByCatalog = new Map((stockCatalog?.listings ?? []).map((listing) => [
     listing.catalog_product_id ?? `name:${listing.name.trim().toLowerCase()}`,
     listing,
@@ -120,13 +123,18 @@ function Products() {
       push('Choose an active farm first.', 'bad');
       return;
     }
+    const quantity = Number(stockQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) {
+      push('Enter a stock quantity greater than zero and at most 10,000.', 'bad');
+      return;
+    }
     setStockCatalogBusyId(item.id);
     try {
-      const result = await stockCatalogProduct(item.id, stockTargetFarmId, 10);
+      const result = await stockCatalogProduct(item.id, stockTargetFarmId, quantity);
       if (result.already_stocked) {
         push(`${item.name} already has stock at this farm. No changes were made.`);
       } else {
-        push(`${item.name} was added with 10 ${item.unit} of stock.`);
+        push(`${item.name} was added with ${formatNum(quantity)} ${item.unit} of stock.`);
       }
       await loadStockCatalog();
     } catch (error) {
@@ -177,7 +185,7 @@ function Products() {
     };
     try {
       if (editing === 'new') {
-        await addProduct({ ...base, supplierId: farmId }, Math.max(0, Number(form.opening) || 0), me.name);
+        await addProduct({ ...base, supplierId: farmId, bulkPrice: null, megaBulkPrice: null }, Math.max(0, Number(form.opening) || 0), me.name);
         push(`${base.name} listing saved. Shared prices are centrally approved; new catalog entries need review before sale.`);
       } else if (editing) {
         const priceChanged = editing.retailPrice !== base.retailPrice || editing.wholesalePrice !== base.wholesalePrice;
@@ -219,9 +227,12 @@ function Products() {
         <section className="mb-7 rounded-[1.75rem] border border-line bg-white p-5 shadow-soft sm:p-6">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h2 className="font-display text-xl font-extrabold">Shared catalog</h2>
-              <p className="mt-1 text-[15px] text-ink-mute">Add a shared product to a farm with 10 units of stock. Products already stocked are left unchanged.</p>
+              <h2 className="font-display text-xl font-extrabold">Browse approved products</h2>
+              <p className="mt-1 text-[15px] text-ink-mute">Choose an approved shared product to add it to this farm. Existing listings are reused instead of duplicated.</p>
             </div>
+            <Field label="Opening stock quantity">
+              <Input type="number" min="0.01" max="10000" step="any" value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} />
+            </Field>
             {!farmId && (
               <div className="w-full sm:w-64">
                 <Field label="Farm to stock">
@@ -254,7 +265,6 @@ function Products() {
                       <p className="text-sm text-ink-mute">{item.category} · {formatTZS(item.retail_price)}/{item.unit}</p>
                       {stocked && <p className="text-xs font-bold text-leaf-deep">Already stocked: {formatNum(Number(listing?.stock))} {item.unit}</p>}
                       {stocked && !available && <p className="text-xs font-bold text-[#8A5A00]">Hidden from the shop</p>}
-                      {!item.price_approved && <p className="text-xs font-bold text-[#8A5A00]">Waiting for price approval</p>}
                     </div>
                     {available ? (
                       <span className="shrink-0 rounded-full bg-leaf-soft px-3 py-1.5 text-xs font-extrabold text-leaf-deep">Stocked</span>
@@ -266,7 +276,7 @@ function Products() {
                       <Button size="sm" variant="soft" disabled>Price review</Button>
                     ) : (
                       <Button size="sm" variant="soft" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void addSharedStock(item); }}>
-                        {stockCatalogBusyId === item.id ? 'Adding…' : 'Add 10'}
+                        {stockCatalogBusyId === item.id ? 'Adding…' : 'Add stock'}
                       </Button>
                     )}
                   </li>
@@ -277,11 +287,42 @@ function Products() {
         </section>
       )}
 
-      {visible.length === 0 ? (
-        <EmptyState icon={<PackagePlus size={36} />} title="No products yet" hint={canEdit ? 'Add your first product and it appears in the shop as soon as it has stock.' : 'Nothing matches your search.'} action={canEdit ? <Button onClick={() => openForm('new')} icon={<Plus size={20} />}>Add product</Button> : undefined} />
+      {pendingApproval.length > 0 && (
+        <section className="mb-7 rounded-[1.75rem] border border-sun/50 bg-sun-soft p-5 shadow-soft sm:p-6" aria-labelledby="pending-approval-title">
+          <div className="mb-4">
+            <h2 id="pending-approval-title" className="font-display text-xl font-extrabold">Waiting for approval · {pendingApproval.length}</h2>
+            <p className="mt-1 text-[15px] text-ink-soft">These listings are kept separate and won’t appear in the shop until their shared catalog product is approved.</p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {pendingApproval.map((product) => (
+              <li key={product.id} className="flex items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-white p-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <SmartImage src={product.image} alt={product.name} emoji={product.emoji} className="h-14 w-14 shrink-0 rounded-xl text-xl" />
+                  <div className="min-w-0">
+                    <p className="truncate font-bold">{product.name}</p>
+                    <p className="text-sm text-ink-mute">{product.category} · {formatNum(product.stock)} {product.unit}</p>
+                    {!farmId && <p className="truncate text-xs text-ink-mute">{farmName.get(product.supplierId)}</p>}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full bg-sun-soft px-3 py-1.5 text-xs font-extrabold text-sun-deep">Pending</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {approvedListings.length === 0 ? (
+        <EmptyState
+          icon={<PackagePlus size={36} />}
+          title={pendingApproval.length ? 'No catalog-approved products yet' : 'No products yet'}
+          hint={pendingApproval.length ? 'Pending listings are shown above. Approved products will appear here.' : canEdit ? 'Browse the approved catalog or add a new product for review.' : 'Nothing matches your search.'}
+          action={canEdit ? <Button onClick={() => openForm('new')} icon={<Plus size={20} />}>Add product</Button> : undefined}
+        />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((p, i) => {
+        <section aria-labelledby="approved-listings-title">
+          <h2 id="approved-listings-title" className="mb-4 font-display text-xl font-extrabold">Farm listings · {approvedListings.length}</h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {approvedListings.map((p, i) => {
             const low = isLow(p);
             const ratio = Math.min(1, p.stock / Math.max(1, p.lowStockAt * 3));
             return (
@@ -327,7 +368,8 @@ function Products() {
               </motion.article>
             );
           })}
-        </div>
+          </div>
+        </section>
       )}
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add a product' : 'Edit product'} wide>

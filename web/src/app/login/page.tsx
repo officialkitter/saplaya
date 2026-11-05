@@ -106,7 +106,7 @@ export default function LoginPage() {
             <li className="flex items-start gap-3"><Lock className="mt-1 shrink-0 text-sun" size={22} /> Your account details stay protected.</li>
           </ul>
         </div>
-        <p className="text-white/60">Saplaya team and farm sign in</p>
+        <p className="text-white/60">Saplaya member sign in</p>
       </aside>
 
       <main className="flex items-center justify-center px-5 py-10 sm:px-10">

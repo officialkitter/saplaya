@@ -8,6 +8,9 @@ type MarketContextValue = {
   location: MarketLocation | null;
   locationError: string;
   requestLocation: () => void;
+  clearLocation: () => void;
+  countryName: string | null;
+  marketAccent: string;
   currency: string;
   setCurrency: (currency: string) => void;
   currencies: string[];
@@ -34,13 +37,34 @@ const REGION_CURRENCY: Record<string, string> = {
 const DEFAULT_CURRENCY = 'USD';
 const LOCATION_KEY = 'saplaya.market.location';
 const CURRENCY_KEY = 'saplaya.market.currency';
+const REGION_ACCENTS: Record<string, string> = {
+  TZ: '#2E7D32',
+  KE: '#1565C0',
+  UG: '#C62828',
+  RW: '#00838F',
+  US: '#1565C0',
+  GB: '#3949AB',
+  IN: '#EF6C00',
+};
+const MARKET_ACCENTS = ['#2E7D32', '#1565C0', '#6A1B9A', '#00695C', '#AD1457', '#4E342E', '#283593', '#00838F'];
 
 const MarketContext = createContext<MarketContextValue | null>(null);
 
+function localeRegion(locale: string): string | null {
+  return locale.split('-').slice(1).find((part) => /^[A-Z]{2}$/.test(part.toUpperCase()))?.toUpperCase() ?? null;
+}
+
 function localeCurrency(locale: string) {
-  const localeParts = locale.split('-');
-  const region = localeParts[localeParts.length - 1]?.toUpperCase();
+  const region = localeRegion(locale);
   return (region && REGION_CURRENCY[region]) || DEFAULT_CURRENCY;
+}
+
+function localeAccent(locale: string): string {
+  const region = localeRegion(locale);
+  if (!region) return '#00695C';
+  if (REGION_ACCENTS[region]) return REGION_ACCENTS[region];
+  const hash = [...region].reduce((value, character) => value + character.charCodeAt(0), 0);
+  return MARKET_ACCENTS[hash % MARKET_ACCENTS.length];
 }
 
 function isMarketLocation(value: unknown): value is MarketLocation {
@@ -82,6 +106,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   const [ratesLoading, setRatesLoading] = useState(true);
   const [ratesUnavailable, setRatesUnavailable] = useState(false);
   const [locale, setLocale] = useState('en-US');
+  const [countryName, setCountryName] = useState<string | null>(null);
 
   const setCurrency = useCallback((nextCurrency: string) => {
     if (!CURRENCIES.includes(nextCurrency) || typeof rates[nextCurrency] !== 'number') return;
@@ -101,6 +126,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     setLocationError('');
     setLocation(null);
     try {
+      window.sessionStorage.removeItem(LOCATION_KEY);
       window.localStorage.removeItem(LOCATION_KEY);
     } catch (error) {
       console.error('Could not clear the previous location:', error);
@@ -114,7 +140,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
         };
         setLocation(next);
         try {
-          window.localStorage.setItem(LOCATION_KEY, JSON.stringify(next));
+          window.sessionStorage.setItem(LOCATION_KEY, JSON.stringify(next));
         } catch (error) {
           console.error('Could not save the market location:', error);
         }
@@ -132,15 +158,29 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const clearLocation = useCallback(() => {
+    setLocation(null);
+    setLocationError('');
+    try {
+      window.sessionStorage.removeItem(LOCATION_KEY);
+      window.localStorage.removeItem(LOCATION_KEY);
+    } catch (error) {
+      console.error('Could not clear the saved market location:', error);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
     const detectedLocale = navigator.language || 'en-US';
     setLocale(detectedLocale);
+    const region = localeRegion(detectedLocale);
+    setCountryName(region ? new Intl.DisplayNames([detectedLocale], { type: 'region' }).of(region) ?? null : null);
     let savedCurrency: string | null = null;
     let savedLocation: string | null = null;
     try {
       savedCurrency = window.localStorage.getItem(CURRENCY_KEY);
-      savedLocation = window.localStorage.getItem(LOCATION_KEY);
+      savedLocation = window.sessionStorage.getItem(LOCATION_KEY);
+      window.localStorage.removeItem(LOCATION_KEY);
     } catch (error) {
       console.error('Could not restore market preferences:', error);
     }
@@ -155,7 +195,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
         if (isMarketLocation(parsed)) setLocation(parsed);
       } catch (error) {
         console.error('Could not restore the saved market location:', error);
-        window.localStorage.removeItem(LOCATION_KEY);
+        window.sessionStorage.removeItem(LOCATION_KEY);
       }
     }
 
@@ -190,6 +230,9 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     location,
     locationError,
     requestLocation,
+    clearLocation,
+    countryName,
+    marketAccent: localeAccent(locale),
     currency,
     setCurrency,
     currencies: CURRENCIES.filter((code) => typeof rates[code] === 'number'),
@@ -197,7 +240,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     exchangeUpdatedAt,
     ratesLoading,
     ratesUnavailable,
-  }), [location, locationError, requestLocation, currency, setCurrency, rates, formatPrice, exchangeUpdatedAt, ratesLoading, ratesUnavailable]);
+  }), [location, locationError, requestLocation, clearLocation, countryName, locale, currency, setCurrency, rates, formatPrice, exchangeUpdatedAt, ratesLoading, ratesUnavailable]);
 
   return <MarketContext.Provider value={value}>{children}</MarketContext.Provider>;
 }

@@ -26,6 +26,54 @@
 			],
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Build Android release APK",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"cd /d H:\\saplaya\\mobile\\android && gradlew.bat assembleRelease"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Saplaya web",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"cd /d H:\\saplaya\\web && npm run build"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Saplaya Android APK",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"cd /d H:\\saplaya\\mobile\\android && gradlew.bat assembleRelease"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Android APK with EAS",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"cd /d H:\\saplaya\\mobile && npx --yes eas-cli@latest build --platform android --profile preview --non-interactive"
+			],
+			"isBackground": true,
+			"problemMatcher": []
 		}
 	]
 }

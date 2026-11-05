@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input } from '@/components/ui/Fields';
 import { Modal } from '@/components/ui/Modal';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
-import { formatTZS, tanzaniaDateTime } from '@/lib/format';
+import { formatTZS, localDateTime } from '@/lib/format';
 import { useToast } from '@/lib/store';
 
 type CatalogItem = {
@@ -61,6 +61,7 @@ function SharedCatalog() {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [proposals, setProposals] = useState<PriceProposal[]>([]);
   const [query, setQuery] = useState('');
+  const [approvalFilter, setApprovalFilter] = useState<'pending' | 'approved'>('pending');
   const [editing, setEditing] = useState<CatalogItem | 'new' | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,8 +87,9 @@ function SharedCatalog() {
 
   const visible = useMemo(() => {
     const text = query.trim().toLowerCase();
-    return items.filter((item) => !text || `${item.name} ${item.category}`.toLowerCase().includes(text));
-  }, [items, query]);
+    return items.filter((item) => item.price_approved === (approvalFilter === 'approved')
+      && (!text || `${item.name} ${item.category}`.toLowerCase().includes(text)));
+  }, [items, query, approvalFilter]);
 
   const startEdit = (item: CatalogItem) => {
     setEditing(item);
@@ -237,7 +239,7 @@ function SharedCatalog() {
                     <p className="mt-1 text-sm text-ink-mute">
                       Proposed retail {formatTZS(proposal.retail_price)} · wholesale {formatTZS(proposal.wholesale_price)}
                     </p>
-                    <p className="mt-1 text-xs text-ink-mute">{tanzaniaDateTime(proposal.created_at)}</p>
+                    <p className="mt-1 text-xs text-ink-mute">{localDateTime(proposal.created_at)}</p>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="soft" disabled={saving} onClick={() => void review(proposal, false)} icon={<X size={17} />}>Decline</Button>
@@ -250,7 +252,29 @@ function SharedCatalog() {
         )}
       </Panel>
 
-      <Panel className="mt-6" title={`Catalog items · ${items.length}`} subtitle="Seeded reference prices are not customer-visible until approved and listed with real farm stock.">
+      <Panel
+        className="mt-6"
+        title={`${approvalFilter === 'pending' ? 'Needs approval' : 'Approved products'} · ${items.filter((item) => item.price_approved === (approvalFilter === 'approved')).length}`}
+        subtitle={approvalFilter === 'pending'
+          ? 'These products are not available for farms to list until approved.'
+          : 'Farmers can browse these approved products and use the shared details.'}
+      >
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filter catalog by approval status">
+          {([
+            ['pending', 'Needs approval'],
+            ['approved', 'Approved'],
+          ] as const).map(([filter, label]) => (
+            <button
+              key={filter}
+              type="button"
+              aria-pressed={approvalFilter === filter}
+              onClick={() => setApprovalFilter(filter)}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition ${approvalFilter === filter ? 'bg-leaf text-white' : 'bg-leaf-soft text-leaf-deep hover:bg-leaf-soft/80'}`}
+            >
+              {label} · {items.filter((item) => item.price_approved === (filter === 'approved')).length}
+            </button>
+          ))}
+        </div>
         <div className="relative mb-4 max-w-lg">
           <Search size={19} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-mute" />
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products or categories" className="pl-11" aria-label="Search the catalog" />
@@ -258,7 +282,11 @@ function SharedCatalog() {
         {loading ? (
           <p className="py-8 text-center text-ink-mute">Loading shared catalog…</p>
         ) : visible.length === 0 ? (
-          <EmptyState icon={<Search size={36} />} title="No catalog items found" hint="Try another product name or category." />
+          <EmptyState
+            icon={<Search size={36} />}
+            title={query ? 'No catalog items found' : `No ${approvalFilter === 'pending' ? 'products need approval' : 'approved products'}`}
+            hint={query ? 'Try another product name or category.' : 'Products in the other approval section are kept separate.'}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[740px] text-left text-sm">

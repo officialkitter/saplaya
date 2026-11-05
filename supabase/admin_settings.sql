@@ -1,6 +1,6 @@
 create table if not exists public.platform_settings (
   id text primary key check (id = 'primary'),
-  hub_name text not null default 'Dodoma Central Hub',
+  hub_name text not null default 'Saplaya Operations Hub',
   free_radius_km numeric not null default 5 check (free_radius_km >= 0),
   mid_radius_km numeric not null default 10 check (mid_radius_km > free_radius_km),
   mid_fee integer not null default 2000 check (mid_fee >= 0),

@@ -20,8 +20,6 @@ const {
   SUPABASE_URL,
   SUPABASE_SECRET_KEY,
   PORT = '3000',
-  STORE_LAT = '-6.1630', // Dodoma pickup hub
-  STORE_LNG = '35.7516',
   PUBLIC_API_URL,
   PAYMENT_APP_CALLBACK_URL = 'saplaya://payment-callback',
   WEB_ORIGIN = '*', // e.g. https://admin.saplaya.com
@@ -49,46 +47,30 @@ app.use(express.json());
 // ======================================================================
 // Roles and permissions (the web admin panel mirrors this table)
 // ======================================================================
-type Role = 'platform_owner' | 'platform_manager' | 'supplier_owner' | 'supplier_staff' | 'driver';
+type Role = string;
 type Perm =
   | 'dashboard.view' | 'orders.view' | 'orders.update_status'
   | 'products.view' | 'products.edit' | 'stock.adjust' | 'inventory.view'
   | 'catalog.manage'
   | 'suppliers.view_all' | 'suppliers.manage'
-  | 'team.view' | 'team.manage' | 'settings.manage';
+  | 'team.view' | 'team.manage' | 'settings.manage'
+  | 'finance.view' | 'marketing.view' | 'stores.view' | 'system.view' | 'team.roles.manage';
 
 const ALL: Perm[] = [
   'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
   'stock.adjust', 'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage',
-  'team.view', 'team.manage', 'settings.manage',
+  'team.view', 'team.manage', 'settings.manage', 'finance.view', 'marketing.view',
+  'stores.view', 'system.view', 'team.roles.manage',
 ];
-
-const PERMISSIONS: Record<Role, Perm[]> = {
-  // The platform owner can assign approved shared products to a farm and record its stock.
-  platform_owner: ALL.filter((p) => p !== 'products.edit'),
-  platform_manager: [
-    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
-    'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage', 'team.view',
-  ],
-  supplier_owner: [
-    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
-    'stock.adjust', 'inventory.view', 'team.view', 'team.manage',
-  ],
-  supplier_staff: [
-    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
-    'stock.adjust', 'inventory.view',
-  ],
-  driver: ['orders.view', 'orders.update_status'],
-};
 
 // A driver may only move an order along the road; they cannot pack or cancel.
 const DRIVER_STATUSES = ['en_route', 'delivered'];
-// Roles a farm owner may hand out. Platform roles can never be created by a farm.
-const FARM_ASSIGNABLE: Role[] = ['supplier_staff'];
 
 type Member = {
   id: string; user_id: string; supplier_id: string | null;
   full_name: string; email: string; role: Role; status: string;
+  role_label: string; department_id: string; department: string; department_theme: string;
+  role_scope: 'platform' | 'farm'; permissions: Perm[];
 };
 type AuthedRequest = Request & {
   userId?: string;
@@ -97,7 +79,7 @@ type AuthedRequest = Request & {
   member?: Member;
 };
 
-const isPlatform = (m: Member) => m.role === 'platform_owner' || m.role === 'platform_manager' || m.role === 'driver';
+const isPlatform = (m: Member) => m.supplier_id === null;
 
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? 'saplaya-v1';
 const FIREBASE_APP_NAME = 'saplaya-backend';
@@ -309,12 +291,42 @@ function requirePerm(perm?: Perm) {
       if (req.authProvider !== 'supabase') {
         return res.status(403).json({ error: 'Web team accounts must sign in with Supabase Auth.' });
       }
-      const { data } = await db
+      const { data, error: memberError } = await db
         .from('team_members')
         .select('id, user_id, supplier_id, full_name, email, role, status')
         .eq('user_id', req.userId!)
         .maybeSingle();
-      let m = data as Member | null;
+      if (memberError) {
+        console.error('Could not load team account:', memberError.message);
+        return res.status(503).json({ error: 'Could not load your team access.' });
+      }
+      if (!data) return res.status(403).json({ error: 'No active team account' });
+      const { data: role, error: roleError } = await db.from('team_roles')
+        .select('role_key, name, department_id, scope, permissions')
+        .eq('role_key', data.role)
+        .maybeSingle();
+      if (roleError || !role) {
+        console.error('Could not load team role configuration:', roleError?.message ?? 'Assigned role was not found.');
+        return res.status(503).json({ error: 'Could not load your role permissions.' });
+      }
+      const { data: department, error: departmentError } = await db.from('team_departments')
+        .select('name, theme_color')
+        .eq('id', role.department_id)
+        .maybeSingle();
+      if (departmentError || !department) {
+        console.error('Could not load team department configuration:', departmentError?.message ?? 'Assigned department was not found.');
+        return res.status(503).json({ error: 'Could not load your department.' });
+      }
+      let m: Member = {
+        ...data,
+        role: role.role_key,
+        role_label: role.name,
+        department_id: role.department_id,
+        department: department.name,
+        department_theme: department.theme_color,
+        role_scope: role.scope,
+        permissions: role.permissions.filter((permission: string): permission is Perm => ALL.includes(permission as Perm)),
+      };
       if (!m || m.status === 'suspended') return res.status(403).json({ error: 'No active team account' });
       if (m.status === 'invited') {
         const { data: activated, error: activateError } = await db.from('team_members')
@@ -322,14 +334,14 @@ function requirePerm(perm?: Perm) {
           .eq('id', m.id)
           .eq('user_id', req.userId!)
           .eq('status', 'invited')
-          .select('id, user_id, supplier_id, full_name, email, role, status')
+          .select('id')
           .maybeSingle();
         if (activateError || !activated) {
           return res.status(403).json({ error: 'Could not activate this team invitation.' });
         }
-        m = activated as Member;
+        m = { ...m, status: 'active' };
       }
-      if (perm && !PERMISSIONS[m.role].includes(perm)) {
+      if (perm && !m.permissions.includes(perm)) {
         return res.status(403).json({ error: 'Your role is not allowed to do this' });
       }
       if (m.supplier_id) {
@@ -1504,7 +1516,7 @@ app.post('/apply', async (req: Request, res: Response) => {
 // ======================================================================
 app.get('/admin/me', requirePerm(), (req: AuthedRequest, res: Response) => {
   const m = req.member!;
-  res.json({ ...m, permissions: PERMISSIONS[m.role] });
+  res.json(m);
 });
 
 app.patch('/admin/me', requirePerm(), async (req: AuthedRequest, res: Response) => {
@@ -1523,8 +1535,83 @@ app.patch('/admin/me', requirePerm(), async (req: AuthedRequest, res: Response) 
     return res.status(500).json({ error: 'Could not save your profile.' });
   }
   if (!data) return res.status(404).json({ error: 'Your team profile could not be found.' });
-  req.member = data as Member;
-  return res.json({ ...data, permissions: PERMISSIONS[data.role as Role] });
+  req.member = { ...m, full_name: data.full_name };
+  return res.json(req.member);
+});
+
+app.get('/admin/dashboard-analytics', requirePerm('dashboard.view'), async (req: AuthedRequest, res: Response) => {
+  const m = req.member!;
+  const now = new Date();
+  const to = req.query.to ? new Date(String(req.query.to)) : now;
+  const from = req.query.from ? new Date(String(req.query.from)) : new Date(to.getTime() - 30 * 86_400_000);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) {
+    return res.status(400).json({ error: 'Choose a valid analytics date range.' });
+  }
+  if (to.getTime() - from.getTime() > 366 * 86_400_000) {
+    return res.status(400).json({ error: 'Analytics date ranges cannot exceed one year.' });
+  }
+
+  const { data: analytics, error } = await db.rpc('admin_dashboard_analytics', {
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+    p_supplier_id: m.supplier_id,
+  });
+  if (error || !analytics) {
+    console.error('Could not load aggregated dashboard analytics:', error?.message ?? 'Analytics result was empty.');
+    return res.status(500).json({ error: 'Could not load dashboard analytics.' });
+  }
+
+  const permissions = new Set(m.permissions);
+  const result: Record<string, unknown> = {
+    range: { from: from.toISOString(), to: to.toISOString() },
+    operations: permissions.has('dashboard.view') ? analytics.summary : undefined,
+    finance: permissions.has('finance.view') ? {
+      summary: analytics.summary,
+      payments: analytics.payments,
+      daily: analytics.daily,
+      reporting_note: 'Delivered order value is an operational estimate, not a payment settlement or accounting ledger.',
+    } : undefined,
+    marketing: permissions.has('marketing.view') ? {
+      summary: analytics.summary,
+      top_products: analytics.top_products,
+      categories: analytics.categories,
+      modes: analytics.modes,
+      daily: analytics.daily,
+      reporting_note: 'Campaign attribution and advertising spend are not collected by the current platform.',
+    } : undefined,
+    stores: permissions.has('stores.view') ? {
+      summary: analytics.summary,
+      farms: analytics.farms,
+    } : undefined,
+  };
+
+  if (permissions.has('system.view')) {
+    const counts = await Promise.all([
+      db.from('suppliers').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      db.from('products').select('id', { count: 'exact', head: true }),
+      db.from('team_members').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      db.from('supplier_applications').select('id', { count: 'exact', head: true }).in('status', ['new', 'pending', 'reviewing']),
+      db.from('catalog_products').select('id', { count: 'exact', head: true }).eq('price_approved', false),
+      db.from('team_departments').select('id', { count: 'exact', head: true }),
+      db.from('team_roles').select('role_key', { count: 'exact', head: true }),
+    ]);
+    const failedCount = counts.find((count) => count.error);
+    if (failedCount?.error) {
+      console.error('Could not load system dashboard metrics:', failedCount.error.message);
+      return res.status(500).json({ error: 'Could not load system dashboard metrics.' });
+    }
+    result.system = {
+      farms: counts[0].count ?? 0,
+      products: counts[1].count ?? 0,
+      team_members: counts[2].count ?? 0,
+      open_applications: counts[3].count ?? 0,
+      pending_catalog_products: counts[4].count ?? 0,
+      departments: counts[5].count ?? 0,
+      roles: counts[6].count ?? 0,
+    };
+  }
+
+  return res.json(result);
 });
 
 // ======================================================================
@@ -1635,7 +1722,23 @@ app.get('/admin/products', requirePerm('products.view'), async (req: AuthedReque
   if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const catalogIds = [...new Set((data ?? [])
+    .map((product) => product.catalog_product_id)
+    .filter((id): id is string => typeof id === 'string'))];
+  const catalogs = catalogIds.length
+    ? await db.from('catalog_products').select('id, price_approved').in('id', catalogIds)
+    : { data: [], error: null };
+  if (catalogs.error) {
+    console.error('Could not load catalog approval status for product listings:', catalogs.error.message);
+    return res.status(500).json({ error: 'Could not load product approval status.' });
+  }
+  const approvals = new Map((catalogs.data ?? []).map((catalog) => [catalog.id, catalog.price_approved]));
+  res.json((data ?? []).map((product) => ({
+    ...product,
+    approval_status: !product.catalog_product_id
+      ? 'unlinked'
+      : approvals.get(product.catalog_product_id) ? 'approved' : 'pending',
+  })));
 });
 
 const productSchema = z.object({
@@ -1664,7 +1767,13 @@ app.post('/admin/products', requirePerm('products.edit'), async (req: AuthedRequ
     p_image_url: parsed.data.image_url ?? null,
     p_active: parsed.data.active,
   });
-  if (error) return res.status(500).json({ error: 'Could not create this product.' });
+  if (error?.code === '23505') {
+    return res.status(409).json({ error: 'A listing with this product name already exists at your farm. Update that listing or choose it from the approved catalog.' });
+  }
+  if (error) {
+    console.error('Could not create farm product:', error.message);
+    return res.status(500).json({ error: 'Could not create this product.' });
+  }
   res.status(201).json(data);
 });
 
@@ -1675,6 +1784,9 @@ app.patch('/admin/products/:id', requirePerm('products.edit'), async (req: Authe
   if (!m.supplier_id) return res.status(400).json({ error: 'Sign in as a farm owner to edit products.' });
   const { stock: _ignored, ...safe } = parsed.data; // stock only changes via /admin/restock so every change is logged
   const { data, error } = await db.from('products').update(safe).eq('id', req.params.id).eq('supplier_id', m.supplier_id).select().maybeSingle();
+  if (error?.code === '23505') {
+    return res.status(409).json({ error: 'A listing with this product name already exists at your farm. Update that listing or choose it from the approved catalog.' });
+  }
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Not found' });
   res.json(data);
@@ -1684,9 +1796,7 @@ app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: Au
   const m = req.member!;
   let supplierId = m.supplier_id;
   if (!supplierId) {
-    if (m.role !== 'platform_owner') {
-      return res.status(403).json({ error: 'Only the owner can choose a farm for shared-catalog stock.' });
-    }
+    if (m.supplier_id) return res.status(403).json({ error: 'Choose a farm for shared-catalog stock.' });
     const parsedSupplierId = z.string().uuid().safeParse(req.query.supplier_id);
     if (!parsedSupplierId.success) return res.status(400).json({ error: 'Choose a farm first.' });
     supplierId = parsedSupplierId.data;
@@ -1695,7 +1805,7 @@ app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: Au
   const [{ data: items, error: catalogError }, { data: listings, error: listingsError }] = await Promise.all([
     db.from('catalog_products')
       .select('id, name, category, unit, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, image_url, price_approved')
-      .order('category').order('name'),
+      .eq('price_approved', true).order('category').order('name'),
     db.from('products')
       .select('id, catalog_product_id, name, stock, active')
       .eq('supplier_id', supplierId)
@@ -1722,7 +1832,7 @@ app.post('/admin/catalog/:id/stock', requirePerm('stock.adjust'), async (req: Au
   const m = req.member!;
   let supplierId = m.supplier_id;
   if (!supplierId) {
-    if (m.role !== 'platform_owner' || !parsed.data.supplier_id) {
+    if (m.supplier_id || !parsed.data.supplier_id) {
       return res.status(400).json({ error: 'Choose a farm for this shared product.' });
     }
     supplierId = parsed.data.supplier_id;
@@ -1758,7 +1868,7 @@ app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: 
   const m = req.member!;
   let supplierId = m.supplier_id;
   if (!supplierId) {
-    if (m.role !== 'platform_owner' || !parsed.data.supplier_id) {
+    if (m.supplier_id || !parsed.data.supplier_id) {
       return res.status(400).json({ error: 'Choose a farm for this shared product.' });
     }
     supplierId = parsed.data.supplier_id;
@@ -1906,7 +2016,7 @@ app.post('/admin/restock', requirePerm('stock.adjust'), async (req: AuthedReques
   const m = req.member!;
   let supplierId = m.supplier_id;
   if (!supplierId) {
-    if (m.role !== 'platform_owner') return res.status(403).json({ error: 'Choose a farm product to add stock.' });
+    if (m.supplier_id) return res.status(403).json({ error: 'Choose a farm product to add stock.' });
     const { data: product, error: productError } = await db.from('products')
       .select('supplier_id')
       .eq('id', parsed.data.product_id)
@@ -1975,7 +2085,13 @@ app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: Authed
     contact_phone: parsed.data.contact_phone,
     status: 'active',
   }).select('id').single();
-  if (supplierError) return res.status(500).json({ error: 'Could not create the farm.' });
+  if (supplierError?.code === '23505') {
+    return res.status(409).json({ error: 'A farm with this name and region already exists.' });
+  }
+  if (supplierError) {
+    console.error('Could not create farm:', supplierError.message);
+    return res.status(500).json({ error: 'Could not create the farm.' });
+  }
 
   const invited = await db.auth.admin.inviteUserByEmail(parsed.data.contact_email);
   if (invited.error || !invited.data.user) {
@@ -2023,6 +2139,9 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
     name: a.farm_name, status: 'active', region: a.region ?? a.location,
     contact_name: a.contact_name, contact_email: a.email, contact_phone: a.phone,
   }).select().single();
+  if (se?.code === '23505') {
+    return res.status(409).json({ error: 'A farm with this name and region already exists. Review the existing farm instead.' });
+  }
   if (se) return res.status(500).json({ error: se.message });
 
   const invited = await db.auth.admin.inviteUserByEmail(a.email);
@@ -2044,13 +2163,125 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
   if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id); // a farm only sees its own people
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const roleKeys = [...new Set((data ?? []).map((member) => member.role))];
+  const { data: roleRows, error: roleError } = await db.from('team_roles')
+    .select('role_key, name, department_id, scope, permissions')
+    .in('role_key', roleKeys);
+  if (roleError) {
+    console.error('Could not load roles for the team directory:', roleError.message);
+    return res.status(500).json({ error: 'Could not load team role details.' });
+  }
+  const departmentIds = [...new Set((roleRows ?? []).map((role) => role.department_id))];
+  const { data: departmentRows, error: departmentError } = departmentIds.length
+    ? await db.from('team_departments').select('id, name, theme_color').in('id', departmentIds)
+    : { data: [], error: null };
+  if (departmentError) {
+    console.error('Could not load departments for the team directory:', departmentError.message);
+    return res.status(500).json({ error: 'Could not load team department details.' });
+  }
+  const roleByKey = new Map((roleRows ?? []).map((role) => [role.role_key, role]));
+  const departmentById = new Map((departmentRows ?? []).map((department) => [department.id, department]));
+  res.json((data ?? []).map((member) => {
+    const role = roleByKey.get(member.role);
+    const department = role ? departmentById.get(role.department_id) : null;
+    return {
+      ...member,
+      role_label: role?.name ?? member.role,
+      role_scope: role?.scope ?? (member.supplier_id ? 'farm' : 'platform'),
+      permissions: role?.permissions ?? [],
+      department_id: role?.department_id ?? '',
+      department: department?.name ?? 'Unassigned',
+      department_theme: department?.theme_color ?? '#6B7A6C',
+    };
+  }));
+});
+
+app.get('/admin/role-config', requirePerm('team.view'), async (req: AuthedRequest, res: Response) => {
+  const m = req.member!;
+  const [{ data: departments, error: departmentError }, { data: roles, error: roleError }] = await Promise.all([
+    db.from('team_departments').select('id, name, description, theme_color').order('name'),
+    db.from('team_roles').select('role_key, name, department_id, scope, permissions, is_builtin').order('name'),
+  ]);
+  if (departmentError || roleError) {
+    console.error('Could not load department and role configuration:', departmentError?.message ?? roleError?.message);
+    return res.status(500).json({ error: 'Could not load departments and roles.' });
+  }
+  const assignable = (roles ?? []).filter((role) =>
+    (!m.supplier_id || role.scope === 'farm')
+    && role.permissions.every((permission: string) => m.permissions.includes(permission as Perm)),
+  );
+  return res.json({
+    departments: departments ?? [],
+    roles: assignable,
+    can_manage_roles: !m.supplier_id && m.permissions.includes('team.roles.manage'),
+  });
+});
+
+const departmentSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9_-]{1,39}$/),
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(300).default(''),
+  theme_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#2E7D32'),
+});
+
+app.post('/admin/departments', requirePerm('team.roles.manage'), async (req: AuthedRequest, res: Response) => {
+  if (req.member!.supplier_id) {
+    return res.status(403).json({ error: 'Only platform team members can create departments.' });
+  }
+  const parsed = departmentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { data, error } = await db.from('team_departments').insert(parsed.data)
+    .select('id, name, description, theme_color').single();
+  if (error?.code === '23505') return res.status(409).json({ error: 'A department with this ID already exists.' });
+  if (error) {
+    console.error('Could not create department:', error.message);
+    return res.status(500).json({ error: 'Could not create this department.' });
+  }
+  return res.status(201).json(data);
+});
+
+const roleSchema = z.object({
+  role_key: z.string().regex(/^[a-z][a-z0-9_-]{1,59}$/),
+  name: z.string().trim().min(2).max(80),
+  department_id: z.string().regex(/^[a-z][a-z0-9_-]{1,39}$/),
+  scope: z.enum(['platform', 'farm']),
+  permissions: z.array(z.string().refine((permission): permission is Perm => ALL.includes(permission as Perm))).max(ALL.length),
+}).refine((role) => (
+  !role.permissions.some((permission) => ['finance.view', 'marketing.view', 'stores.view', 'system.view'].includes(permission))
+  || role.permissions.includes('dashboard.view')
+), {
+  message: 'Department dashboard access also requires the home dashboard permission.',
+  path: ['permissions'],
+});
+
+app.post('/admin/roles', requirePerm('team.roles.manage'), async (req: AuthedRequest, res: Response) => {
+  const parsed = roleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const m = req.member!;
+  if (m.supplier_id) {
+    return res.status(403).json({ error: 'Only platform team members can create roles.' });
+  }
+  if (!parsed.data.permissions.every((permission) => m.permissions.includes(permission))) {
+    return res.status(403).json({ error: 'A new role cannot grant permissions you do not have.' });
+  }
+  const { data, error } = await db.from('team_roles').insert({
+    ...parsed.data,
+    permissions: [...new Set(parsed.data.permissions)],
+    is_builtin: false,
+  }).select('role_key, name, department_id, scope, permissions, is_builtin').single();
+  if (error?.code === '23505') return res.status(409).json({ error: 'A role with this ID already exists.' });
+  if (error?.code === '23503') return res.status(400).json({ error: 'Choose an existing department.' });
+  if (error) {
+    console.error('Could not create team role:', error.message);
+    return res.status(500).json({ error: 'Could not create this role.' });
+  }
+  return res.status(201).json(data);
 });
 
 const inviteSchema = z.object({
   full_name: z.string().min(2),
   email: z.string().email(),
-  role: z.enum(['platform_manager', 'supplier_owner', 'supplier_staff', 'driver']),
+  role: z.string().regex(/^[a-z][a-z0-9_-]{1,59}$/),
   supplier_id: z.string().uuid().optional(),
 });
 
@@ -2058,25 +2289,41 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
   const parsed = inviteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
-  let { role, supplier_id } = parsed.data;
+  const { data: role, error: roleError } = await db.from('team_roles')
+    .select('role_key, scope, permissions')
+    .eq('role_key', parsed.data.role)
+    .maybeSingle();
+  if (roleError) return res.status(500).json({ error: 'Could not validate this team role.' });
+  if (!role) return res.status(400).json({ error: 'Choose an available role.' });
+  if (!role.permissions.every((permission: string) => m.permissions.includes(permission as Perm))) {
+    return res.status(403).json({ error: 'You cannot assign a role with permissions you do not have.' });
+  }
 
-  if (m.supplier_id) {
-    // Farm owners can only add packers to their own farm.
-    if (!FARM_ASSIGNABLE.includes(role)) return res.status(403).json({ error: 'A farm owner can only add farm staff' });
-    supplier_id = m.supplier_id;
-  } else if (role === 'supplier_owner' || role === 'supplier_staff') {
-    if (!supplier_id) return res.status(400).json({ error: 'Choose which farm this person belongs to' });
-  } else {
-    supplier_id = undefined;
+  let supplier_id: string | null = null;
+  if (role.scope === 'farm') {
+    supplier_id = m.supplier_id ?? parsed.data.supplier_id ?? null;
+    if (!supplier_id) return res.status(400).json({ error: 'Choose which farm this person belongs to.' });
+    if (m.supplier_id && supplier_id !== m.supplier_id) {
+      return res.status(403).json({ error: 'You can only invite staff to your own farm.' });
+    }
+  } else if (m.supplier_id) {
+    return res.status(403).json({ error: 'Farm administrators can only invite farm-scoped roles.' });
   }
 
   const invited = await db.auth.admin.inviteUserByEmail(parsed.data.email);
   if (invited.error) return res.status(500).json({ error: invited.error.message });
   const { data, error } = await db.from('team_members').insert({
-    user_id: invited.data.user.id, supplier_id: supplier_id ?? null,
-    full_name: parsed.data.full_name, email: parsed.data.email, role, status: 'invited',
+    user_id: invited.data.user.id, supplier_id,
+    full_name: parsed.data.full_name, email: parsed.data.email, role: role.role_key, status: 'invited',
   }).select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('Could not save invited team member:', error.message);
+    const { error: cleanupError } = await db.auth.admin.deleteUser(invited.data.user.id);
+    if (cleanupError) {
+      console.error('Could not remove orphaned auth invite:', cleanupError.message);
+    }
+    return res.status(500).json({ error: 'Could not save the team invitation.' });
+  }
   res.status(201).json(data);
 });
 
@@ -2085,10 +2332,38 @@ app.patch('/admin/team/:id', requirePerm('team.manage'), async (req: AuthedReque
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
   if (req.params.id === m.id) return res.status(400).json({ error: 'You cannot change your own access' });
+  let targetQuery = db.from('team_members')
+    .select('id, supplier_id, role')
+    .eq('id', req.params.id);
+  if (m.supplier_id) targetQuery = targetQuery.eq('supplier_id', m.supplier_id);
+  const { data: target, error: targetError } = await targetQuery.maybeSingle();
+  if (targetError) {
+    console.error('Could not load team member for access update:', targetError.message);
+    return res.status(500).json({ error: 'Could not load this team member.' });
+  }
+  if (!target) return res.status(404).json({ error: 'Not found' });
+  const { data: targetRole, error: targetRoleError } = await db.from('team_roles')
+    .select('scope, permissions')
+    .eq('role_key', target.role)
+    .maybeSingle();
+  if (targetRoleError) {
+    console.error('Could not load role for team member access update:', targetRoleError.message);
+    return res.status(500).json({ error: 'Could not validate this team member role.' });
+  }
+  if (!targetRole) return res.status(409).json({ error: 'This team member has an invalid role configuration.' });
+  if (m.supplier_id && targetRole.scope !== 'farm') {
+    return res.status(403).json({ error: 'Farm administrators can only manage farm team members.' });
+  }
+  if (!targetRole.permissions.every((permission: string) => m.permissions.includes(permission as Perm))) {
+    return res.status(403).json({ error: 'You cannot change a team member with permissions you do not have.' });
+  }
   let q = db.from('team_members').update({ status: parsed.data.status }).eq('id', req.params.id);
-  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id).eq('role', 'supplier_staff');
+  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
   const { data, error } = await q.select().maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('Could not update team member access:', error.message);
+    return res.status(500).json({ error: 'Could not update team member access.' });
+  }
   if (!data) return res.status(404).json({ error: 'Not found' });
   res.json(data);
 });

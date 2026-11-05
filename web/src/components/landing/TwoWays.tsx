@@ -1,8 +1,8 @@
 import { Check } from 'lucide-react';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
 
-const HOME = ['Buy from one kilo', 'Weekly Fresh Farm Boxes and Chef’s Cooking Kits', 'Free delivery within 5 km'];
-const BULK = ['Bulk prices from the minimum shown on each item', 'Crates packed for restaurants, hotels and shops', 'The same tracking, the same fresh produce'];
+const HOME = ['Enter the quantity you need', 'Fresh produce, grains and cooking essentials', 'See nearby stock and delivery charges before checkout'];
+const BULK = ['Wholesale, bulk and mega-bulk volume tiers', 'Tier availability and prices are set per product', 'Larger orders can be matched to farther stocked farms'];
 
 export function TwoWays() {
   return (

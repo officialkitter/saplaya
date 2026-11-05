@@ -49,7 +49,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
     team: [],
     applications: [],
     settings: {
-      hubName: 'Dodoma Central Hub',
+      hubName: 'Saplaya Operations Hub',
       freeRadiusKm: 5,
       midRadiusKm: 10,
       midFee: 2000,

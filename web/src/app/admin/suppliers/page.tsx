@@ -19,8 +19,6 @@ const FARM_STATUS: Record<SupplierStatus, { label: string; cls: string }> = {
   pending: { label: 'Waiting', cls: 'bg-sun-soft text-[#8A5A00]' },
   suspended: { label: 'Paused', cls: 'bg-[#FFEBEE] text-[#B71C1C]' },
 };
-const REGIONS = ['Dodoma', 'Morogoro', 'Iringa', 'Arusha', 'Mbeya', 'Other'];
-
 function Farms() {
   const { me, suppliers, products, orders } = useScope();
   const applications = useDB((s) => s.applications);
@@ -35,7 +33,7 @@ function Farms() {
   const [toggle, setToggle] = useState<Supplier | null>(null);
   const [locationEditing, setLocationEditing] = useState<Supplier | null>(null);
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
-  const [form, setForm] = useState({ name: '', region: 'Dodoma', contactName: '', contactEmail: '', contactPhone: '' });
+  const [form, setForm] = useState({ name: '', region: '', contactName: '', contactEmail: '', contactPhone: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -58,13 +56,14 @@ function Farms() {
   );
 
   if (!me) return null;
-  const canManage = can(me.role, 'suppliers.manage');
+  const canManage = can(me.role, 'suppliers.manage', me.permissions);
   const newApps = applications.filter((a) => a.status === 'new').length;
   const sorted = [...applications].sort((a, b) => (a.status === 'new' ? -1 : 1) - (b.status === 'new' ? -1 : 1) || b.at - a.at);
 
   async function saveFarm() {
     const err: Record<string, string> = {};
     if (form.name.trim().length < 2) err.name = 'Enter the farm name.';
+    if (form.region.trim().length < 2) err.region = 'Enter a country or region.';
     if (form.contactName.trim().length < 2) err.contactName = 'Enter the owner’s name.';
     if (!/^\S+@\S+\.\S+$/.test(form.contactEmail)) err.contactEmail = 'Check the email address. We send the sign-in link here.';
     if (form.contactPhone.trim().length < 9) err.contactPhone = 'Enter a phone number.';
@@ -73,7 +72,7 @@ function Farms() {
     try {
       await addSupplier({ ...form, name: form.name.trim(), contactName: form.contactName.trim(), contactEmail: form.contactEmail.trim() });
       push(`${form.name.trim()} was added. A sign-in link was sent to ${form.contactEmail.trim()}.`);
-      setForm({ name: '', region: 'Dodoma', contactName: '', contactEmail: '', contactPhone: '' });
+      setForm({ name: '', region: '', contactName: '', contactEmail: '', contactPhone: '' });
       setAdding(false);
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not add this farm.', 'bad');
@@ -230,7 +229,7 @@ function Farms() {
         <div className="space-y-4">
           <p className="text-ink-soft">We create the farm and email the owner a link to set up their sign-in.</p>
           <Field label="Farm name" error={errors.name}><Input value={form.name} onChange={set('name')} /></Field>
-          <Field label="Region"><Select value={form.region} onChange={set('region')}>{REGIONS.map((r) => <option key={r}>{r}</option>)}</Select></Field>
+          <Field label="Country or region" error={errors.region}><Input value={form.region} onChange={set('region')} placeholder="Country, state, or region" autoComplete="address-level1" /></Field>
           <Field label="Owner's name" error={errors.contactName}><Input value={form.contactName} onChange={set('contactName')} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Owner's email" error={errors.contactEmail}><Input type="email" value={form.contactEmail} onChange={set('contactEmail')} /></Field>

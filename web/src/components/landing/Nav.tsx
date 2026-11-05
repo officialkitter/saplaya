@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Logo } from '@/components/ui/Logo';
 import { LinkButton } from '@/components/ui/Button';
 import { useGlobalMarket } from '@/lib/global-market';
@@ -17,23 +17,22 @@ const LINKS = [
 
 export function Nav() {
   const [open, setOpen] = useState(false);
-  const { location, locationError, requestLocation, currency, setCurrency, currencies } = useGlobalMarket();
-  const requestedLocation = useRef(false);
-  useEffect(() => {
-    if (requestedLocation.current) return;
-    requestedLocation.current = true;
-    requestLocation();
-  }, [requestLocation]);
+  const { location, locationError, requestLocation, clearLocation, countryName, marketAccent, currency, setCurrency, currencies } = useGlobalMarket();
   const marketControls = (
     <div className="flex items-center gap-2">
       <button
         type="button"
-        onClick={requestLocation}
+        onClick={location ? clearLocation : requestLocation}
         className="rounded-xl border border-line bg-white px-3 py-2 text-sm font-bold text-ink-soft transition hover:bg-leaf-soft"
-        aria-label="Use your current location to find nearby farms"
+        aria-label={location ? 'Stop using your current location' : 'Use your current location to find nearby farms'}
       >
-        {location ? `Nearby farms · ${Math.round(location.accuracy)}m accuracy` : 'Use my location'}
+        {location ? 'Location on · Clear' : 'Use my location'}
       </button>
+      {countryName && (
+        <span className="rounded-xl px-3 py-2 text-sm font-bold text-white" style={{ backgroundColor: marketAccent }}>
+          Browser region: {countryName}
+        </span>
+      )}
       <label className="sr-only" htmlFor="market-currency">Display currency, initially detected from your browser region</label>
       <select
         id="market-currency"
@@ -62,7 +61,7 @@ export function Nav() {
         <div className="hidden items-center gap-2 lg:flex">
           {marketControls}
           {locationError && <span role="status" className="max-w-40 text-xs font-semibold text-red-700">{locationError}</span>}
-          <LinkButton href="/login" variant="ghost">Farm sign in</LinkButton>
+          <LinkButton href="/login" variant="ghost">Member sign in</LinkButton>
           <LinkButton href="#download" variant="sun">Get the app</LinkButton>
         </div>
         <button className="grid h-11 w-11 place-items-center rounded-xl text-ink hover:bg-leaf-soft lg:hidden" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -84,7 +83,7 @@ export function Nav() {
                 </a>
               ))}
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <LinkButton href="/login" variant="soft">Farm sign in</LinkButton>
+                <LinkButton href="/login" variant="soft">Member sign in</LinkButton>
                 <LinkButton href="#download" variant="sun">Get the app</LinkButton>
               </div>
             </div>
