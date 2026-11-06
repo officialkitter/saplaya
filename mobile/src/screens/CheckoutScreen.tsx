@@ -371,7 +371,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 <Text style={styles.address}>{place.label}</Text>
                 <Text style={styles.helper}>
                   {km === undefined
-                    ? quoteLoading ? 'Checking available farms and delivery distance…' : 'Farm distance is unavailable'}
+                    ? (quoteLoading ? 'Checking available farms and delivery distance…' : 'Farm distance is unavailable')
                     : `${km.toFixed(1)} km to the furthest selected farm`}
                   {place.approximate ? ' · approximate delivery address' : ''}
                 </Text>
