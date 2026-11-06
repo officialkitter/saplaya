@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Mail, MapPin, Pause, Phone, Play, Plus, Sprout, X } from 'lucide-react';
+import { Check, Mail, MapPin, Pause, Phone, Play, Plus, Sprout, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +12,7 @@ import { cn, formatTZS, timeAgo } from '@/lib/format';
 import { can } from '@/lib/roles';
 import { countsAsSale, orderTotal } from '@/lib/stats';
 import { useDB, useScope, useToast } from '@/lib/store';
-import type { Supplier, SupplierStatus } from '@/lib/types';
+import type { Application, Supplier, SupplierStatus } from '@/lib/types';
 
 const FARM_STATUS: Record<SupplierStatus, { label: string; cls: string }> = {
   active: { label: 'Selling', cls: 'bg-leaf-soft text-leaf-deep' },
@@ -23,6 +23,7 @@ function Farms() {
   const { me, suppliers, products, orders } = useScope();
   const applications = useDB((s) => s.applications);
   const decide = useDB((s) => s.decideApplication);
+  const deleteDeclinedApplication = useDB((s) => s.deleteDeclinedApplication);
   const setSupplierStatus = useDB((s) => s.setSupplierStatus);
   const setSupplierCoordinates = useDB((s) => s.setSupplierCoordinates);
   const addSupplier = useDB((s) => s.addSupplier);
@@ -31,6 +32,8 @@ function Farms() {
   const [tab, setTab] = useState<'farms' | 'applications'>('farms');
   const [adding, setAdding] = useState(false);
   const [toggle, setToggle] = useState<Supplier | null>(null);
+  const [deletingApplication, setDeletingApplication] = useState<Application | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [locationEditing, setLocationEditing] = useState<Supplier | null>(null);
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
   const [form, setForm] = useState({ name: '', region: '', contactName: '', contactEmail: '', contactPhone: '' });
@@ -54,9 +57,20 @@ function Farms() {
       ),
     [suppliers, products, orders]
   );
+  const duplicateGroups = useMemo(() => {
+    const groups = new Map<string, Supplier[]>();
+    for (const supplier of suppliers) {
+      const key = `${supplier.name.trim().toLocaleLowerCase()}\u0000${supplier.region.trim().toLocaleLowerCase()}`;
+      const group = groups.get(key) ?? [];
+      group.push(supplier);
+      groups.set(key, group);
+    }
+    return [...groups.values()].filter((group) => group.length > 1);
+  }, [suppliers]);
 
   if (!me) return null;
   const canManage = can(me.role, 'suppliers.manage', me.permissions);
+  const canDeleteApplication = canManage && !me.supplierId && can(me.role, 'settings.manage', me.permissions);
   const newApps = applications.filter((a) => a.status === 'new').length;
   const sorted = [...applications].sort((a, b) => (a.status === 'new' ? -1 : 1) - (b.status === 'new' ? -1 : 1) || b.at - a.at);
 
@@ -119,6 +133,20 @@ function Farms() {
     }
   }
 
+  async function removeApplication() {
+    if (!deletingApplication) return;
+    setDeleting(true);
+    try {
+      await deleteDeclinedApplication(deletingApplication.id);
+      push('Declined application deleted.');
+      setDeletingApplication(null);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not delete this application.', 'bad');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
@@ -141,13 +169,34 @@ function Farms() {
         ))}
       </div>
 
+      {tab === 'farms' && duplicateGroups.length > 0 && (
+        <section className="mb-6 rounded-3xl border border-amber-300 bg-amber-50 p-5" aria-labelledby="duplicate-farms-title">
+          <h2 id="duplicate-farms-title" className="font-display text-xl font-extrabold">Possible duplicate farms</h2>
+          <p className="mt-1 text-sm text-ink-soft">These names and locations match. Review their contacts and records before taking action; no farms have been merged or removed.</p>
+          <ul className="mt-3 space-y-3">
+            {duplicateGroups.map((group) => (
+              <li key={group[0].id} className="rounded-2xl bg-white p-3">
+                <p className="font-bold">{group[0].name} · {group[0].region}</p>
+                <ul className="mt-2 space-y-1 text-sm text-ink-soft">
+                  {group.map((farm) => (
+                    <li key={farm.id}>
+                      <a href={`#farm-${farm.id}`} className="font-semibold text-leaf-deep underline">{farm.contactName || 'View farm'}</a>
+                      {' · '}{farm.contactEmail || 'No email'} · {FARM_STATUS[farm.status].label}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {tab === 'farms' ? (
         <div className="grid gap-4 md:grid-cols-2">
           {suppliers.map((s, i) => {
             const st = stats.get(s.id)!;
             const meta = FARM_STATUS[s.status];
             return (
-              <motion.article key={s.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-[1.75rem] border border-line bg-white p-5 shadow-soft">
+              <motion.article id={`farm-${s.id}`} key={s.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-[1.75rem] border border-line bg-white p-5 shadow-soft">
                 <div className="flex items-start gap-4">
                   <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl bg-leaf-soft text-3xl">{s.emoji}</span>
                   <div className="min-w-0 flex-1">
@@ -216,7 +265,12 @@ function Farms() {
                       </div>
                     )
                   ) : (
-                    <span className={cn('rounded-full px-3 py-1 text-sm font-bold', a.status === 'approved' ? 'bg-leaf-soft text-leaf-deep' : 'bg-[#FFEBEE] text-[#B71C1C]')}>{a.status === 'approved' ? 'Approved' : 'Declined'}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cn('rounded-full px-3 py-1 text-sm font-bold', a.status === 'approved' ? 'bg-leaf-soft text-leaf-deep' : 'bg-[#FFEBEE] text-[#B71C1C]')}>{a.status === 'approved' ? 'Approved' : 'Declined'}</span>
+                      {a.status === 'rejected' && canDeleteApplication && (
+                        <Button variant="danger" size="sm" icon={<Trash2 size={16} />} onClick={() => setDeletingApplication(a)}>Delete</Button>
+                      )}
+                    </div>
                   )}
                 </div>
               </motion.li>
@@ -264,6 +318,17 @@ function Farms() {
               <Button variant={toggle.status === 'suspended' ? 'primary' : 'danger'} onClick={() => { void toggleSupplier(); }}>
                 {toggle.status === 'suspended' ? 'Yes, let them sell' : 'Yes, pause'}
               </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <Modal open={!!deletingApplication} onClose={() => { if (!deleting) setDeletingApplication(null); }} title="Delete declined application?">
+        {deletingApplication && (
+          <div className="space-y-4">
+            <p className="text-ink-soft">Permanently delete the declined application for <b className="text-ink">{deletingApplication.farmName}</b>? This cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" disabled={deleting} onClick={() => setDeletingApplication(null)}>Cancel</Button>
+              <Button variant="danger" disabled={deleting} onClick={() => { void removeApplication(); }}>{deleting ? 'Deleting…' : 'Delete application'}</Button>
             </div>
           </div>
         )}

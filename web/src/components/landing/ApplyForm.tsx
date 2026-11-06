@@ -26,7 +26,7 @@ export function ApplyForm() {
     if (f.name.trim().length < 2) err.name = 'Tell us your name.';
     if (f.phone.trim().length < 9) err.phone = 'Add a phone number we can call.';
     if (!/^\S+@\S+\.\S+$/.test(f.email)) err.email = 'Check your email address. It looks incomplete.';
-    if (f.region.trim().length < 2) err.region = 'Enter a country or region.';
+    if (f.region.trim().length < 2) err.region = 'Enter the farm’s specific location.';
     if (f.produce.trim().length < 3) err.produce = 'List a few things you grow.';
     setErrors(err);
     if (Object.keys(err).length) return;
@@ -93,7 +93,7 @@ export function ApplyForm() {
             </div>
             <Field label="Email" error={errors.email}><Input type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" autoComplete="email" /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Country or region" error={errors.region}><Input value={f.region} onChange={set('region')} placeholder="Country, state, or region" autoComplete="address-level1" /></Field>
+              <Field label="Specific farm location" error={errors.region} hint="Include the locality and country."><Input value={f.region} onChange={set('region')} placeholder="Locality, district, country" autoComplete="street-address" /></Field>
               <Field label="Farm size"><Select value={f.size} onChange={set('size')}>{SIZES.map((r) => <option key={r}>{r}</option>)}</Select></Field>
             </div>
             <Field label="What do you grow?" error={errors.produce} hint="For example: tomatoes, onions, spinach"><Input value={f.produce} onChange={set('produce')} /></Field>

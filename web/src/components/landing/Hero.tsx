@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bike, Sprout, Truck } from 'lucide-react';
+import { Sprout, Truck } from 'lucide-react';
 import { useState } from 'react';
 import { LinkButton } from '@/components/ui/Button';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
@@ -48,7 +48,7 @@ function Phone({
   formatPrice: (amountTzs: number) => string;
 }) {
   return (
-    <div className="relative mx-auto h-[600px] w-[300px] rounded-[2.8rem] border-[10px] border-ink bg-milk shadow-lift">
+    <div className="relative mx-auto h-[600px] w-[300px] max-w-full rounded-[2.8rem] border-[10px] border-ink bg-milk shadow-lift">
       <div className="absolute left-1/2 top-2 z-20 h-5 w-24 -translate-x-1/2 rounded-full bg-ink" />
       <div className="relative h-full overflow-hidden rounded-[2.1rem]">
         {/* mode backdrop */}
@@ -99,7 +99,7 @@ function Phone({
                 <div key={it.id} className="overflow-hidden rounded-2xl bg-white shadow-soft">
                   <SmartImage src={it.image_url ?? undefined} alt={it.name} className="aspect-square w-full text-3xl" />
                   <div className="p-2.5">
-                    <p className="truncate text-[13px] font-bold">{it.name}</p>
+                    <p className="overflow-x-auto whitespace-nowrap text-[13px] font-bold" tabIndex={0}>{it.name}</p>
                     <div className="h-5 overflow-hidden">
                       <AnimatePresence mode="popLayout" initial={false}>
                         <motion.p
@@ -155,13 +155,13 @@ export function Hero() {
             Farm-fresh food, at your door in hours.
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            {market.countryName ? `Region: ${market.countryName}. ` : ''}Share your location to prioritize nearby stocked farms, or browse without it. Buy a little for your kitchen or a lot for your shop.
+            {market.countryName ? `Browser locale: ${market.countryName}. ` : ''}Allow location access to prioritize nearby stocked farms, or browse without it. Buy a little for your kitchen or a lot for your shop.
           </p>
 
           <div className="mt-9">
             <p className="mb-3 text-lg font-bold">Try it. Slide to switch how you shop.</p>
             <ModeSlide wholesale={wholesale} onChange={setWholesale} />
-            <p className="mt-3 h-6 text-ink-soft">
+            <p className="mt-3 min-h-6 text-ink-soft">
               {wholesale ? 'Wholesale shows bulk prices and the smallest amount you can order.' : 'Retail is for home cooks. Buy as little as one kilo.'}
             </p>
           </div>
@@ -178,13 +178,6 @@ export function Hero() {
             <Phone wholesale={wholesale} products={products} loading={loading} error={error} formatPrice={market.formatPrice} />
           </motion.div>
 
-          <div className="absolute -left-2 top-24 hidden animate-floaty items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold shadow-lift sm:flex">
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-leaf-soft text-leaf"><Sprout size={18} /></span>
-            Harvested 12 hours ago
-          </div>
-          <div className="absolute -right-2 bottom-24 hidden items-center gap-2 rounded-2xl bg-sun px-4 py-3 text-sm font-extrabold text-ink shadow-lift sm:flex">
-            <Bike size={20} /> Free delivery within 5 km
-          </div>
         </div>
       </div>
     </section>

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 type MarketLocation = { lat: number; lng: number; accuracy: number };
 type ExchangeRates = { base: 'TZS'; rates: Record<string, number>; updated_at: string };
@@ -67,14 +67,6 @@ function localeAccent(locale: string): string {
   return MARKET_ACCENTS[hash % MARKET_ACCENTS.length];
 }
 
-function isMarketLocation(value: unknown): value is MarketLocation {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return typeof candidate.lat === 'number' && Number.isFinite(candidate.lat) && candidate.lat >= -90 && candidate.lat <= 90
-    && typeof candidate.lng === 'number' && Number.isFinite(candidate.lng) && candidate.lng >= -180 && candidate.lng <= 180
-    && typeof candidate.accuracy === 'number' && Number.isFinite(candidate.accuracy) && candidate.accuracy >= 0;
-}
-
 function isExchangeRates(value: unknown): value is ExchangeRates {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -107,6 +99,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   const [ratesUnavailable, setRatesUnavailable] = useState(false);
   const [locale, setLocale] = useState('en-US');
   const [countryName, setCountryName] = useState<string | null>(null);
+  const locationRequestId = useRef(0);
 
   const setCurrency = useCallback((nextCurrency: string) => {
     if (!CURRENCIES.includes(nextCurrency) || typeof rates[nextCurrency] !== 'number') return;
@@ -119,6 +112,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   }, [rates]);
 
   const requestLocation = useCallback(() => {
+    const requestId = ++locationRequestId.current;
     if (!navigator.geolocation) {
       setLocationError('Location services are not available in this browser.');
       return;
@@ -133,6 +127,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (requestId !== locationRequestId.current) return;
         const next = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -146,6 +141,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
         }
       },
       (error) => {
+        if (requestId !== locationRequestId.current) return;
         const message = error.code === error.PERMISSION_DENIED
           ? 'Allow location access in your browser to prioritize nearby farms.'
           : error.code === error.TIMEOUT
@@ -154,11 +150,12 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
         setLocationError(message);
         setLocation(null);
       },
-      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 15_000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
     );
   }, []);
 
   const clearLocation = useCallback(() => {
+    locationRequestId.current += 1;
     setLocation(null);
     setLocationError('');
     try {
@@ -176,10 +173,9 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     const region = localeRegion(detectedLocale);
     setCountryName(region ? new Intl.DisplayNames([detectedLocale], { type: 'region' }).of(region) ?? null : null);
     let savedCurrency: string | null = null;
-    let savedLocation: string | null = null;
     try {
       savedCurrency = window.localStorage.getItem(CURRENCY_KEY);
-      savedLocation = window.sessionStorage.getItem(LOCATION_KEY);
+      window.sessionStorage.removeItem(LOCATION_KEY);
       window.localStorage.removeItem(LOCATION_KEY);
     } catch (error) {
       console.error('Could not restore market preferences:', error);
@@ -188,16 +184,6 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
       ? savedCurrency
       : localeCurrency(detectedLocale);
     setCurrencyState(initialCurrency);
-
-    if (savedLocation) {
-      try {
-        const parsed: unknown = JSON.parse(savedLocation);
-        if (isMarketLocation(parsed)) setLocation(parsed);
-      } catch (error) {
-        console.error('Could not restore the saved market location:', error);
-        window.sessionStorage.removeItem(LOCATION_KEY);
-      }
-    }
 
     void loadExchangeRates().then((result) => {
       if (!active) return;

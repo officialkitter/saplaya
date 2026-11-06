@@ -16,6 +16,7 @@ interface Actions {
   addProduct: (p: Omit<Product, 'id' | 'stock' | 'harvestedHoursAgo'>, openingStock: number, by: string) => Promise<void>;
   updateProduct: (id: string, patch: Partial<Omit<Product, 'id' | 'stock' | 'supplierId'>>) => Promise<void>;
   decideApplication: (id: string, decision: 'approved' | 'rejected') => Promise<string | null>;
+  deleteDeclinedApplication: (id: string) => Promise<void>;
   addSupplier: (s: { name: string; region: string; contactName: string; contactEmail: string; contactPhone: string }) => Promise<void>;
   setSupplierStatus: (id: string, status: SupplierStatus) => Promise<void>;
   setSupplierCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>;
@@ -63,6 +64,11 @@ const createAdminStore: StateCreator<DB> = (set) => {
     sessionId: null,
 
     logout: () => set({ sessionId: null }),
+
+    deleteDeclinedApplication: async (id) => {
+      await fetchAdmin(`/admin/applications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await reload();
+    },
 
     saveProfileName: async (fullName) => {
       await fetchAdmin('/admin/me', {

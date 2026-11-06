@@ -2120,6 +2120,27 @@ app.get('/admin/applications', requirePerm('suppliers.manage'), async (_req: Aut
   res.json(data);
 });
 
+app.delete('/admin/applications/:id', requirePerm('settings.manage'), async (req: AuthedRequest, res: Response) => {
+  const member = req.member!;
+  if (member.supplier_id || !member.permissions.includes('suppliers.manage')) {
+    return res.status(403).json({ error: 'Only platform administrators with farm management access can delete declined applications.' });
+  }
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid application ID.' });
+  const { data, error } = await db.from('supplier_applications')
+    .delete()
+    .eq('id', id.data)
+    .in('status', ['declined', 'rejected'])
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    console.error('Could not delete declined application:', error.message);
+    return res.status(500).json({ error: 'Could not delete this declined application.' });
+  }
+  if (!data) return res.status(404).json({ error: 'Declined application not found.' });
+  return res.json({ ok: true });
+});
+
 // Approve = create the farm + invite its owner by email. Reject = just close it.
 app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
   const decision = req.params.decision;

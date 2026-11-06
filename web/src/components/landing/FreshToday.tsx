@@ -48,11 +48,11 @@ export function FreshToday() {
           On the shelf {localPeriod ? `this ${localPeriod}` : 'today'}.
         </h2>
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
-          Browsing {market.countryName ?? 'the global marketplace'}. Share your location if you want nearby stocked farms prioritized.
+          Browsing the global marketplace{market.countryName ? ` · browser locale: ${market.countryName}` : ''}. Allow location access to prioritize nearby stocked farms.
         </p>
         {market.location && (
           <p className="mt-2 text-sm font-semibold text-leaf-deep">
-            Nearby farms are prioritized{market.countryName ? ` for ${market.countryName}` : ''}. Your exact location is not shown.
+            Nearby farms are prioritized using your device location. Your coordinates are not displayed.
           </p>
         )}
         {market.ratesLoading && market.currency !== 'TZS' ? (
@@ -89,8 +89,8 @@ export function FreshToday() {
           <div className="mt-12 space-y-12">
             {sections.map((section) => (
               <div key={section.key}>
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-display text-2xl font-extrabold">{section.title}</h3>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="whitespace-nowrap font-display text-xl font-extrabold sm:text-2xl">{section.title}</h3>
                   {section.total > 6 && (
                     <button
                       type="button"
@@ -101,7 +101,7 @@ export function FreshToday() {
                     </button>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                   {section.products.map((product) => (
                     <article key={product.id} className="group overflow-hidden rounded-[1.75rem] bg-white shadow-soft">
                       <div className="relative aspect-[4/3] overflow-hidden bg-line">
@@ -116,7 +116,7 @@ export function FreshToday() {
                         </div>
                       </div>
                       <div className="p-3 sm:p-4">
-                        <h4 className="truncate font-display text-lg font-extrabold text-ink sm:text-xl">{product.name}</h4>
+                        <h4 className="overflow-x-auto whitespace-nowrap font-display text-lg font-extrabold text-ink sm:text-xl" tabIndex={0}>{product.name}</h4>
                         <p className="mt-0.5 font-bold text-leaf-deep">
                           {market.formatPrice(product.retail_price)} <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
                         </p>

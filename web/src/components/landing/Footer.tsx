@@ -40,7 +40,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-5 py-10 sm:flex-row sm:items-center">
         <Logo />
         <p className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: marketAccent }}>
-          {countryName ? `Browser region: ${countryName}` : 'Global marketplace'}
+          {countryName ? `Browser locale: ${countryName}` : 'Global marketplace'}
         </p>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-[15px] font-semibold text-ink-soft" aria-label="Footer">
           <a href="#how" className="hover:text-leaf">How it works</a>
