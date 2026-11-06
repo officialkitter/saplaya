@@ -32,16 +32,6 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
             <Text style={styles.unit}> / {product.unit}</Text>
           </Text>
           {mode === 'wholesale' && <Text style={styles.min}>Min {product.wholesale_min_qty} {product.unit}</Text>}
-          {product.bulk_price !== null && (
-            <Text style={styles.bulkTier}>
-              Bulk {formatPrice(product.bulk_price)} · {product.wholesale_min_qty * 10}+ {product.unit}
-            </Text>
-          )}
-          {product.mega_bulk_price !== null && (
-            <Text style={styles.megaTier}>
-              Mega-bulk {formatPrice(product.mega_bulk_price)} · {product.wholesale_min_qty * 100}+ {product.unit}
-            </Text>
-          )}
           {typeof product.farm_distance_km === 'number' && (
             <Text style={styles.distance}>{product.farm_distance_km.toFixed(1)} km away</Text>
           )}
@@ -62,7 +52,5 @@ const styles = StyleSheet.create({
   price: { fontSize: 17, fontWeight: '800', color: colors.green, marginTop: 4 },
   unit: { fontSize: 13, fontWeight: '500', color: colors.muted },
   min: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.yellowDeep },
-  bulkTier: { marginTop: 5, fontSize: 11, fontWeight: '800', color: colors.bulk },
-  megaTier: { marginTop: 2, fontSize: 10, fontWeight: '800', color: '#00796B' },
   distance: { marginTop: 4, fontSize: 10, fontWeight: '700', color: colors.muted },
 });

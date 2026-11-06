@@ -122,16 +122,6 @@ function Phone({
                         </motion.p>
                       )}
                     </AnimatePresence>
-                    {it.bulk_price !== null && (
-                      <p className="mt-1 truncate text-[10px] font-bold text-[#00796B]">
-                        Bulk {formatPrice(it.bulk_price)} · {it.wholesale_min_qty * 10}+ {it.unit}
-                      </p>
-                    )}
-                    {it.mega_bulk_price !== null && (
-                      <p className="truncate text-[10px] font-bold text-[#00695C]">
-                        Mega {formatPrice(it.mega_bulk_price)} · {it.wholesale_min_qty * 100}+ {it.unit}
-                      </p>
-                    )}
                   </div>
                 </div>
               ))}
@@ -155,14 +145,14 @@ export function Hero() {
             Farm-fresh food, at your door in hours.
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            {market.countryName ? `Browser locale: ${market.countryName}. ` : ''}Allow location access to prioritize nearby stocked farms, or browse without it. Buy a little for your kitchen or a lot for your shop.
+            Allow location access to prioritize nearby stocked farms, or browse without it. Buy a little for your kitchen or a lot for your shop.
           </p>
 
           <div className="mt-9">
             <p className="mb-3 text-lg font-bold">Try it. Slide to switch how you shop.</p>
             <ModeSlide wholesale={wholesale} onChange={setWholesale} />
             <p className="mt-3 min-h-6 text-ink-soft">
-              {wholesale ? 'Wholesale shows bulk prices and the smallest amount you can order.' : 'Retail is for home cooks. Buy as little as one kilo.'}
+              {wholesale ? 'Wholesale shows the price and minimum quantity for larger orders.' : 'Retail is for home cooks. Buy as little as one kilo.'}
             </p>
           </div>
 

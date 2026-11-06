@@ -12,18 +12,26 @@ export function FreshToday() {
   const { products, loading, error, retry } = useStorefrontProducts(40, market.location);
   const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [now, setNow] = useState(0);
 
   const sections = [
-    { key: 'fresh', title: 'Fresh produce' },
-    { key: 'grains', title: 'Grains & pulses' },
-    { key: 'essentials', title: 'Cooking essentials' },
+    { key: 'fresh', title: 'Fresh today', description: 'Harvested within the last 24 hours.' },
+    { key: 'holisticare', title: 'Holisticare', description: 'Vegetables, fruits, herbs and other garden produce.' },
+    { key: 'grains', title: 'Grains & pulses', description: 'Everyday grains, cereals, beans and pulses.' },
+    { key: 'essentials', title: 'Cooking essentials', description: 'Pantry staples including oils, sauces, spices and more.' },
   ].map((section) => {
     const matches = products.filter((product) => {
       const category = product.category.toLocaleLowerCase();
+      const harvested = Date.parse(product.harvested_at);
+      if (section.key === 'fresh') {
+        const age = now - harvested;
+        return /fruit|veget|produce|leaf|herb|flower/.test(category)
+          && now > 0 && Number.isFinite(harvested) && age >= 0 && age < 24 * 60 * 60 * 1000;
+      }
       const group = /grain|pulse|legume|bean|rice|maize|millet|cereal/.test(category)
         ? 'grains'
         : /fruit|veget|produce|leaf|herb|flower/.test(category)
-          ? 'fresh'
+          ? 'holisticare'
           : 'essentials';
       return group === section.key;
     });
@@ -35,7 +43,10 @@ export function FreshToday() {
   }).filter((section) => section.total > 0);
 
   useEffect(() => {
-    const updateLocalPeriod = () => setLocalPeriod(localDayPeriod());
+    const updateLocalPeriod = () => {
+      setLocalPeriod(localDayPeriod());
+      setNow(Date.now());
+    };
     updateLocalPeriod();
     const interval = setInterval(updateLocalPeriod, 60_000);
     return () => clearInterval(interval);
@@ -48,7 +59,7 @@ export function FreshToday() {
           On the shelf {localPeriod ? `this ${localPeriod}` : 'today'}.
         </h2>
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
-          Browsing the global marketplace{market.countryName ? ` · browser locale: ${market.countryName}` : ''}. Allow location access to prioritize nearby stocked farms.
+          Explore farm produce and pantry essentials. Allow location access to prioritize nearby stocked farms.
         </p>
         {market.location && (
           <p className="mt-2 text-sm font-semibold text-leaf-deep">
@@ -90,7 +101,10 @@ export function FreshToday() {
             {sections.map((section) => (
               <div key={section.key}>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="whitespace-nowrap font-display text-xl font-extrabold sm:text-2xl">{section.title}</h3>
+                  <div>
+                    <h3 className="font-display text-xl font-extrabold sm:text-2xl">{section.title}</h3>
+                    <p className="mt-1 text-sm text-ink-soft">{section.description}</p>
+                  </div>
                   {section.total > 6 && (
                     <button
                       type="button"
@@ -111,9 +125,11 @@ export function FreshToday() {
                           className="absolute inset-0 text-6xl"
                           imgClassName="transition duration-700 group-hover:scale-105"
                         />
-                        <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-leaf-deep">
-                          <Sprout size={14} /> Harvested {Math.max(0, Math.floor((Date.now() - Date.parse(product.harvested_at)) / 3_600_000))} hours ago
-                        </div>
+                        {section.key === 'fresh' && (
+                          <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-leaf-deep">
+                            <Sprout size={14} /> Harvested in the last 24 hours
+                          </div>
+                        )}
                       </div>
                       <div className="p-3 sm:p-4">
                         <h4 className="overflow-x-auto whitespace-nowrap font-display text-lg font-extrabold text-ink sm:text-xl" tabIndex={0}>{product.name}</h4>
@@ -127,16 +143,6 @@ export function FreshToday() {
                           <span className="rounded-full bg-leaf-soft px-2 py-1 text-[10px] font-bold text-leaf-deep">
                             Wholesale · {market.formatPrice(product.wholesale_price)} from {product.wholesale_min_qty}
                           </span>
-                          {product.bulk_price !== null && (
-                            <span className="rounded-full bg-[#E0F2F1] px-2 py-1 text-[10px] font-bold text-[#00796B]">
-                              Bulk · {market.formatPrice(product.bulk_price)} from {product.wholesale_min_qty * 10}
-                            </span>
-                          )}
-                          {product.mega_bulk_price !== null && (
-                            <span className="rounded-full bg-[#B2DFDB] px-2 py-1 text-[10px] font-bold text-[#00695C]">
-                              Mega-bulk · {market.formatPrice(product.mega_bulk_price)} from {product.wholesale_min_qty * 100}
-                            </span>
-                          )}
                         </div>
                       </div>
                     </article>

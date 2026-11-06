@@ -91,7 +91,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
         </Text>
         <Text style={[styles.tier, (tier === 'bulk' || tier === 'mega_bulk') && styles.bulkTier]}>{volumeTierLabel(tier)} pricing</Text>
         <Text style={styles.min}>
-          Wholesale from {product.wholesale_min_qty}; bulk from {product.wholesale_min_qty * 10}; mega-bulk from {product.wholesale_min_qty * 100} {product.unit}. Other farms may fulfill larger quantities.
+          Wholesale from {product.wholesale_min_qty} {product.unit}. Other farms may fulfill larger quantities.
         </Text>
 
         <View style={styles.actions}>

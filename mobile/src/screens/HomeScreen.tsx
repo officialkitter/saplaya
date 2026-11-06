@@ -16,14 +16,14 @@ import { Product, Promo } from '../types';
 import { useCurrency } from '../lib/currency';
 
 type CatalogRow =
-  | { kind: 'heading'; key: string; title: string; count: number; expanded: boolean }
+  | { kind: 'heading'; key: string; title: string; description: string; count: number; expanded: boolean }
   | { kind: 'products'; key: string; products: Product[] };
 
-function categoryGroup(category = ''): 'fresh' | 'grains' | 'essentials' {
+function categoryGroup(category = ''): 'holisticare' | 'grains' | 'essentials' {
   const value = category.toLocaleLowerCase();
   if (/grain|pulse|legume|bean|rice|maize|millet|cereal/.test(value)) return 'grains';
   if (/oil|sauce|cheese|dairy|cooking|spice|condiment/.test(value)) return 'essentials';
-  if (/fruit|veget|produce|leaf|herb|flower/.test(value)) return 'fresh';
+  if (/fruit|veget|produce|leaf|herb|flower/.test(value)) return 'holisticare';
   return 'essentials';
 }
 
@@ -45,18 +45,25 @@ export default function HomeScreen({ navigation }: any) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const catalogRows = useMemo<CatalogRow[]>(() => {
-    const groups: { key: 'fresh' | 'grains' | 'essentials'; title: string }[] = [
-      { key: 'fresh', title: 'Fresh produce' },
-      { key: 'grains', title: 'Grains & pulses' },
-      { key: 'essentials', title: 'Cooking essentials' },
+    const groups: { key: 'fresh' | 'holisticare' | 'grains' | 'essentials'; title: string; description: string }[] = [
+      { key: 'fresh', title: 'Fresh today', description: 'Harvested within the last 24 hours.' },
+      { key: 'holisticare', title: 'Holisticare', description: 'Vegetables, fruits, herbs and other garden produce.' },
+      { key: 'grains', title: 'Grains & pulses', description: 'Everyday grains, cereals, beans and pulses.' },
+      { key: 'essentials', title: 'Cooking essentials', description: 'Pantry staples including oils, sauces, spices and more.' },
     ];
-    return groups.flatMap(({ key, title }) => {
-      const products = items.filter((product) => categoryGroup(product.category) === key);
+    return groups.flatMap(({ key, title, description }) => {
+      const products = items.filter((product) => {
+        if (key !== 'fresh') return categoryGroup(product.category) === key;
+        const harvested = Date.parse(product.harvested_at);
+        const age = Date.now() - harvested;
+        return categoryGroup(product.category) === 'holisticare'
+          && Number.isFinite(harvested) && age >= 0 && age < 24 * 60 * 60 * 1000;
+      });
       if (!products.length) return [];
       const expanded = expandedSections[key] ?? false;
       const visibleProducts = expanded ? products : products.slice(0, 6);
       return [
-        { kind: 'heading' as const, key: `heading-${key}`, title, count: products.length, expanded },
+        { kind: 'heading' as const, key: `heading-${key}`, title, description, count: products.length, expanded },
         ...Array.from({ length: Math.ceil(visibleProducts.length / 2) }, (_, index) => ({
           kind: 'products' as const,
           key: `${key}-${index}`,
@@ -187,7 +194,10 @@ export default function HomeScreen({ navigation }: any) {
         keyExtractor={(row) => row.key}
         renderItem={({ item, index }) => item.kind === 'heading' ? (
           <View style={styles.categoryHeading}>
-            <Text style={styles.categoryTitle}>{item.title}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.categoryTitle}>{item.title}</Text>
+              <Text style={styles.categoryDescription}>{item.description}</Text>
+            </View>
             {item.count > 6 && (
               <Pressable
                 onPress={() => setExpandedSections((sections) => ({ ...sections, [item.key.replace('heading-', '')]: !item.expanded }))}
@@ -250,6 +260,7 @@ const styles = StyleSheet.create({
   section: { fontSize: 22, fontWeight: '900', color: colors.green, marginHorizontal: 20, marginTop: 22, marginBottom: 6 },
   categoryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 },
   categoryTitle: { fontSize: 20, fontWeight: '900', color: colors.ink },
+  categoryDescription: { marginTop: 3, marginRight: 8, color: colors.muted, fontSize: 12 },
   seeMore: { color: colors.green, fontWeight: '800' },
   productRow: { flexDirection: 'row', paddingHorizontal: 14 },
   productSpacer: { flex: 1, padding: 6 },

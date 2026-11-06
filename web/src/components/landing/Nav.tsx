@@ -18,7 +18,7 @@ const LINKS = [
 export function Nav() {
   const [open, setOpen] = useState(false);
   const requested = useRef(false);
-  const { location, locationError, requestLocation, clearLocation, countryName, marketAccent, currency, setCurrency, currencies } = useGlobalMarket();
+  const { location, locationError, requestLocation, clearLocation, currency, setCurrency, currencies } = useGlobalMarket();
   useEffect(() => {
     if (requested.current) return;
     requested.current = true;
@@ -34,18 +34,13 @@ export function Nav() {
       >
         <MapPin size={16} aria-hidden />{location ? 'Location on · Clear' : 'Use my location'}
       </button>
-      {countryName && (
-        <span className="rounded-xl px-3 py-2 text-sm font-bold text-white" style={{ backgroundColor: marketAccent }}>
-          Browser locale: {countryName}
-        </span>
-      )}
-      <label className="sr-only" htmlFor={id}>Display currency, initially detected from your browser locale</label>
+      <label className="sr-only" htmlFor={id}>Display currency</label>
       <select
         id={id}
         value={currency}
         onChange={(event) => setCurrency(event.target.value)}
         className="h-10 rounded-xl border border-line bg-white px-2 text-sm font-bold text-ink"
-        aria-label="Display currency, initially detected from your browser locale"
+        aria-label="Display currency"
       >
         {currencies.map((code) => <option key={code} value={code}>{code}</option>)}
       </select>
