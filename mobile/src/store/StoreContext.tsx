@@ -1,10 +1,11 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { CartLine, Mode, Product } from '../types';
-import { volumePrice, volumeTier } from '../lib/volume';
+import { orderMode, volumePrice, volumeTier, type BaseMode } from '../lib/volume';
 
 type Ctx = {
   mode: Mode;
-  setMode: (m: Mode) => void;
+  baseMode: BaseMode;
+  setMode: (m: BaseMode) => void;
   lines: CartLine[];
   add: (p: Product, qty: number) => void;
   setQty: (id: string, qty: number) => void;
@@ -21,18 +22,21 @@ const StoreCtx = createContext<Ctx>(null as unknown as Ctx);
 export const useStore = () => useContext(StoreCtx);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<Mode>('retail');
+  const [baseMode, setMode] = useState<BaseMode>('retail');
   const [lines, setLines] = useState<CartLine[]>([]);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
 
-  const priceOf = useCallback((p: Product, qty = 1) => volumePrice(p, qty, mode), [mode]);
-  const tierOf = useCallback((p: Product, qty: number) => volumeTier(p, qty, mode), [mode]);
+  const mode = useMemo(() => orderMode(lines, baseMode), [lines, baseMode]);
+  const priceOf = useCallback((p: Product, qty = 1) => volumePrice(p, qty, baseMode), [baseMode]);
+  const tierOf = useCallback((p: Product, qty: number) => volumeTier(p, qty, baseMode), [baseMode]);
 
   const add = useCallback((product: Product, qty: number) => {
     setLines((prev) => {
       const found = prev.find((l) => l.product.id === product.id);
-      if (found) return prev.map((l) => (l.product.id === product.id ? { ...l, qty: l.qty + qty } : l));
-      return [...prev, { product, qty }];
+      if (found) return prev.map((l) => (l.product.id === product.id
+        ? { ...l, qty: Math.min(product.stock, 10000, l.qty + qty) }
+        : l));
+      return [...prev, { product, qty: Math.min(product.stock, 10000, qty) }];
     });
   }, []);
 
@@ -45,6 +49,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       mode,
+      baseMode,
       setMode,
       lines,
       add,
@@ -57,7 +62,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       tierOf,
       subtotal: lines.reduce((n, l) => n + (priceOf(l.product, l.qty) ?? l.product.wholesale_price) * l.qty, 0),
     }),
-    [mode, lines, add, setQty, clear, priceOf, tierOf, lastOrderId]
+    [mode, baseMode, lines, add, setQty, clear, priceOf, tierOf, lastOrderId]
   );
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

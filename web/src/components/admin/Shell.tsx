@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon, UserRound,
-  Tractor, Users, Warehouse, X, Tags,
+  Tractor, Users, Warehouse, X, Tags, BriefcaseBusiness,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -26,6 +26,7 @@ function navFor(farm: boolean): NavItem[] {
     { href: '/admin/inventory', label: 'Stock history', icon: Warehouse, perm: 'inventory.view' },
     { href: '/admin/suppliers', label: 'Farms', icon: Tractor, perm: 'suppliers.view_all' },
     { href: '/admin/team', label: 'Team and roles', icon: Users, perm: 'team.view' },
+    { href: '/admin/management', label: 'Management', icon: BriefcaseBusiness, perm: 'management.view' },
     { href: '/admin/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.manage' },
   ];
 }

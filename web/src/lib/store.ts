@@ -9,6 +9,13 @@ import type {
 interface Actions {
   logout: () => void;
   saveProfileName: (fullName: string) => Promise<void>;
+  saveManagementProfile: (profile: {
+    phone: string | null;
+    age: number | null;
+    job_title: string | null;
+    bio: string | null;
+    avatar_url: string | null;
+  }) => Promise<void>;
   stockCatalogProduct: (catalogProductId: string, supplierId: string, qty: number) => Promise<{ already_stocked: boolean; stock: number }>;
   publishCatalogProduct: (catalogProductId: string, supplierId: string) => Promise<void>;
   setOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
@@ -17,9 +24,28 @@ interface Actions {
   updateProduct: (id: string, patch: Partial<Omit<Product, 'id' | 'stock' | 'supplierId'>>) => Promise<void>;
   decideApplication: (id: string, decision: 'approved' | 'rejected') => Promise<string | null>;
   deleteDeclinedApplication: (id: string) => Promise<void>;
-  addSupplier: (s: { name: string; region: string; contactName: string; contactEmail: string; contactPhone: string }) => Promise<void>;
+  addSupplier: (s: {
+    name: string;
+    countryCode: string;
+    countryName: string;
+    regionCode: string;
+    regionName: string;
+    districtCode: string | null;
+    districtName: string | null;
+    contactName: string;
+    contactEmail: string;
+    contactPhone: string;
+  }) => Promise<void>;
   setSupplierStatus: (id: string, status: SupplierStatus) => Promise<void>;
   setSupplierCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>;
+  setSupplierLocation: (id: string, location: {
+    countryCode: string;
+    countryName: string;
+    regionCode: string;
+    regionName: string;
+    districtCode: string | null;
+    districtName: string | null;
+  }) => Promise<void>;
   mergeSupplier: (sourceId: string, targetId: string) => Promise<void>;
   archiveSupplier: (id: string) => Promise<void>;
   mergeProduct: (sourceId: string, targetId: string) => Promise<void>;
@@ -61,7 +87,9 @@ const createAdminStore: StateCreator<DB> = (set) => {
       farFee: 4000,
       commissionPct: 8,
       wholesaleMinDefault: 10,
+      tierPricePercentages: { wholesale: 70, bulk: 65, mega_bulk: 55 },
       deliveryOptionFees: {
+        morning: 0, evening: 0,
         '12h': null, '24h': null, '48h': null, '72h': null, '7d': null, '10d': null, '14d': null,
       },
     },
@@ -78,6 +106,14 @@ const createAdminStore: StateCreator<DB> = (set) => {
       await fetchAdmin('/admin/me', {
         method: 'PATCH',
         body: JSON.stringify({ full_name: fullName }),
+      });
+      await reload();
+    },
+
+    saveManagementProfile: async (profile) => {
+      await fetchAdmin('/admin/management/my-profile', {
+        method: 'PATCH',
+        body: JSON.stringify(profile),
       });
       await reload();
     },
@@ -122,6 +158,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
       await fetchAdmin('/admin/products', {
         method: 'POST',
         body: JSON.stringify({
+          supplier_id: product.supplierId,
           name: product.name,
           category: product.category,
           unit: product.unit,
@@ -169,7 +206,12 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'POST',
         body: JSON.stringify({
           name: supplier.name,
-          region: supplier.region,
+          country_code: supplier.countryCode,
+          country_name: supplier.countryName,
+          region_code: supplier.regionCode,
+          region_name: supplier.regionName,
+          district_code: supplier.districtCode,
+          district_name: supplier.districtName,
           contact_name: supplier.contactName,
           contact_email: supplier.contactEmail,
           contact_phone: supplier.contactPhone,
@@ -190,6 +232,21 @@ const createAdminStore: StateCreator<DB> = (set) => {
       await fetchAdmin(`/admin/suppliers/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ latitude, longitude }),
+      });
+      await reload();
+    },
+
+    setSupplierLocation: async (id, location) => {
+      await fetchAdmin(`/admin/suppliers/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          country_code: location.countryCode,
+          country_name: location.countryName,
+          region_code: location.regionCode,
+          region_name: location.regionName,
+          district_code: location.districtCode,
+          district_name: location.districtName,
+        }),
       });
       await reload();
     },
@@ -261,6 +318,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           far_fee: settings.farFee,
           commission_pct: settings.commissionPct,
           wholesale_min_default: settings.wholesaleMinDefault,
+          tier_price_percentages: settings.tierPricePercentages,
           delivery_option_fees: settings.deliveryOptionFees,
         }),
       });

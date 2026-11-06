@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/Modal';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { formatTZS, localDateTime } from '@/lib/format';
 import { useMe, useToast } from '@/lib/store';
+import { tierPrices } from '@/lib/volume';
 
 type CatalogItem = {
   id: string;
@@ -59,6 +60,8 @@ const blankForm: Form = {
 function SharedCatalog() {
   const push = useToast((state) => state.push);
   const me = useMe();
+  const [pricingPercentages, setPricingPercentages] = useState({ wholesale: 70, bulk: 65, mega_bulk: 55 });
+  const [pricingPolicyReady, setPricingPolicyReady] = useState(false);
   const canViewTierPricing = me?.role === 'platform_owner'
     || (me?.roleScope === 'platform' && ['administrator', 'platform_admin'].includes(me.role));
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -87,6 +90,17 @@ function SharedCatalog() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    void fetchAdmin<typeof pricingPercentages>('/admin/pricing-policy')
+      .then((policy) => {
+        setPricingPercentages(policy);
+        setPricingPolicyReady(true);
+      })
+      .catch((error: unknown) => {
+        push(error instanceof Error ? error.message : 'Could not load automatic pricing rules.', 'bad');
+      });
+  }, [push]);
 
   const visible = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -146,11 +160,16 @@ function SharedCatalog() {
 
   const save = async () => {
     if (!editing || !form) return;
+    if (!pricingPolicyReady) {
+      push('Wait for the owner pricing rules to load before saving.', 'bad');
+      return;
+    }
     const retail = Number(form.retail_price);
-    const wholesale = Number(form.wholesale_price);
+    const prices = tierPrices(retail, pricingPercentages);
+    const wholesale = prices.wholesale;
     const minimum = Number(form.wholesale_min_qty);
-    const bulkPrice = form.bulk_price === '' ? null : Number(form.bulk_price);
-    const megaBulkPrice = form.mega_bulk_price === '' ? null : Number(form.mega_bulk_price);
+    const bulkPrice = prices.bulk;
+    const megaBulkPrice = prices.mega_bulk;
     if (form.name.trim().length < 2) {
       push('Enter a product name.', 'bad');
       return;
@@ -159,8 +178,8 @@ function SharedCatalog() {
       push('Enter a category and sales unit.', 'bad');
       return;
     }
-    if (!Number.isInteger(retail) || retail <= 0 || !Number.isInteger(wholesale) || wholesale <= 0 || wholesale >= retail) {
-      push('Set a positive bulk price lower than the retail price.', 'bad');
+    if (!Number.isInteger(retail) || retail < 2 || !Number.isInteger(wholesale) || wholesale <= 0 || wholesale >= retail) {
+      push('Set a whole retail price of at least 2 TSh.', 'bad');
       return;
     }
     if (!Number.isInteger(minimum) || minimum <= 0) {
@@ -168,8 +187,8 @@ function SharedCatalog() {
       return;
     }
     if (
-      (bulkPrice !== null && (!Number.isInteger(bulkPrice) || bulkPrice <= 0 || bulkPrice > wholesale))
-      || (megaBulkPrice !== null && (!Number.isInteger(megaBulkPrice) || megaBulkPrice <= 0 || bulkPrice === null || megaBulkPrice > bulkPrice))
+      !Number.isInteger(bulkPrice) || bulkPrice <= 0 || bulkPrice > wholesale
+      || !Number.isInteger(megaBulkPrice) || megaBulkPrice <= 0 || megaBulkPrice > bulkPrice
     ) {
       push('Set a bulk price no higher than wholesale, and a mega-bulk price no higher than bulk.', 'bad');
       return;
@@ -339,12 +358,12 @@ function SharedCatalog() {
               <Field label="Category"><Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></Field>
               <Field label="Unit"><Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} /></Field>
               <Field label="Retail price (TZS)"><Input type="number" min="1" value={form.retail_price} onChange={(event) => setForm({ ...form, retail_price: event.target.value })} /></Field>
-              <Field label="Wholesale price (TZS)"><Input type="number" min="1" value={form.wholesale_price} onChange={(event) => setForm({ ...form, wholesale_price: event.target.value })} /></Field>
+              <Field label={`Wholesale · ${pricingPercentages.wholesale}% of retail`}><Input value={formatTZS(tierPrices(Number(form.retail_price), pricingPercentages).wholesale)} readOnly /></Field>
               <Field label="Wholesale minimum quantity"><Input type="number" min="1" value={form.wholesale_min_qty} onChange={(event) => setForm({ ...form, wholesale_min_qty: event.target.value })} /></Field>
               {canViewTierPricing && (
                 <>
-                  <Field label="Bulk price at 10× wholesale minimum (TZS)"><Input type="number" min="1" value={form.bulk_price} onChange={(event) => setForm({ ...form, bulk_price: event.target.value })} placeholder="Not configured" /></Field>
-                  <Field label="Mega-bulk price at 100× wholesale minimum (TZS)"><Input type="number" min="1" value={form.mega_bulk_price} onChange={(event) => setForm({ ...form, mega_bulk_price: event.target.value })} placeholder="Not configured" /></Field>
+                  <Field label={`Bulk · ${pricingPercentages.bulk}% of retail`}><Input value={formatTZS(tierPrices(Number(form.retail_price), pricingPercentages).bulk)} readOnly /></Field>
+                  <Field label={`Mega-bulk · ${pricingPercentages.mega_bulk}% of retail`}><Input value={formatTZS(tierPrices(Number(form.retail_price), pricingPercentages).mega_bulk)} readOnly /></Field>
                 </>
               )}
             </div>
@@ -378,7 +397,7 @@ function SharedCatalog() {
             </label>
             <div className="flex justify-end gap-2">
               <Button variant="soft" onClick={() => { setEditing(null); setForm(null); }}>Cancel</Button>
-              <Button disabled={saving || uploadingPhoto} onClick={() => void save()}>{saving ? 'Saving…' : editing === 'new' ? 'Add product' : 'Save shared price'}</Button>
+              <Button disabled={saving || uploadingPhoto || !pricingPolicyReady} onClick={() => void save()}>{saving ? 'Saving…' : editing === 'new' ? 'Add product' : 'Save shared price'}</Button>
             </div>
           </div>
         )}

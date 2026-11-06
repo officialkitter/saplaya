@@ -5,19 +5,25 @@ import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow } from '../theme';
+import { colors, radius, shadow, volumeTheme } from '../theme';
 import { unlockedVolumeTier, volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
 import type { CartLine } from '../types';
 
 export default function CartScreen({ navigation }: any) {
-  const { lines, setQty, subtotal, priceOf, tierOf, mode } = useStore();
+  const { lines, setQty, subtotal, priceOf, tierOf, mode, baseMode } = useStore();
   const { formatPrice } = useCurrency();
   const [unlocked, setUnlocked] = useState<{ name: string; tier: 'bulk' | 'mega_bulk' } | null>(null);
+  const activeTier = lines.reduce<'retail' | 'wholesale' | 'bulk' | 'mega_bulk'>((highest, line) => {
+    const tier = tierOf(line.product, line.qty);
+    const rank = { retail: 0, wholesale: 1, bulk: 2, mega_bulk: 3 };
+    return rank[tier] > rank[highest] ? tier : highest;
+  }, mode);
+  const tierTheme = volumeTheme(activeTier);
 
   const updateQuantity = (line: CartLine, qty: number) => {
-    const tier = unlockedVolumeTier(line.product, line.qty, qty, mode);
+    const tier = unlockedVolumeTier(line.product, line.qty, qty, baseMode);
     if (tier) setUnlocked({ name: line.product.name, tier });
     setQty(line.product.id, qty);
   };
@@ -33,7 +39,7 @@ export default function CartScreen({ navigation }: any) {
 
   if (lines.length === 0) {
     return (
-      <SafeAreaView style={[styles.root, styles.empty]}>
+      <SafeAreaView style={[styles.root, styles.empty, { backgroundColor: tierTheme.background }]}>
         <MotiView from={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}>
           <Ionicons name="basket-outline" size={96} color={colors.greenLight} />
         </MotiView>
@@ -47,14 +53,14 @@ export default function CartScreen({ navigation }: any) {
   }
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <Text style={styles.h1}>Your basket</Text>
+    <SafeAreaView style={[styles.root, { backgroundColor: tierTheme.background }]} edges={['top']}>
+      <Text style={[styles.h1, { color: tierTheme.accent }]}>{activeTier === 'mega_bulk' ? 'Mega-bulk basket' : activeTier === 'bulk' ? 'Bulk basket' : 'Your basket'}</Text>
       <FlatList
         data={lines}
         keyExtractor={(l) => l.product.id}
         contentContainerStyle={{ padding: 20, paddingBottom: 160 }}
         renderItem={({ item }) => (
-          <View style={[styles.line, shadow]}>
+          <View style={[styles.line, shadow, { borderColor: tierTheme.accent + '55' }]}>
             {item.product.image_url ? (
               <Image source={{ uri: item.product.image_url }} style={styles.thumb} contentFit="cover" />
             ) : (
@@ -64,10 +70,10 @@ export default function CartScreen({ navigation }: any) {
             )}
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.name} numberOfLines={1}>{item.product.name}</Text>
-              <Text style={styles.price}>
+              <Text style={[styles.price, { color: tierTheme.accent }]}>
                 {priceOf(item.product, item.qty) === null ? 'Price confirmed at checkout' : formatPrice((priceOf(item.product, item.qty) ?? 0) * item.qty)}
               </Text>
-              <Text style={[styles.tierLabel, (tierOf(item.product, item.qty) === 'bulk' || tierOf(item.product, item.qty) === 'mega_bulk') && styles.bulkTier]}>
+              <Text style={[styles.tierLabel, { color: volumeTheme(tierOf(item.product, item.qty)).accent }]}>
                 {volumeTierLabel(tierOf(item.product, item.qty))}
               </Text>
               <View style={styles.stepper}>
@@ -102,7 +108,7 @@ export default function CartScreen({ navigation }: any) {
           buttonLabel="Back to basket"
           onClose={() => setUnlocked(null)}
         />
-        <Pressable style={[styles.cta, { flex: 1, marginLeft: 16 }]} onPress={openCheckout}>
+        <Pressable style={[styles.cta, { flex: 1, marginLeft: 16, backgroundColor: tierTheme.accent }]} onPress={openCheckout}>
           <Text style={styles.ctaText}>Continue to checkout</Text>
         </Pressable>
       </View>

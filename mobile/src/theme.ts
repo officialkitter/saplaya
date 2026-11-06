@@ -12,7 +12,22 @@ export const colors = {
   woodDark: '#8A5A26',
   bulk: '#009688',
   bulkLight: '#E0F2F1',
+  megaBulk: '#5E35B1',
+  megaBulkLight: '#EDE7F6',
 };
+
+export function volumeTheme(tier: 'retail' | 'wholesale' | 'bulk' | 'mega_bulk') {
+  if (tier === 'mega_bulk') {
+    return { accent: colors.megaBulk, soft: colors.megaBulkLight, background: '#F6F1FC', surface: colors.white };
+  }
+  if (tier === 'bulk') {
+    return { accent: colors.bulk, soft: colors.bulkLight, background: '#EFF9F8', surface: colors.white };
+  }
+  if (tier === 'wholesale') {
+    return { accent: colors.woodDark, soft: '#FFF4DF', background: '#FFFBF2', surface: colors.white };
+  }
+  return { accent: colors.green, soft: '#E8F5E9', background: colors.cream, surface: colors.white };
+}
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';
 

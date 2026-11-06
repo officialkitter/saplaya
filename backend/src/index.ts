@@ -5,9 +5,18 @@ import { createClient, type SupabaseClientOptions } from '@supabase/supabase-js'
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
+import { City, Country, State } from 'country-state-city';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { deriveOrderMode, haversineKm, selectStorefrontProducts, type OrderMode } from './storefront.js';
+import {
+  calculateWeeklyCommission,
+  supplierMatchesScopes,
+  weekBoundsUtc,
+  type CommissionTier,
+  type OperationScope,
+} from './management.js';
 import {
   getTransactionStatus,
   isPaymentCompleted,
@@ -46,6 +55,29 @@ const app = express();
 app.use(cors({ origin: WEB_ORIGIN === '*' ? true : WEB_ORIGIN.split(',') }));
 app.use(express.json());
 
+app.get('/locations/countries', (_req, res) => {
+  return res.json(Country.getAllCountries()
+    .map((country) => ({ code: country.isoCode, name: country.name }))
+    .sort((left, right) => left.name.localeCompare(right.name)));
+});
+
+app.get('/locations/countries/:countryCode/regions', (req, res) => {
+  const countryCode = z.string().regex(/^[A-Z]{2}$/).safeParse(req.params.countryCode.toUpperCase());
+  if (!countryCode.success) return res.status(400).json({ error: 'Invalid country code.' });
+  return res.json(State.getStatesOfCountry(countryCode.data)
+    .map((region) => ({ code: region.isoCode, name: region.name }))
+    .sort((left, right) => left.name.localeCompare(right.name)));
+});
+
+app.get('/locations/countries/:countryCode/regions/:regionCode/districts', (req, res) => {
+  const countryCode = z.string().regex(/^[A-Z]{2}$/).safeParse(req.params.countryCode.toUpperCase());
+  const regionCode = z.string().trim().min(1).max(100).safeParse(req.params.regionCode);
+  if (!countryCode.success || !regionCode.success) return res.status(400).json({ error: 'Invalid country or region code.' });
+  return res.json(City.getCitiesOfState(countryCode.data, regionCode.data)
+    .map((district) => ({ code: district.name, name: district.name }))
+    .sort((left, right) => left.name.localeCompare(right.name)));
+});
+
 // ======================================================================
 // Roles and permissions (the web admin panel mirrors this table)
 // ======================================================================
@@ -56,13 +88,14 @@ type Perm =
   | 'catalog.manage'
   | 'suppliers.view_all' | 'suppliers.manage'
   | 'team.view' | 'team.manage' | 'settings.manage'
-  | 'finance.view' | 'marketing.view' | 'stores.view' | 'system.view' | 'team.roles.manage';
+  | 'finance.view' | 'marketing.view' | 'stores.view' | 'system.view' | 'team.roles.manage'
+  | 'management.view' | 'management.manage';
 
 const ALL: Perm[] = [
   'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
   'stock.adjust', 'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage',
   'team.view', 'team.manage', 'settings.manage', 'finance.view', 'marketing.view',
-  'stores.view', 'system.view', 'team.roles.manage',
+  'stores.view', 'system.view', 'team.roles.manage', 'management.view', 'management.manage',
 ];
 
 // A driver may only move an order along the road; they cannot pack or cancel.
@@ -73,6 +106,9 @@ type Member = {
   full_name: string; email: string; role: Role; status: string;
   role_label: string; department_id: string; department: string; department_theme: string;
   role_scope: 'platform' | 'farm'; permissions: Perm[];
+  phone: string | null; age: number | null; job_title: string | null; bio: string | null;
+  avatar_url: string | null; operation_scope_mode: 'global' | 'restricted';
+  operation_scopes: OperationScope[];
 };
 type AuthedRequest = Request & {
   userId?: string;
@@ -325,6 +361,17 @@ function requirePerm(perm?: Perm) {
         console.error('Could not load team department configuration:', departmentError?.message ?? 'Assigned department was not found.');
         return res.status(503).json({ error: 'Could not load your department.' });
       }
+      const { data: profile, error: profileError } = await db.from('team_member_profiles')
+        .select('phone, age, job_title, bio, avatar_url, operation_scope_mode')
+        .eq('team_member_id', data.id)
+        .maybeSingle();
+      const { data: operationScopes, error: scopesError } = await db.from('team_member_operation_scopes')
+        .select('country_code, country_name, region_code, region_name, district_code, district_name')
+        .eq('team_member_id', data.id);
+      if (profileError || scopesError) {
+        console.error('Could not load team member profile and operation scopes:', profileError?.message ?? scopesError?.message);
+        return res.status(503).json({ error: 'Could not load your team profile and operation access.' });
+      }
       let m: Member = {
         ...data,
         role: role.role_key,
@@ -334,6 +381,13 @@ function requirePerm(perm?: Perm) {
         department_theme: department.theme_color,
         role_scope: role.scope,
         permissions: role.permissions.filter((permission: string): permission is Perm => ALL.includes(permission as Perm)),
+        phone: profile?.phone ?? null,
+        age: profile?.age ?? null,
+        job_title: profile?.job_title ?? null,
+        bio: profile?.bio ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        operation_scope_mode: profile?.operation_scope_mode === 'restricted' ? 'restricted' : 'global',
+        operation_scopes: operationScopes ?? [],
       };
       if (!m || m.status === 'suspended') return res.status(403).json({ error: 'No active team account' });
       if (m.status === 'invited') {
@@ -362,15 +416,56 @@ function requirePerm(perm?: Perm) {
   };
 }
 
+async function scopedSupplierIds(member: Member): Promise<string[] | null> {
+  if (member.supplier_id) return [member.supplier_id];
+  if (member.operation_scope_mode !== 'restricted') return null;
+  if (!member.operation_scopes.length) return [];
+
+  const countryCodes = [...new Set(member.operation_scopes.map((scope) => scope.country_code))];
+  const { data, error } = await db.from('suppliers')
+    .select('id, country_code, region_code, district_code')
+    .in('country_code', countryCodes);
+  if (error) {
+    console.error('Could not resolve farm locations for operation scope:', error.message);
+    throw new Error('Could not load your assigned operation areas.');
+  }
+  return (data ?? [])
+    .filter((supplier) => supplierMatchesScopes(supplier, member.operation_scopes))
+    .map((supplier) => supplier.id);
+}
+
+async function memberCanAccessSupplier(member: Member, supplierId: string): Promise<boolean> {
+  const allowed = await scopedSupplierIds(member);
+  return allowed === null || allowed.includes(supplierId);
+}
+
+function relationRecord(value: unknown): Record<string, unknown> | null {
+  const relation = Array.isArray(value) ? value[0] : value;
+  return typeof relation === 'object' && relation !== null
+    ? relation as Record<string, unknown>
+    : null;
+}
+
+function operationScopesOverlap(left: OperationScope, right: OperationScope): boolean {
+  return left.country_code === right.country_code
+    && left.region_code === right.region_code
+    && (left.district_code === null || right.district_code === null || left.district_code === right.district_code);
+}
+
+function memberCanAccessLocation(
+  member: Member,
+  location: OperationScope,
+): boolean {
+  return member.operation_scope_mode !== 'restricted'
+    || member.operation_scopes.some((scope) => (
+      scope.country_code === location.country_code
+      && scope.region_code === location.region_code
+      && (scope.district_code === null || scope.district_code === location.district_code)
+    ));
+}
+
 
 // ---------- Delivery tiers (single source of truth; the app mirrors this) ----------
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const r = (d: number) => (d * Math.PI) / 180;
-  const a =
-    Math.sin(r(lat2 - lat1) / 2) ** 2 +
-    Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lng2 - lng1) / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 function deliveryFor(km: number, settings: {
   free_radius_km: number; mid_radius_km: number; mid_fee: number; far_fee: number;
 }) {
@@ -388,11 +483,46 @@ const DELIVERY_ETAS = [
   { value: '10d', title: 'Within 10 days' },
   { value: '14d', title: 'Within 14 days' },
 ] as const;
+const DELIVERY_WINDOWS = [
+  { value: 'morning', title: 'Morning delivery window', fee: 0 },
+  { value: 'evening', title: 'Evening delivery window', fee: 0 },
+] as const;
+const DELIVERY_WINDOW_VALUES = ['morning', 'evening', ...DELIVERY_ETAS.map((option) => option.value)] as const;
+
+function isDailyDeliveryMode(mode: OrderMode) {
+  return mode === 'retail' || mode === 'wholesale';
+}
+
+function validDeliveryWindow(mode: OrderMode, window: string) {
+  return isDailyDeliveryMode(mode)
+    ? window === 'morning' || window === 'evening'
+    : DELIVERY_ETAS.some((option) => option.value === window);
+}
+
+function deliverySpeedFeeFor(mode: OrderMode, window: string, fees: unknown): number | null {
+  if (!validDeliveryWindow(mode, window)) return null;
+  if (isDailyDeliveryMode(mode)) return 0;
+  if (typeof fees !== 'object' || fees === null || Array.isArray(fees)) return null;
+  const fee = (fees as Record<string, unknown>)[window];
+  return typeof fee === 'number' && Number.isSafeInteger(fee) && fee >= 0 ? fee : null;
+}
+
+function matchesOrderMode(
+  mode: OrderMode,
+  items: { qty: number }[],
+  products: { wholesale_min_qty: number }[],
+) {
+  const preferredMode = mode === 'wholesale' ? 'wholesale' : 'retail';
+  return deriveOrderMode(items.map((item, index) => ({
+    qty: item.qty,
+    product: { wholesale_min_qty: Number(products[index].wholesale_min_qty) },
+  })), preferredMode) === mode;
+}
 
 function priceForQuantity(product: {
   retail_price: number; wholesale_price: number; wholesale_min_qty: number;
   bulk_price: number | null; mega_bulk_price: number | null;
-}, qty: number, mode: 'retail' | 'wholesale'): number | null {
+}, qty: number, mode: OrderMode): number | null {
   const wholesaleMinimum = Math.max(1, Number(product.wholesale_min_qty));
   if (qty >= wholesaleMinimum * 100) {
     return typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)
@@ -597,33 +727,11 @@ app.get('/products', async (req, res) => {
     console.error('Could not load supplier locations for the storefront:', supplierError?.message ?? catalogError?.message);
     return res.status(500).json({ error: 'Could not load available products.' });
   }
-  const supplierById = new Map((suppliers ?? []).map((supplier) => [supplier.id, supplier]));
   const approvedCatalogIds = new Set((catalog ?? []).filter((item) => item.price_approved).map((item) => item.id));
-  const uniqueProducts = new Map<string, { product: (typeof products)[number]; distance: number | null }>();
-  for (const product of products) {
-    const supplier = supplierById.get(product.supplier_id);
-    if (!supplier || supplier.status !== 'active') continue;
-    if (product.catalog_product_id && !approvedCatalogIds.has(product.catalog_product_id)) continue;
-    if (hasCustomerLocation && (supplier.latitude === null || supplier.longitude === null)) continue;
-    const normalizedName = product.name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
-    const key = normalizedName || `id:${product.id}`;
-    const distance = hasCustomerLocation
-      ? haversineKm(latitude, longitude, Number(supplier.latitude), Number(supplier.longitude))
-      : null;
-    const current = uniqueProducts.get(key);
-    const betterCandidate = !current
-      || (distance !== null && (current.distance === null || distance < current.distance))
-      || (distance === current.distance && Number(product.stock) > Number(current.product.stock));
-    if (betterCandidate) uniqueProducts.set(key, { product, distance });
-  }
-
-  const selectedProducts = [...uniqueProducts.values()].sort((a, b) => {
-    if (hasCustomerLocation) {
-      const distanceOrder = (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY);
-      if (distanceOrder !== 0) return distanceOrder;
-    }
-    return a.product.name.localeCompare(b.product.name);
-  });
+  const selectedProducts = selectStorefrontProducts(
+    products, suppliers ?? [], approvedCatalogIds,
+    hasCustomerLocation ? { lat: latitude, lng: longitude } : null,
+  );
   const items = selectedProducts.slice(page * size, (page + 1) * size).map(({ product, distance }) => ({
     id: product.id,
     name: product.name,
@@ -632,6 +740,8 @@ app.get('/products', async (req, res) => {
     retail_price: product.retail_price,
     wholesale_price: product.wholesale_price,
     wholesale_min_qty: product.wholesale_min_qty,
+    bulk_price: product.bulk_price ?? null,
+    mega_bulk_price: product.mega_bulk_price ?? null,
     stock: product.stock,
     image_url: product.image_url,
     harvested_at: product.harvested_at,
@@ -712,7 +822,19 @@ app.get('/delivery-options', async (_req, res) => {
       ? [{ ...option, fee }]
       : [];
   });
-  return res.json(options);
+  return res.json([...DELIVERY_WINDOWS, ...options]);
+});
+
+app.get('/admin/pricing-policy', requirePerm('products.view'), async (_req: AuthedRequest, res) => {
+  const { data, error } = await db.from('platform_settings')
+    .select('tier_price_percentages')
+    .eq('id', 'primary')
+    .maybeSingle();
+  if (error || !data) {
+    console.error('Could not load product tier pricing policy:', error?.message ?? 'Settings are not initialized.');
+    return res.status(503).json({ error: 'Product pricing rules are not configured.' });
+  }
+  return res.json(data.tier_price_percentages);
 });
 
 app.get('/checkout/options', async (_req, res) => {
@@ -731,10 +853,10 @@ app.get('/checkout/options', async (_req, res) => {
   return res.json({ cash_on_delivery: true, online_payment: onlinePayment });
 });
 
-const checkoutSchema = z.object({
+const checkoutFields = z.object({
   client_platform: z.enum(['mobile', 'web']).default('mobile'),
-  mode: z.enum(['retail', 'wholesale']),
-  delivery_window: z.enum(['12h', '24h', '48h', '72h', '7d', '10d', '14d']),
+  mode: z.enum(['retail', 'wholesale', 'bulk', 'mega_bulk']),
+  delivery_window: z.enum(DELIVERY_WINDOW_VALUES),
   delivery_fee_accepted: z.boolean().default(false),
   quoted_delivery_fee: z.number().int().nonnegative(),
   items: z.array(z.object({
@@ -763,13 +885,27 @@ const checkoutSchema = z.object({
   payment_phone: z.string().trim().min(5).max(32).optional(),
 });
 
+const refineDeliveryWindow = (value: { mode: OrderMode; delivery_window: string }, ctx: z.RefinementCtx) => {
+  if (!validDeliveryWindow(value.mode, value.delivery_window)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['delivery_window'],
+      message: isDailyDeliveryMode(value.mode)
+        ? 'Retail and wholesale orders use a morning or evening delivery window.'
+        : 'Bulk orders require a configured delivery timeframe.',
+    });
+  }
+};
+
+const checkoutSchema = checkoutFields.superRefine(refineDeliveryWindow);
+
 const checkoutQuoteSchema = z.object({
-  mode: z.enum(['retail', 'wholesale']),
-  delivery_window: z.enum(['12h', '24h', '48h', '72h', '7d', '10d', '14d']),
-  items: checkoutSchema.shape.items,
+  mode: z.enum(['retail', 'wholesale', 'bulk', 'mega_bulk']),
+  delivery_window: z.enum(DELIVERY_WINDOW_VALUES),
+  items: checkoutFields.shape.items,
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
-});
+}).superRefine(refineDeliveryWindow);
 
 function normalizedProductName(name: string) {
   return name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
@@ -781,7 +917,7 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
   const { mode, delivery_window: deliveryWindow, items, lat, lng } = parsed.data;
   const { data: requestedProducts, error: requestedError } = await db
     .from('products')
-    .select('id, name, catalog_product_id')
+    .select('id, name, catalog_product_id, wholesale_min_qty')
     .in('id', items.map((item) => item.product_id));
   if (requestedError) {
     console.error('Could not load products for checkout quote:', requestedError.message);
@@ -826,6 +962,7 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     unit_price: number;
     distance_km: number;
   }[] = [];
+  const selectedProductsForMode: { wholesale_min_qty: number }[] = [];
 
   for (const item of items) {
     const requested = requestedProducts.find((product) => product.id === item.product_id)!;
@@ -856,6 +993,7 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
 
     locatedCandidates.sort((a, b) => a.distance - b.distance || Number(b.product.stock) - Number(a.product.stock));
     const selected = locatedCandidates[0];
+    selectedProductsForMode.push({ wholesale_min_qty: Number(selected.product.wholesale_min_qty) });
     const unitPrice = priceForQuantity(selected.product, item.qty, mode);
     if (unitPrice === null) {
       return res.status(409).json({ error: `A bulk price is not configured for ${requested.name}. Reduce the quantity or contact Saplaya.` });
@@ -870,6 +1008,9 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     subtotal += Math.round(unitPrice * item.qty);
     distance = Math.max(distance, selected.distance);
   }
+  if (!matchesOrderMode(mode, items, selectedProductsForMode)) {
+    return res.status(409).json({ error: 'Order mode changed with your basket quantities. Refresh your basket and try again.' });
+  }
 
   const { data: settings, error: settingsError } = await db
     .from('platform_settings')
@@ -880,8 +1021,8 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     console.error('Could not load delivery pricing for checkout quote:', settingsError?.message ?? 'Settings are not initialized.');
     return res.status(503).json({ error: 'Checkout pricing is not configured.' });
   }
-  const speedFee = Number(settings.delivery_option_fees?.[deliveryWindow]);
-  if (!Number.isSafeInteger(speedFee) || speedFee < 0) {
+  const speedFee = deliverySpeedFeeFor(mode, deliveryWindow, settings.delivery_option_fees);
+  if (speedFee === null) {
     return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
   }
 
@@ -903,7 +1044,15 @@ const applicationSchema = z.object({
   email: z.string().trim().email().max(254),
   phone: z.string().trim().min(5).max(32),
   location: z.string().trim().min(2).max(240),
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string().trim().min(2).max(100),
+  region_code: z.string().trim().min(1).max(100),
+  region_name: z.string().trim().min(1).max(100),
+  district_code: z.string().trim().min(1).max(100).nullable().default(null),
+  district_name: z.string().trim().min(1).max(100).nullable().default(null),
   products: z.string().trim().min(2).max(1000),
+}).refine((value) => (value.district_code === null) === (value.district_name === null), {
+  message: 'Provide both district code and name, or leave both empty.',
 });
 
 function paymentCallbackUrl(transactionRef: string, orderTrackingId: string) {
@@ -990,6 +1139,12 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
   if (!products || products.length !== items.length) {
     return res.status(400).json({ error: 'One or more items are no longer available.' });
   }
+  if (!matchesOrderMode(mode, items, items.map((item) => {
+    const product = products.find((candidate) => candidate.id === item.product_id);
+    return { wholesale_min_qty: Number(product?.wholesale_min_qty ?? 0) };
+  }))) {
+    return res.status(409).json({ error: 'Order mode changed with your basket quantities. Refresh your basket and try again.' });
+  }
 
   let subtotal = 0;
   let distance = 0;
@@ -1027,8 +1182,8 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     console.error('Could not load delivery pricing settings:', settingsError?.message ?? 'Settings are not initialized.');
     return res.status(503).json({ error: 'Checkout pricing is not configured.' });
   }
-  const configuredSpeedFee = Number(deliverySettings.delivery_option_fees?.[deliveryWindow]);
-  if (!Number.isSafeInteger(configuredSpeedFee) || configuredSpeedFee < 0) {
+  const configuredSpeedFee = deliverySpeedFeeFor(mode, deliveryWindow, deliverySettings.delivery_option_fees);
+  if (configuredSpeedFee === null) {
     return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
   }
   const fee = deliveryFor(distance, deliverySettings) + configuredSpeedFee;
@@ -1121,9 +1276,9 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
   }
 });
 
-const cashCheckoutSchema = checkoutSchema.extend({
+const cashCheckoutSchema = checkoutFields.extend({
   request_key: z.string().min(16).max(120),
-});
+}).superRefine(refineDeliveryWindow);
 
 app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   const parsed = cashCheckoutSchema.safeParse(req.body);
@@ -1143,6 +1298,12 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   }
   if (!products || products.length !== items.length) {
     return res.status(400).json({ error: 'One or more items are no longer available.' });
+  }
+  if (!matchesOrderMode(mode, items, items.map((item) => {
+    const product = products.find((candidate) => candidate.id === item.product_id);
+    return { wholesale_min_qty: Number(product?.wholesale_min_qty ?? 0) };
+  }))) {
+    return res.status(409).json({ error: 'Order mode changed with your basket quantities. Refresh your basket and try again.' });
   }
 
   let subtotal = 0;
@@ -1181,8 +1342,8 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
     console.error('Could not load cash checkout delivery settings:', settingsError?.message ?? 'Settings are not initialized.');
     return res.status(503).json({ error: 'Checkout pricing is not configured.' });
   }
-  const configuredSpeedFee = Number(deliverySettings.delivery_option_fees?.[deliveryWindow]);
-  if (!Number.isSafeInteger(configuredSpeedFee) || configuredSpeedFee < 0) {
+  const configuredSpeedFee = deliverySpeedFeeFor(mode, deliveryWindow, deliverySettings.delivery_option_fees);
+  if (configuredSpeedFee === null) {
     return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
   }
 
@@ -1593,6 +1754,13 @@ app.post('/supplier-applications', requireUser, async (req: AuthedRequest, res) 
     email: parsed.data.email,
     phone: parsed.data.phone,
     location: parsed.data.location,
+    region: parsed.data.region_name,
+    country_code: parsed.data.country_code,
+    country_name: parsed.data.country_name,
+    region_code: parsed.data.region_code,
+    region_name: parsed.data.region_name,
+    district_code: parsed.data.district_code,
+    district_name: parsed.data.district_name,
     products: parsed.data.products,
   }).select('id, status, created_at').single();
   if (error) {
@@ -1611,9 +1779,17 @@ const applySchema = z.object({
   contact_name: z.string().min(2).max(120),
   email: z.string().email(),
   phone: z.string().min(5).max(40),
-  region: z.string().min(2).max(80),
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string().trim().min(2).max(100),
+  region_code: z.string().trim().min(1).max(100),
+  region_name: z.string().trim().min(1).max(100),
+  district_code: z.string().trim().min(1).max(100).nullable().default(null),
+  district_name: z.string().trim().min(1).max(100).nullable().default(null),
+  location: z.string().trim().min(2).max(240),
   produce: z.string().min(2).max(300),
   farm_size: z.string().min(2).max(60),
+}).refine((value) => (value.district_code === null) === (value.district_name === null), {
+  message: 'Provide both district code and name, or leave both empty.',
 });
 
 app.post('/apply', async (req: Request, res: Response) => {
@@ -1625,8 +1801,14 @@ app.post('/apply', async (req: Request, res: Response) => {
     contact_name: parsed.data.contact_name,
     email: parsed.data.email,
     phone: parsed.data.phone,
-    location: parsed.data.region,
-    region: parsed.data.region,
+    location: parsed.data.location,
+    region: parsed.data.region_name,
+    country_code: parsed.data.country_code,
+    country_name: parsed.data.country_name,
+    region_code: parsed.data.region_code,
+    region_name: parsed.data.region_name,
+    district_code: parsed.data.district_code,
+    district_name: parsed.data.district_name,
     farm_size: parsed.data.farm_size,
     products: parsed.data.produce,
   }).select('id').single();
@@ -1642,7 +1824,13 @@ app.post('/apply', async (req: Request, res: Response) => {
 // ======================================================================
 app.get('/admin/me', requirePerm(), (req: AuthedRequest, res: Response) => {
   const m = req.member!;
-  res.json(m);
+  res.json({
+    ...m,
+    avatar_path: m.avatar_url,
+    avatar_url: m.avatar_url
+      ? db.storage.from('team-avatars').getPublicUrl(m.avatar_url).data.publicUrl
+      : null,
+  });
 });
 
 app.patch('/admin/me', requirePerm(), async (req: AuthedRequest, res: Response) => {
@@ -1677,11 +1865,23 @@ app.get('/admin/dashboard-analytics', requirePerm('dashboard.view'), async (req:
     return res.status(400).json({ error: 'Analytics date ranges cannot exceed one year.' });
   }
 
-  const { data: analytics, error } = await db.rpc('admin_dashboard_analytics', {
-    p_from: from.toISOString(),
-    p_to: to.toISOString(),
-    p_supplier_id: m.supplier_id,
-  });
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(m);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  const { data: analytics, error } = allowedSupplierIds === null
+    ? await db.rpc('admin_dashboard_analytics', {
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      p_supplier_id: null,
+    })
+    : await db.rpc('admin_dashboard_analytics_scoped', {
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      p_supplier_ids: allowedSupplierIds,
+    });
   if (error || !analytics) {
     console.error('Could not load aggregated dashboard analytics:', error?.message ?? 'Analytics result was empty.');
     return res.status(500).json({ error: 'Could not load dashboard analytics.' });
@@ -1712,6 +1912,35 @@ app.get('/admin/dashboard-analytics', requirePerm('dashboard.view'), async (req:
   };
 
   if (permissions.has('system.view')) {
+    if (allowedSupplierIds !== null) {
+      if (allowedSupplierIds.length === 0) {
+        result.system = { farms: 0, products: 0, open_applications: 0 };
+        return res.json(result);
+      }
+      const [{ count: farmCount, error: farmError }, { count: productCount, error: productError }, { data: applications, error: applicationError }] = await Promise.all([
+        db.from('suppliers').select('id', { count: 'exact', head: true }).eq('status', 'active').in('id', allowedSupplierIds),
+        db.from('products').select('id', { count: 'exact', head: true }).in('supplier_id', allowedSupplierIds),
+        db.from('supplier_applications').select('country_code, region_code, district_code').in('status', ['new', 'pending', 'reviewing']),
+      ]);
+      if (farmError || productError || applicationError) {
+        console.error('Could not load scoped system dashboard metrics:', farmError?.message ?? productError?.message ?? applicationError?.message);
+        return res.status(500).json({ error: 'Could not load scoped system dashboard metrics.' });
+      }
+      result.system = {
+        farms: farmCount ?? 0,
+        products: productCount ?? 0,
+        open_applications: (applications ?? []).filter((application) => (
+          typeof application.country_code === 'string'
+          && typeof application.region_code === 'string'
+          && memberCanAccessLocation(m, {
+            country_code: application.country_code,
+            region_code: application.region_code,
+            district_code: application.district_code ?? null,
+          })
+        )).length,
+      };
+      return res.json(result);
+    }
     const counts = await Promise.all([
       db.from('suppliers').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       db.from('products').select('id', { count: 'exact', head: true }),
@@ -1745,12 +1974,19 @@ app.get('/admin/dashboard-analytics', requirePerm('dashboard.view'), async (req:
 // ======================================================================
 app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, res: Response) => {
   const m = req.member!;
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(m);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db
     .from('supplier_orders')
-    .select('id, order_id, supplier_id, status, updated_at, orders!supplier_orders_order_id_fkey(id, mode, created_at, delivery_fee, dest_lat, dest_lng, customer_id, delivery_window, payment_method, contact_name, contact_phone), order_items!order_items_supplier_order_id_fkey(product_id, qty, unit_price, products(name, unit))')
+    .select('id, order_id, supplier_id, status, updated_at, orders!supplier_orders_order_id_fkey(id, mode, created_at, delivery_fee, dest_lat, dest_lng, customer_id, delivery_window, payment_method, contact_name, contact_phone), order_items!order_items_supplier_order_id_fkey(product_id, qty, unit_price, products(name, unit)), supplier_order_assignments(team_member_id, team_members!supplier_order_assignments_team_member_id_fkey(full_name))')
     .order('updated_at', { ascending: false })
     .limit(300);
-  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
+  if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   if (m.role === 'driver') q = q.in('status', ['packing', 'en_route', 'delivered']);
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
@@ -1780,6 +2016,8 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
     const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
     const customer = order ? customerById.get(order.customer_id) : undefined;
     const paymentContact = paymentContactByOrderId.get(row.order_id);
+    const assignment = relationRecord(row.supplier_order_assignments);
+    const assignee = relationRecord(assignment?.team_members);
     const fullName = order?.contact_name || paymentContact?.customer_name || customer?.full_name || 'Customer';
     const customerName = m.supplier_id ? fullName.split(/\s+/)[0] : fullName;
     const area = order?.dest_lat != null && order?.dest_lng != null
@@ -1796,6 +2034,8 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
       customer_name: customerName,
       customer_phone: mayViewCustomerContact ? order?.contact_phone || paymentContact?.customer_phone || customer?.phone || '' : '',
       area,
+      assignee_id: typeof assignment?.team_member_id === 'string' ? assignment.team_member_id : null,
+      assignee_name: typeof assignee?.full_name === 'string' ? assignee.full_name : null,
       items: (row.order_items ?? []).map((item) => ({
         product_id: item.product_id,
         qty: item.qty,
@@ -1814,20 +2054,27 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
   const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(m);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (allowedSupplierIds?.length === 0) return res.status(404).json({ error: 'Not found' });
   if (m.role === 'driver' && !DRIVER_STATUSES.includes(parsed.data.status)) {
     return res.status(403).json({ error: 'Drivers can only mark orders On the way or Delivered' });
   }
   let currentQuery = db.from('supplier_orders').select('status').eq('id', req.params.id);
-  if (m.supplier_id) currentQuery = currentQuery.eq('supplier_id', m.supplier_id);
+  if (allowedSupplierIds) currentQuery = currentQuery.in('supplier_id', allowedSupplierIds);
   const { data: current, error: currentError } = await currentQuery.maybeSingle();
   if (currentError) return res.status(500).json({ error: currentError.message });
   if (!current) return res.status(404).json({ error: 'Not found' });
 
   let q = db
     .from('supplier_orders')
-    .update({ status: parsed.data.status, updated_at: new Date().toISOString() })
+    .update({ status: parsed.data.status, updated_at: new Date().toISOString(), status_updated_by: m.id })
     .eq('id', req.params.id);
-  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id); // farm roles: own rows only
+  if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q.select().maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Not found' });
@@ -1844,8 +2091,15 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
 // ======================================================================
 app.get('/admin/products', requirePerm('products.view'), async (req: AuthedRequest, res: Response) => {
   const m = req.member!;
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(m);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db.from('products').select('*').order('name');
-  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
+  if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
   const catalogIds = [...new Set((data ?? [])
@@ -1873,19 +2127,29 @@ app.get('/admin/products', requirePerm('products.view'), async (req: AuthedReque
 
 const productSchema = z.object({
   name: z.string().min(2), category: z.string().optional(), unit: z.string().default('kg'),
-  retail_price: z.number().int().positive(), wholesale_price: z.number().int().positive(),
+  retail_price: z.number().int().min(2), wholesale_price: z.number().int().positive(),
   wholesale_min_qty: z.number().int().positive().default(10), stock: z.number().min(0).default(0),
   low_stock_at: z.number().min(0).default(10),
   image_url: z.string().url().nullable().optional(), active: z.boolean().default(true),
 });
+const productCreateSchema = productSchema.extend({ supplier_id: z.string().uuid().optional() });
 
 app.post('/admin/products', requirePerm('products.edit'), async (req: AuthedRequest, res: Response) => {
-  const parsed = productSchema.safeParse(req.body);
+  const parsed = productCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
-  if (!m.supplier_id) return res.status(400).json({ error: 'Products belong to a farm. Sign in as a farm owner.' });
+  const supplierId = m.supplier_id ?? parsed.data.supplier_id;
+  if (!supplierId) return res.status(400).json({ error: 'Choose a farm for this product.' });
+  if (m.supplier_id && supplierId !== m.supplier_id) {
+    return res.status(403).json({ error: 'You can only add products to your own farm.' });
+  }
+  try {
+    if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
   const { data, error } = await db.rpc('create_product_with_stock', {
-    p_supplier_id: m.supplier_id,
+    p_supplier_id: supplierId,
     p_name: parsed.data.name,
     p_category: parsed.data.category ?? null,
     p_unit: parsed.data.unit,
@@ -1911,9 +2175,19 @@ app.patch('/admin/products/:id', requirePerm('products.edit'), async (req: Authe
   const parsed = productSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
-  if (!m.supplier_id) return res.status(400).json({ error: 'Sign in as a farm owner to edit products.' });
+  const { data: current, error: currentError } = await db.from('products')
+    .select('supplier_id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (currentError) return res.status(500).json({ error: 'Could not load this product.' });
+  if (!current || (m.supplier_id && current.supplier_id !== m.supplier_id)) return res.status(404).json({ error: 'Product not found.' });
+  try {
+    if (!await memberCanAccessSupplier(m, current.supplier_id)) return res.status(404).json({ error: 'Product not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
   const { stock: _ignored, ...safe } = parsed.data; // stock only changes via /admin/restock so every change is logged
-  const { data, error } = await db.from('products').update(safe).eq('id', req.params.id).eq('supplier_id', m.supplier_id).select().maybeSingle();
+  const { data, error } = await db.from('products').update(safe).eq('id', req.params.id).eq('supplier_id', current.supplier_id).select().maybeSingle();
   if (error?.code === '23505') {
     return res.status(409).json({ error: 'A listing with this product name already exists at your farm. Update that listing or choose it from the approved catalog.' });
   }
@@ -1961,6 +2235,11 @@ app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: Au
     if (!parsedSupplierId.success) return res.status(400).json({ error: 'Choose a farm first.' });
     supplierId = parsedSupplierId.data;
   }
+  try {
+    if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
 
   const [{ data: items, error: catalogError }, { data: listings, error: listingsError }] = await Promise.all([
     db.from('catalog_products')
@@ -1999,6 +2278,11 @@ app.post('/admin/catalog/:id/stock', requirePerm('stock.adjust'), async (req: Au
   } else if (parsed.data.supplier_id && parsed.data.supplier_id !== supplierId) {
     return res.status(403).json({ error: 'You can only add stock to your own farm.' });
   }
+  try {
+    if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
 
   const { data, error } = await db.rpc('stock_catalog_product_for_farm', {
     p_catalog_product_id: catalogProductId.data,
@@ -2035,6 +2319,11 @@ app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: 
   } else if (parsed.data.supplier_id && parsed.data.supplier_id !== supplierId) {
     return res.status(403).json({ error: 'You can only publish products for your own farm.' });
   }
+  try {
+    if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
 
   const { data, error } = await db.rpc('publish_catalog_product_for_farm', {
     p_catalog_product_id: catalogProductId.data,
@@ -2053,9 +2342,25 @@ app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: 
 });
 
 app.get('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(req.member!);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  const proposalQuery = allowedSupplierIds?.length === 0
+    ? Promise.resolve({ data: [], error: null })
+    : (() => {
+      let query = db.from('catalog_price_proposals')
+        .select('id, catalog_product_id, supplier_id, product_id, retail_price, wholesale_price, status, created_at')
+        .eq('status', 'pending')
+        .order('created_at');
+      if (allowedSupplierIds) query = query.in('supplier_id', allowedSupplierIds);
+      return query;
+    })();
   const [{ data: items, error: catalogError }, { data: proposals, error: proposalError }] = await Promise.all([
     db.from('catalog_products').select('*').order('category').order('name'),
-    db.from('catalog_price_proposals').select('id, catalog_product_id, supplier_id, product_id, retail_price, wholesale_price, status, created_at').eq('status', 'pending').order('created_at'),
+    proposalQuery,
   ]);
   if (catalogError || proposalError) {
     console.error('Could not load the central product catalog:', catalogError?.message ?? proposalError?.message);
@@ -2075,7 +2380,7 @@ const catalogCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   category: z.string().trim().min(2).max(80),
   unit: z.string().trim().min(1).max(24),
-  retail_price: z.number().int().positive(),
+  retail_price: z.number().int().min(2),
   wholesale_price: z.number().int().positive(),
   wholesale_min_qty: z.number().int().positive(),
   bulk_price: z.number().int().positive().nullable().default(null),
@@ -2115,7 +2420,7 @@ app.post('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequ
 const catalogUpdateSchema = z.object({
   category: z.string().trim().min(2).max(80),
   unit: z.string().trim().min(1).max(24),
-  retail_price: z.number().int().positive(),
+  retail_price: z.number().int().min(2),
   wholesale_price: z.number().int().positive(),
   wholesale_min_qty: z.number().int().positive(),
   bulk_price: z.number().int().positive().nullable(),
@@ -2163,6 +2468,17 @@ app.post('/admin/catalog-proposals/:id/review', requirePerm('catalog.manage'), a
   if (!id.success || !parsed.success) {
     return res.status(400).json({ error: parsed.success ? 'Invalid price proposal ID.' : parsed.error.flatten() });
   }
+  const { data: proposal, error: proposalError } = await db.from('catalog_price_proposals')
+    .select('supplier_id')
+    .eq('id', id.data)
+    .maybeSingle();
+  if (proposalError) return res.status(500).json({ error: 'Could not load this price proposal.' });
+  if (!proposal) return res.status(404).json({ error: 'Price proposal not found.' });
+  try {
+    if (!await memberCanAccessSupplier(req.member!, proposal.supplier_id)) return res.status(404).json({ error: 'Price proposal not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
   const { data, error } = await db.rpc('review_catalog_price_proposal', {
     p_proposal_id: id.data,
     p_approve: parsed.data.approve,
@@ -2176,12 +2492,19 @@ app.post('/admin/catalog-proposals/:id/review', requirePerm('catalog.manage'), a
 
 app.get('/admin/inventory-movements', requirePerm('inventory.view'), async (req: AuthedRequest, res: Response) => {
   const m = req.member!;
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(m);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db
     .from('inventory_movements')
     .select('id, supplier_id, kind, qty_change, stock_after, created_at, order_id, products(name, unit)')
     .order('created_at', { ascending: false })
     .limit(200);
-  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
+  if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
@@ -2206,6 +2529,12 @@ app.post('/admin/restock', requirePerm('stock.adjust'), async (req: AuthedReques
     }
     if (!product) return res.status(404).json({ error: 'Product not found.' });
     supplierId = product.supplier_id;
+    if (!supplierId) return res.status(404).json({ error: 'Product not found.' });
+    try {
+      if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Product not found.' });
+    } catch (scopeError) {
+      return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    }
   }
   const { data: stockAfter, error } = await db.rpc('restock_product', {
     p_product_id: parsed.data.product_id,
@@ -2222,8 +2551,17 @@ app.post('/admin/restock', requirePerm('stock.adjust'), async (req: AuthedReques
 // ======================================================================
 // Admin: suppliers and applications (platform roles only)
 // ======================================================================
-app.get('/admin/suppliers', requirePerm('suppliers.view_all'), async (_req: AuthedRequest, res: Response) => {
-  const { data, error } = await db.from('suppliers').select('*').order('name');
+app.get('/admin/suppliers', requirePerm('suppliers.view_all'), async (req: AuthedRequest, res: Response) => {
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(req.member!);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json([]);
+  let query = db.from('suppliers').select('*').order('name');
+  if (allowedSupplierIds) query = query.in('id', allowedSupplierIds);
+  const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -2234,6 +2572,14 @@ app.post('/admin/suppliers/:id/merge', requirePerm('suppliers.manage'), async (r
   const target = z.object({ target_supplier_id: z.string().uuid() }).safeParse(req.body);
   if (!sourceId.success || !target.success) {
     return res.status(400).json({ error: target.success ? 'Invalid source farm ID.' : target.error.flatten() });
+  }
+  try {
+    if (!await memberCanAccessSupplier(req.member!, sourceId.data)
+      || !await memberCanAccessSupplier(req.member!, target.data.target_supplier_id)) {
+      return res.status(404).json({ error: 'Farm not found.' });
+    }
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
   }
   const { data, error } = await db.rpc('merge_farm_records', {
     p_source_supplier_id: sourceId.data,
@@ -2250,6 +2596,11 @@ app.delete('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: 
   if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can remove farms.' });
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: 'Invalid farm ID.' });
+  try {
+    if (!await memberCanAccessSupplier(req.member!, id.data)) return res.status(404).json({ error: 'Farm not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
   const { data, error } = await db.rpc('archive_farm_record', { p_supplier_id: id.data });
   if (error) {
     console.error('Could not remove farm record:', error.message);
@@ -2263,32 +2614,83 @@ app.patch('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: A
     status: z.enum(['pending', 'active', 'suspended']).optional(),
     latitude: z.number().min(-90).max(90).nullable().optional(),
     longitude: z.number().min(-180).max(180).nullable().optional(),
+    country_code: z.string().regex(/^[A-Z]{2}$/).optional(),
+    country_name: z.string().trim().min(2).max(100).optional(),
+    region_code: z.string().trim().min(1).max(100).optional(),
+    region_name: z.string().trim().min(1).max(100).optional(),
+    district_code: z.string().trim().min(1).max(100).nullable().optional(),
+    district_name: z.string().trim().min(1).max(100).nullable().optional(),
   }).refine((value) => (
     (value.latitude === undefined) === (value.longitude === undefined)
+    && (value.country_code === undefined) === (value.country_name === undefined)
+    && (value.region_code === undefined) === (value.region_name === undefined)
+    && (value.district_code === undefined) === (value.district_name === undefined)
+    && (value.district_code === undefined || (value.district_code === null) === (value.district_name === null))
     && Object.values(value).some((entry) => entry !== undefined)
   ), {
-    message: 'Provide both farm coordinates, or update the farm status.',
+    message: 'Provide matching country, region and district details, both coordinates, or a farm status.',
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { data, error } = await db.from('suppliers').update(parsed.data).eq('id', req.params.id).select().maybeSingle();
+  const member = req.member!;
+  try {
+    if (!await memberCanAccessSupplier(member, req.params.id)) return res.status(404).json({ error: 'Farm not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  const { data: current, error: currentError } = await db.from('suppliers')
+    .select('country_code, region_code, district_code')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (currentError) return res.status(500).json({ error: 'Could not load this farm.' });
+  if (!current) return res.status(404).json({ error: 'Farm not found.' });
+  const updatedLocation = {
+    country_code: parsed.data.country_code ?? current.country_code,
+    region_code: parsed.data.region_code ?? current.region_code,
+    district_code: parsed.data.district_code === undefined ? current.district_code : parsed.data.district_code,
+  };
+  if (updatedLocation.country_code && updatedLocation.region_code
+    && !memberCanAccessLocation(member, updatedLocation as OperationScope)) {
+    return res.status(403).json({ error: 'You cannot move a farm outside your operation areas.' });
+  }
+  const updateData = {
+    ...parsed.data,
+    ...(parsed.data.region_name ? { region: parsed.data.region_name } : {}),
+  };
+  const { data, error } = await db.from('suppliers').update(updateData).eq('id', req.params.id).select().maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
 const supplierSchema = z.object({
   name: z.string().min(2).max(120),
-  region: z.string().min(2).max(80),
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string().trim().min(2).max(100),
+  region_code: z.string().trim().min(1).max(100),
+  region_name: z.string().trim().min(1).max(100),
+  district_code: z.string().trim().min(1).max(100).nullable().default(null),
+  district_name: z.string().trim().min(1).max(100).nullable().default(null),
   contact_name: z.string().min(2).max(120),
   contact_email: z.string().email(),
   contact_phone: z.string().min(5).max(40),
+}).refine((value) => (value.district_code === null) === (value.district_name === null), {
+  message: 'Provide both district code and name, or leave both empty.',
 });
 
 app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
   const parsed = supplierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!memberCanAccessLocation(req.member!, parsed.data)) {
+    return res.status(403).json({ error: 'You cannot add a farm outside your operation areas.' });
+  }
   const { data: supplier, error: supplierError } = await db.from('suppliers').insert({
     name: parsed.data.name,
-    region: parsed.data.region,
+    region: parsed.data.region_name,
+    country_code: parsed.data.country_code,
+    country_name: parsed.data.country_name,
+    region_code: parsed.data.region_code,
+    region_name: parsed.data.region_name,
+    district_code: parsed.data.district_code,
+    district_name: parsed.data.district_name,
     contact_name: parsed.data.contact_name,
     contact_email: parsed.data.contact_email,
     contact_phone: parsed.data.contact_phone,
@@ -2323,10 +2725,26 @@ app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: Authed
   return res.status(201).json({ supplier_id: supplier.id, team_member: member });
 });
 
-app.get('/admin/applications', requirePerm('suppliers.manage'), async (_req: AuthedRequest, res: Response) => {
+app.get('/admin/applications', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
+  const member = req.member!;
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(member);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
   const { data, error } = await db.from('supplier_applications').select('*').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  if (allowedSupplierIds === null) return res.json(data);
+  return res.json((data ?? []).filter((application) => (
+    typeof application.country_code === 'string'
+    && typeof application.region_code === 'string'
+    && memberCanAccessLocation(member, {
+      country_code: application.country_code,
+      region_code: application.region_code,
+      district_code: application.district_code ?? null,
+    })
+  )));
 });
 
 app.delete('/admin/applications/:id', requirePerm('settings.manage'), async (req: AuthedRequest, res: Response) => {
@@ -2336,6 +2754,26 @@ app.delete('/admin/applications/:id', requirePerm('settings.manage'), async (req
   }
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: 'Invalid application ID.' });
+  const { data: application, error: loadError } = await db.from('supplier_applications')
+    .select('id, country_code, region_code, district_code')
+    .eq('id', id.data)
+    .in('status', ['declined', 'rejected'])
+    .maybeSingle();
+  if (loadError) {
+    console.error('Could not load declined application:', loadError.message);
+    return res.status(500).json({ error: 'Could not load this declined application.' });
+  }
+  if (!application) return res.status(404).json({ error: 'Declined application not found.' });
+  const hasStructuredLocation = typeof application.country_code === 'string'
+    && typeof application.region_code === 'string';
+  if (member.operation_scope_mode === 'restricted'
+    && (!hasStructuredLocation || !memberCanAccessLocation(member, {
+      country_code: application.country_code,
+      region_code: application.region_code,
+      district_code: application.district_code ?? null,
+    }))) {
+    return res.status(404).json({ error: 'Declined application not found.' });
+  }
   const { data, error } = await db.from('supplier_applications')
     .delete()
     .eq('id', id.data)
@@ -2358,6 +2796,16 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
   if (!a || !['pending', 'reviewing', 'new'].includes(a.status)) {
     return res.status(404).json({ error: 'Application not found or already handled' });
   }
+  const hasStructuredLocation = typeof a.country_code === 'string'
+    && typeof a.region_code === 'string';
+  if ((!hasStructuredLocation && req.member!.operation_scope_mode === 'restricted')
+    || (hasStructuredLocation && !memberCanAccessLocation(req.member!, {
+      country_code: a.country_code,
+      region_code: a.region_code,
+      district_code: a.district_code ?? null,
+    }))) {
+    return res.status(404).json({ error: 'Application not found.' });
+  }
 
   if (decision === 'reject') {
     const { error } = await db.from('supplier_applications').update({ status: 'declined' }).eq('id', a.id);
@@ -2367,6 +2815,12 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
 
   const { data: s, error: se } = await db.from('suppliers').insert({
     name: a.farm_name, status: 'active', region: a.region ?? a.location,
+    country_code: a.country_code,
+    country_name: a.country_name,
+    region_code: a.region_code,
+    region_name: a.region_name,
+    district_code: a.district_code,
+    district_name: a.district_name,
     contact_name: a.contact_name, contact_email: a.email, contact_phone: a.phone,
   }).select().single();
   if (se?.code === '23505') {
@@ -2393,7 +2847,43 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
   if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id); // a farm only sees its own people
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
-  const roleKeys = [...new Set((data ?? []).map((member) => member.role))];
+  let visibleMembers = data ?? [];
+  let visibleProfiles: { team_member_id: string; phone: string | null; age: number | null; job_title: string | null; bio: string | null; avatar_url: string | null; operation_scope_mode: string }[] = [];
+  let visibleScopes: { team_member_id: string; country_code: string; country_name: string; region_code: string; region_name: string; district_code: string | null; district_name: string | null }[] = [];
+  if (!m.supplier_id && m.operation_scope_mode === 'restricted') {
+    let allowedSupplierIds: string[];
+    try {
+      allowedSupplierIds = await scopedSupplierIds(m) ?? [];
+    } catch (scopeError) {
+      return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    }
+    const [{ data: profiles, error: profileError }, { data: scopes, error: scopesError }] = await Promise.all([
+      db.from('team_member_profiles').select('team_member_id, phone, age, job_title, bio, avatar_url, operation_scope_mode'),
+      db.from('team_member_operation_scopes').select('team_member_id, country_code, country_name, region_code, region_name, district_code, district_name'),
+    ]);
+    if (profileError || scopesError) {
+      console.error('Could not load scoped team profiles:', profileError?.message ?? scopesError?.message);
+      return res.status(500).json({ error: 'Could not load team details for your operation areas.' });
+    }
+    visibleProfiles = profiles ?? [];
+    visibleScopes = scopes ?? [];
+    const profileById = new Map(visibleProfiles.map((profile) => [profile.team_member_id, profile]));
+    const scopesById = new Map<string, OperationScope[]>();
+    for (const scope of visibleScopes) {
+      const entries = scopesById.get(scope.team_member_id) ?? [];
+      entries.push(scope);
+      scopesById.set(scope.team_member_id, entries);
+    }
+    visibleMembers = visibleMembers.filter((teamMember) => {
+      if (teamMember.id === m.id) return true;
+      if (teamMember.supplier_id) return allowedSupplierIds.includes(teamMember.supplier_id);
+      const profile = profileById.get(teamMember.id);
+      if (profile?.operation_scope_mode !== 'restricted') return false;
+      return (scopesById.get(teamMember.id) ?? []).some((candidate) =>
+        m.operation_scopes.some((scope) => operationScopesOverlap(scope, candidate)));
+    });
+  }
+  const roleKeys = [...new Set(visibleMembers.map((member) => member.role))];
   const { data: roleRows, error: roleError } = await db.from('team_roles')
     .select('role_key, name, department_id, scope, permissions')
     .in('role_key', roleKeys);
@@ -2411,9 +2901,11 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
   }
   const roleByKey = new Map((roleRows ?? []).map((role) => [role.role_key, role]));
   const departmentById = new Map((departmentRows ?? []).map((department) => [department.id, department]));
-  res.json((data ?? []).map((member) => {
+  const profilesByMemberId = new Map(visibleProfiles.map((profile) => [profile.team_member_id, profile]));
+  res.json(visibleMembers.map((member) => {
     const role = roleByKey.get(member.role);
     const department = role ? departmentById.get(role.department_id) : null;
+    const profile = profilesByMemberId.get(member.id);
     return {
       ...member,
       role_label: role?.name ?? member.role,
@@ -2422,6 +2914,15 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
       department_id: role?.department_id ?? '',
       department: department?.name ?? 'Unassigned',
       department_theme: department?.theme_color ?? '#6B7A6C',
+      phone: profile?.phone ?? null,
+      age: profile?.age ?? null,
+      job_title: profile?.job_title ?? null,
+      bio: profile?.bio ?? null,
+      avatar_url: profile?.avatar_url
+        ? db.storage.from('team-avatars').getPublicUrl(profile.avatar_url).data.publicUrl
+        : null,
+      operation_scope_mode: profile?.operation_scope_mode ?? 'global',
+      operation_scopes: visibleScopes.filter((scope) => scope.team_member_id === member.id),
     };
   }));
 });
@@ -2554,6 +3055,28 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
     }
     return res.status(500).json({ error: 'Could not save the team invitation.' });
   }
+  if (role.scope === 'platform' && m.operation_scope_mode === 'restricted') {
+    const { error: scopeError } = await db.rpc('save_team_member_management_profile', {
+      p_team_member_id: data.id,
+      p_profile: { operation_scope_mode: 'restricted' },
+      p_scopes: m.operation_scopes.map((scope) => ({
+        country_code: scope.country_code,
+        country_name: scope.country_name ?? scope.country_code,
+        region_code: scope.region_code,
+        region_name: scope.region_name ?? scope.region_code,
+        district_code: scope.district_code,
+        district_name: scope.district_name ?? scope.district_code,
+      })),
+    });
+    if (scopeError) {
+      console.error('Could not apply the inviter’s operation scopes to a new team member:', scopeError.message);
+      const { error: memberCleanupError } = await db.from('team_members').delete().eq('id', data.id);
+      if (memberCleanupError) console.error('Could not remove team member after scope assignment failed:', memberCleanupError.message);
+      const { error: authCleanupError } = await db.auth.admin.deleteUser(invited.data.user.id);
+      if (authCleanupError) console.error('Could not remove auth invite after scope assignment failed:', authCleanupError.message);
+      return res.status(500).json({ error: 'Could not save the team invitation with its operation-area restrictions.' });
+    }
+  }
   res.status(201).json(data);
 });
 
@@ -2572,6 +3095,28 @@ app.patch('/admin/team/:id', requirePerm('team.manage'), async (req: AuthedReque
     return res.status(500).json({ error: 'Could not load this team member.' });
   }
   if (!target) return res.status(404).json({ error: 'Not found' });
+  if (!m.supplier_id && m.operation_scope_mode === 'restricted') {
+    if (target.supplier_id) {
+      try {
+        if (!await memberCanAccessSupplier(m, target.supplier_id)) return res.status(404).json({ error: 'Not found' });
+      } catch (scopeError) {
+        return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+      }
+    } else {
+      const [{ data: targetProfile, error: targetProfileError }, { data: targetScopes, error: targetScopesError }] = await Promise.all([
+        db.from('team_member_profiles').select('operation_scope_mode').eq('team_member_id', target.id).maybeSingle(),
+        db.from('team_member_operation_scopes').select('country_code, region_code, district_code').eq('team_member_id', target.id),
+      ]);
+      if (targetProfileError || targetScopesError) {
+        console.error('Could not validate team member operation areas:', targetProfileError?.message ?? targetScopesError?.message);
+        return res.status(500).json({ error: 'Could not validate this team member’s operation areas.' });
+      }
+      if (targetProfile?.operation_scope_mode !== 'restricted'
+        || !targetScopes?.some((scope) => m.operation_scopes.some((actorScope) => operationScopesOverlap(actorScope, scope)))) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    }
+  }
   const { data: targetRole, error: targetRoleError } = await db.from('team_roles')
     .select('scope, permissions')
     .eq('role_key', target.role)
@@ -2598,6 +3143,409 @@ app.patch('/admin/team/:id', requirePerm('team.manage'), async (req: AuthedReque
   res.json(data);
 });
 
+app.get('/admin/management/commission-policy', requirePerm('management.view'), async (_req: AuthedRequest, res: Response) => {
+  const [{ data: policy, error: policyError }, { data: tiers, error: tiersError }] = await Promise.all([
+    db.from('team_commission_settings').select('margin_pool_pct, incentive_budget_pct, bonus_rate_pct, period').eq('id', 'primary').maybeSingle(),
+    db.from('team_commission_tiers').select('id, target_sales_tzs, commission_rate_pct').order('target_sales_tzs'),
+  ]);
+  if (policyError || tiersError || !policy) {
+    console.error('Could not load weekly commission policy:', policyError?.message ?? tiersError?.message ?? 'Policy is not initialized.');
+    return res.status(503).json({ error: 'Could not load the commission policy.' });
+  }
+  return res.json({ ...policy, tiers: tiers ?? [] });
+});
+
+app.put('/admin/management/commission-policy', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {
+  const parsed = z.object({
+    margin_pool_pct: z.number().min(0).max(100),
+    incentive_budget_pct: z.number().min(0).max(1),
+    bonus_rate_pct: z.number().min(0).max(1),
+    tiers: z.array(z.object({
+      target_sales_tzs: z.number().int().positive(),
+      commission_rate_pct: z.number().min(0.2).max(0.5),
+    })).max(30),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const tiers = [...parsed.data.tiers].sort((a, b) => a.target_sales_tzs - b.target_sales_tzs);
+  if (new Set(tiers.map((tier) => tier.target_sales_tzs)).size !== tiers.length) {
+    return res.status(400).json({ error: 'Each weekly sales target must be unique.' });
+  }
+  if (tiers.some((tier, index) => index > 0 && tier.commission_rate_pct < tiers[index - 1].commission_rate_pct)) {
+    return res.status(400).json({ error: 'Higher sales targets cannot have a lower commission rate.' });
+  }
+  if (parsed.data.bonus_rate_pct > parsed.data.incentive_budget_pct
+    || (tiers.at(-1)?.commission_rate_pct ?? 0) + parsed.data.bonus_rate_pct > parsed.data.incentive_budget_pct) {
+    return res.status(400).json({ error: 'The highest commission tier plus bonus must fit within the incentive budget.' });
+  }
+  const { error } = await db.rpc('save_team_commission_policy', {
+    p_margin_pool_pct: parsed.data.margin_pool_pct,
+    p_incentive_budget_pct: parsed.data.incentive_budget_pct,
+    p_bonus_rate_pct: parsed.data.bonus_rate_pct,
+    p_tiers: tiers,
+  });
+  if (error) {
+    console.error('Could not save weekly commission policy:', error.message);
+    return res.status(400).json({ error: 'Could not save this commission policy. Check that the tiers fit within the incentive budget.' });
+  }
+  return res.json({ ok: true });
+});
+
+app.get('/admin/management/commission-summary', requirePerm('management.view'), async (req: AuthedRequest, res: Response) => {
+  const member = req.member!;
+  const { start, end } = weekBoundsUtc(new Date());
+  const canManage = member.permissions.includes('management.manage');
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(member);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  const [{ data: sales, error: salesError }, { data: policy, error: policyError }, { data: tiers, error: tiersError }] = await Promise.all([
+    allowedSupplierIds?.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : db.rpc('get_weekly_team_commission_sales', {
+        p_from: start.toISOString(),
+        p_to: end.toISOString(),
+        p_team_member_id: canManage ? null : member.id,
+        p_supplier_ids: allowedSupplierIds,
+      }),
+    db.from('team_commission_settings').select('margin_pool_pct, incentive_budget_pct, bonus_rate_pct').eq('id', 'primary').maybeSingle(),
+    db.from('team_commission_tiers').select('target_sales_tzs, commission_rate_pct').order('target_sales_tzs'),
+  ]);
+  if (salesError || policyError || tiersError || !policy) {
+    console.error('Could not calculate weekly commissions:', salesError?.message ?? policyError?.message ?? tiersError?.message ?? 'Policy is not initialized.');
+    return res.status(503).json({ error: 'Could not calculate commission details.' });
+  }
+  const commissionTiers: CommissionTier[] = (tiers ?? []).map((tier) => ({
+    target_sales_tzs: Number(tier.target_sales_tzs),
+    commission_rate_pct: Number(tier.commission_rate_pct),
+  }));
+  type WeeklySalesRow = {
+    team_member_id: string;
+    full_name: string;
+    email: string;
+    sales_value_tzs: number;
+    delivered_supplier_orders: number;
+  };
+  const salesRows = (sales ?? []) as WeeklySalesRow[];
+  const rows = canManage
+    ? salesRows
+    : salesRows.filter((entry) => entry.team_member_id === member.id);
+  return res.json({
+    period: { start: start.toISOString(), end: end.toISOString() },
+    tiers: commissionTiers,
+    members: rows.map((entry) => ({
+      team_member_id: entry.team_member_id,
+      full_name: entry.full_name,
+      email: entry.email,
+      delivered_supplier_orders: Number(entry.delivered_supplier_orders),
+      ...calculateWeeklyCommission(Number(entry.sales_value_tzs), {
+        margin_pool_pct: Number(policy.margin_pool_pct),
+        incentive_budget_pct: Number(policy.incentive_budget_pct),
+        bonus_rate_pct: Number(policy.bonus_rate_pct),
+      }, commissionTiers),
+    })),
+  });
+});
+
+app.get('/admin/management/assignable-orders', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(req.member!);
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json([]);
+  let query = db.from('supplier_orders')
+    .select('id, order_id, supplier_id, status, updated_at, suppliers(name, country_name, region_name, district_name), supplier_order_assignments(team_member_id, team_members!supplier_order_assignments_team_member_id_fkey(full_name))')
+    .in('status', ['pending', 'packing', 'en_route', 'delivered'])
+    .order('updated_at', { ascending: false })
+    .limit(300);
+  if (allowedSupplierIds) query = query.in('supplier_id', allowedSupplierIds);
+  const { data, error } = await query;
+  if (error) {
+    console.error('Could not load orders for sales assignment:', error.message);
+    return res.status(500).json({ error: 'Could not load assignable orders.' });
+  }
+  return res.json((data ?? []).map((order) => {
+    const supplier = relationRecord(order.suppliers);
+    const assignment = relationRecord(order.supplier_order_assignments);
+    const assignee = relationRecord(assignment?.team_members);
+    return {
+      id: order.id,
+      code: order.order_id.slice(0, 8).toUpperCase(),
+      supplier_id: order.supplier_id,
+      supplier_name: typeof supplier?.name === 'string' ? supplier.name : 'Farm',
+      country_code: typeof supplier?.country_code === 'string' ? supplier.country_code : '',
+      country_name: typeof supplier?.country_name === 'string' ? supplier.country_name : '',
+      region_code: typeof supplier?.region_code === 'string' ? supplier.region_code : '',
+      region_name: typeof supplier?.region_name === 'string' ? supplier.region_name : '',
+      district_code: typeof supplier?.district_code === 'string' ? supplier.district_code : '',
+      district_name: typeof supplier?.district_name === 'string' ? supplier.district_name : '',
+      status: order.status,
+      updated_at: order.updated_at,
+      team_member_id: typeof assignment?.team_member_id === 'string' ? assignment.team_member_id : null,
+      team_member_name: typeof assignee?.full_name === 'string' ? assignee.full_name : null,
+    };
+  }));
+});
+
+app.get('/admin/management/members', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {
+  const [{ data: members, error: memberError }, { data: roles, error: roleError }, { data: profiles, error: profileError }, { data: scopes, error: scopeError }] = await Promise.all([
+    db.from('team_members').select('id, supplier_id, full_name, email, role, status').is('supplier_id', null).order('full_name'),
+    db.from('team_roles').select('role_key, name, scope, permissions'),
+    db.from('team_member_profiles').select('team_member_id, phone, age, job_title, bio, avatar_url, operation_scope_mode'),
+    db.from('team_member_operation_scopes').select('id, team_member_id, country_code, country_name, region_code, region_name, district_code, district_name'),
+  ]);
+  if (memberError || roleError || profileError || scopeError) {
+    console.error('Could not load management team profiles:', memberError?.message ?? roleError?.message ?? profileError?.message ?? scopeError?.message);
+    return res.status(503).json({ error: 'Could not load team management details.' });
+  }
+  const roleByKey = new Map((roles ?? []).map((role) => [role.role_key, role]));
+  const profileById = new Map((profiles ?? []).map((profile) => [profile.team_member_id, profile]));
+  const member = req.member!;
+  const restrictedActor = !isPlatformAdministrator(member);
+  return res.json((members ?? []).flatMap((teamMember) => {
+    const role = roleByKey.get(teamMember.role);
+    if (!role?.permissions.includes('management.view')) return [];
+    const profile = profileById.get(teamMember.id);
+    const memberScopes = (scopes ?? []).filter((scope) => scope.team_member_id === teamMember.id);
+    if (restrictedActor && (
+      profile?.operation_scope_mode !== 'restricted'
+      || !memberScopes.some((candidate) => member.operation_scopes.some((scope) => operationScopesOverlap(scope, candidate)))
+    )) return [];
+    return [{
+      ...teamMember,
+      role_label: role.name,
+      role_scope: role.scope,
+      phone: profile?.phone ?? null,
+      age: profile?.age ?? null,
+      job_title: profile?.job_title ?? null,
+      bio: profile?.bio ?? null,
+      avatar_url: profile?.avatar_url
+        ? db.storage.from('team-avatars').getPublicUrl(profile.avatar_url).data.publicUrl
+        : null,
+      operation_scope_mode: profile?.operation_scope_mode ?? 'global',
+      operation_scopes: memberScopes,
+    }];
+  }));
+});
+
+const operationScopeSchema = z.object({
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string().trim().min(2).max(100),
+  region_code: z.string().trim().min(1).max(100),
+  region_name: z.string().trim().min(1).max(100),
+  district_code: z.string().trim().min(1).max(100).nullable(),
+  district_name: z.string().trim().min(1).max(100).nullable(),
+}).refine((scope) => (scope.district_code === null) === (scope.district_name === null), {
+  message: 'Provide both district code and name, or leave both empty.',
+});
+
+app.put('/admin/management/members/:id', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {
+  const memberId = z.string().uuid().safeParse(req.params.id);
+  const parsed = z.object({
+    phone: z.string().trim().max(40).nullable(),
+    age: z.number().int().min(16).max(120).nullable(),
+    job_title: z.string().trim().max(100).nullable(),
+    bio: z.string().trim().max(1000).nullable(),
+    operation_scope_mode: z.enum(['global', 'restricted']),
+    operation_scopes: z.array(operationScopeSchema).max(100),
+  }).safeParse(req.body);
+  if (!memberId.success || !parsed.success) {
+    return res.status(400).json({ error: parsed.success ? 'Invalid team member ID.' : parsed.error.flatten() });
+  }
+  const actor = req.member!;
+  if (memberId.data === actor.id) return res.status(400).json({ error: 'Use My account to update your own personal details.' });
+  const { data: target, error: targetError } = await db.from('team_members')
+    .select('id, role, supplier_id')
+    .eq('id', memberId.data)
+    .maybeSingle();
+  if (targetError || !target) {
+    if (targetError) console.error('Could not load target team member:', targetError.message);
+    return res.status(targetError ? 500 : 404).json({ error: 'Could not load this team member.' });
+  }
+  if (['platform_owner', 'administrator', 'platform_admin'].includes(target.role)) {
+    return res.status(403).json({ error: 'Owner accounts cannot be changed through employee management.' });
+  }
+  if (target.supplier_id) return res.status(400).json({ error: 'Farm team profiles are managed by the farm team.' });
+  if (!isPlatformAdministrator(actor)) {
+    const [{ data: targetProfile, error: targetProfileError }, { data: targetScopes, error: targetScopesError }] = await Promise.all([
+      db.from('team_member_profiles').select('operation_scope_mode').eq('team_member_id', memberId.data).maybeSingle(),
+      db.from('team_member_operation_scopes').select('country_code, region_code, district_code').eq('team_member_id', memberId.data),
+    ]);
+    if (targetProfileError || targetScopesError) {
+      console.error('Could not validate target operation scopes:', targetProfileError?.message ?? targetScopesError?.message);
+      return res.status(500).json({ error: 'Could not validate this team member’s operation areas.' });
+    }
+    if (targetProfile?.operation_scope_mode !== 'restricted'
+      || !targetScopes?.some((scope) => actor.operation_scopes.some((actorScope) => operationScopesOverlap(actorScope, scope)))) {
+      return res.status(403).json({ error: 'You cannot manage an employee outside your operation areas.' });
+    }
+  }
+  if (parsed.data.operation_scope_mode === 'restricted' && parsed.data.operation_scopes.length === 0) {
+    return res.status(400).json({ error: 'Choose at least one operation area for a restricted account.' });
+  }
+  if (parsed.data.operation_scope_mode === 'global' && parsed.data.operation_scopes.length > 0) {
+    return res.status(400).json({ error: 'Remove individual operation areas before granting global access.' });
+  }
+  if (!isPlatformAdministrator(actor)) {
+    if (parsed.data.operation_scope_mode === 'global') {
+      return res.status(403).json({ error: 'Only platform administrators can grant global operation access.' });
+    }
+    if (!parsed.data.operation_scopes.every((candidate) => actor.operation_scopes.some((scope) => operationScopesOverlap(scope, candidate)))) {
+      return res.status(403).json({ error: 'You cannot grant access beyond your own operation areas.' });
+    }
+  }
+  const { error } = await db.rpc('save_team_member_management_profile', {
+    p_team_member_id: memberId.data,
+    p_profile: {
+      phone: parsed.data.phone,
+      age: parsed.data.age,
+      job_title: parsed.data.job_title,
+      bio: parsed.data.bio,
+      operation_scope_mode: parsed.data.operation_scope_mode,
+    },
+    p_scopes: parsed.data.operation_scopes,
+  });
+  if (error) {
+    console.error('Could not save team management profile:', error.message);
+    return res.status(400).json({ error: 'Could not save this team profile and its operation areas.' });
+  }
+  return res.json({ ok: true });
+});
+
+app.post('/admin/management/my-avatar-upload', requirePerm(), async (req: AuthedRequest, res: Response) => {
+  const parsed = z.object({ content_type: z.enum(['image/jpeg', 'image/png', 'image/webp']) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const extension = parsed.data.content_type === 'image/jpeg' ? 'jpg' : parsed.data.content_type.slice('image/'.length);
+  const path = `${req.member!.id}/${randomUUID()}.${extension}`;
+  const { data, error } = await db.storage.from('team-avatars').createSignedUploadUrl(path, { upsert: false });
+  if (error) {
+    console.error('Could not create team avatar upload URL:', error.message);
+    return res.status(503).json({ error: 'Could not prepare your profile photo upload.' });
+  }
+  return res.json({ path: data.path, token: data.token, public_url: db.storage.from('team-avatars').getPublicUrl(data.path).data.publicUrl });
+});
+
+app.patch('/admin/management/my-profile', requirePerm(), async (req: AuthedRequest, res: Response) => {
+  const parsed = z.object({
+    phone: z.string().trim().max(40).nullable(),
+    age: z.number().int().min(16).max(120).nullable(),
+    job_title: z.string().trim().max(100).nullable(),
+    bio: z.string().trim().max(1000).nullable(),
+    avatar_url: z.string().max(200).nullable(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const member = req.member!;
+  if (parsed.data.avatar_url && !parsed.data.avatar_url.startsWith(`${member.id}/`)) {
+    return res.status(400).json({ error: 'The profile photo must be uploaded to your own account.' });
+  }
+  const { error } = await db.from('team_member_profiles').upsert({
+    team_member_id: member.id,
+    phone: parsed.data.phone,
+    age: parsed.data.age,
+    job_title: parsed.data.job_title,
+    bio: parsed.data.bio,
+    avatar_url: parsed.data.avatar_url,
+    operation_scope_mode: member.operation_scope_mode,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) {
+    console.error('Could not update the signed-in team member profile:', error.message);
+    return res.status(500).json({ error: 'Could not save your profile.' });
+  }
+  return res.json({
+    ...member,
+    ...parsed.data,
+    avatar_path: parsed.data.avatar_url,
+    avatar_url: parsed.data.avatar_url
+      ? db.storage.from('team-avatars').getPublicUrl(parsed.data.avatar_url).data.publicUrl
+      : null,
+  });
+});
+
+app.get('/admin/management/my-activity', requirePerm(), async (req: AuthedRequest, res: Response) => {
+  const member = req.member!;
+  const { start, end } = weekBoundsUtc(new Date());
+  const { data: assignments, error: assignmentError } = await db.from('supplier_order_assignments')
+    .select('supplier_order_id')
+    .eq('team_member_id', member.id)
+    .limit(2000);
+  if (assignmentError) {
+    console.error('Could not load employee order assignments:', assignmentError.message);
+    return res.status(503).json({ error: 'Could not load your weekly activities.' });
+  }
+  const orderIds = (assignments ?? []).map((assignment) => assignment.supplier_order_id);
+  const [ordersResult, updatesResult] = await Promise.all([
+    orderIds.length
+      ? db.from('supplier_orders').select('id, status')
+        .in('id', orderIds).gte('updated_at', start.toISOString()).lt('updated_at', end.toISOString())
+      : Promise.resolve({ data: [], error: null }),
+    db.from('supplier_orders').select('id', { count: 'exact', head: true })
+      .eq('status_updated_by', member.id)
+      .gte('updated_at', start.toISOString())
+      .lt('updated_at', end.toISOString()),
+  ]);
+  if (ordersResult.error || updatesResult.error) {
+    console.error('Could not calculate employee weekly activities:', ordersResult.error?.message ?? updatesResult.error?.message);
+    return res.status(503).json({ error: 'Could not load your weekly activities.' });
+  }
+  const statuses = (ordersResult.data ?? []).reduce<Record<string, number>>((summary, order) => {
+    summary[order.status] = (summary[order.status] ?? 0) + 1;
+    return summary;
+  }, {});
+  return res.json({
+    period: { start: start.toISOString(), end: end.toISOString() },
+    assigned_orders: (ordersResult.data ?? []).length,
+    delivered_orders: statuses.delivered ?? 0,
+    active_orders: (statuses.pending ?? 0) + (statuses.packing ?? 0) + (statuses.en_route ?? 0),
+    status_updates: updatesResult.count ?? 0,
+    statuses,
+  });
+});
+
+app.post('/admin/management/supplier-orders/:id/assign', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const parsed = z.object({ team_member_id: z.string().uuid().nullable() }).safeParse(req.body);
+  if (!id.success || !parsed.success) {
+    return res.status(400).json({ error: parsed.success ? 'Invalid supplier order ID.' : parsed.error.flatten() });
+  }
+  const member = req.member!;
+  const { data: supplierOrder, error: orderError } = await db.from('supplier_orders')
+    .select('id, supplier_id')
+    .eq('id', id.data)
+    .maybeSingle();
+  if (orderError || !supplierOrder) {
+    if (orderError) console.error('Could not load supplier order for commission assignment:', orderError.message);
+    return res.status(orderError ? 500 : 404).json({ error: 'Order not found.' });
+  }
+  try {
+    if (!await memberCanAccessSupplier(member, supplierOrder.supplier_id)) return res.status(404).json({ error: 'Order not found.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+  }
+  if (parsed.data.team_member_id === null) {
+    const { error } = await db.from('supplier_order_assignments').delete().eq('supplier_order_id', id.data);
+    if (error) {
+      console.error('Could not clear supplier order assignment:', error.message);
+      return res.status(500).json({ error: 'Could not clear the order assignment.' });
+    }
+    return res.json({ ok: true, team_member_id: null });
+  }
+  const { data, error } = await db.from('supplier_order_assignments').upsert({
+    supplier_order_id: id.data,
+    team_member_id: parsed.data.team_member_id,
+    assigned_by: member.id,
+    assigned_at: new Date().toISOString(),
+  }).select('supplier_order_id, team_member_id, assigned_at').single();
+  if (error) {
+    console.error('Could not assign supplier order:', error.message);
+    return res.status(400).json({ error: 'Could not assign this order. Check that the employee is active and authorized for this area.' });
+  }
+  return res.json(data);
+});
+
 const settingsSchema = z.object({
   hub_name: z.string().min(2).max(120),
   free_radius_km: z.number().min(0).max(100),
@@ -2606,6 +3554,13 @@ const settingsSchema = z.object({
   far_fee: z.number().int().nonnegative(),
   commission_pct: z.number().min(0).max(40),
   wholesale_min_default: z.number().int().positive(),
+  tier_price_percentages: z.object({
+    wholesale: z.number().finite().min(1).max(99),
+    bulk: z.number().finite().min(1).max(99),
+    mega_bulk: z.number().finite().min(1).max(99),
+  }).refine((value) => value.wholesale > value.bulk && value.bulk > value.mega_bulk, {
+    message: 'Tier percentages must descend from wholesale to bulk to mega-bulk.',
+  }),
   delivery_option_fees: z.object({
     '12h': z.number().int().nonnegative().nullable(),
     '24h': z.number().int().nonnegative().nullable(),
@@ -2642,6 +3597,7 @@ app.put('/admin/settings', requirePerm('settings.manage'), async (req: AuthedReq
     far_fee: parsed.data.far_fee,
     commission_pct: parsed.data.commission_pct,
     wholesale_min_default: parsed.data.wholesale_min_default,
+    tier_price_percentages: parsed.data.tier_price_percentages,
     delivery_option_fees: parsed.data.delivery_option_fees,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' }).select().single();

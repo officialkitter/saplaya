@@ -1,5 +1,5 @@
 // NOTE: no supplier fields here on purpose. The customer app never sees suppliers.
-export type Mode = 'retail' | 'wholesale';
+export type Mode = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
 
 export type Product = {
   id: string;

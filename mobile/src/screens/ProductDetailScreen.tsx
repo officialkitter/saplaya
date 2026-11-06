@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store/StoreContext';
 import { useFly } from '../store/FlyContext';
-import { colors, radius } from '../theme';
+import { colors, radius, volumeTheme } from '../theme';
 import { Product } from '../types';
 import { volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
@@ -23,22 +23,23 @@ function harvestedText(iso: string) {
 
 export default function ProductDetailScreen({ route, navigation }: any) {
   const product: Product = route.params.product;
-  const { mode, priceOf, tierOf, add, lines } = useStore();
+  const { mode, baseMode, priceOf, tierOf, add, lines } = useStore();
   const { formatPrice } = useCurrency();
   const { fly } = useFly();
   const insets = useSafeAreaInsets();
 
-  const minQty = mode === 'wholesale' ? product.wholesale_min_qty : 1;
+  const minQty = baseMode === 'wholesale' ? product.wholesale_min_qty : 1;
   const [qty, setQty] = useState(minQty);
   const [qtyText, setQtyText] = useState(String(minQty));
   const unitPrice = priceOf(product, qty);
   const tier = tierOf(product, qty);
+  const tierTheme = volumeTheme(tier);
   const [pressed, setPressed] = useState(false);
   const [unlocked, setUnlocked] = useState<{ tier: 'bulk' | 'mega_bulk'; inBasket: boolean } | null>(null);
   const btn = useRef<View>(null);
 
   const updateQuantity = (next: number) => {
-    const newTier = unlockedVolumeTier(product, qty, next, mode);
+    const newTier = unlockedVolumeTier(product, qty, next, baseMode);
     if (newTier) setUnlocked({ tier: newTier, inBasket: false });
     setQty(next);
   };
@@ -49,13 +50,13 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     setTimeout(() => setPressed(false), 140);
     btn.current?.measureInWindow((x, y, w, h) => fly({ x: x + w / 2, y: y + h / 2 }));
     const previousQty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
-    const newTier = unlockedVolumeTier(product, previousQty, previousQty + qty, mode);
+    const newTier = unlockedVolumeTier(product, previousQty, previousQty + qty, baseMode);
     if (previousQty > 0 && newTier && newTier !== tier) setUnlocked({ tier: newTier, inBasket: true });
     add(product, qty);
   };
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: tierTheme.background }]}>
       {/* 60% hero */}
       <View style={styles.hero}>
         {product.image_url ? (
@@ -75,18 +76,18 @@ export default function ProductDetailScreen({ route, navigation }: any) {
         from={{ translateY: H * 0.4 }}
         animate={{ translateY: 0 }}
         transition={{ type: 'spring', damping: 16, stiffness: 120 }}
-        style={styles.sheet}
+        style={[styles.sheet, { backgroundColor: tierTheme.surface, borderTopColor: tierTheme.accent, borderTopWidth: tier === 'retail' || tier === 'wholesale' ? 0 : 4 }]}
       >
-        <View style={styles.badge}>
-          <MaterialCommunityIcons name="barley" size={18} color={colors.green} />
-          <Text style={styles.badgeText}>Open-field farm · {harvestedText(product.harvested_at)}</Text>
+        <View style={[styles.badge, { backgroundColor: tierTheme.soft }]}>
+          <MaterialCommunityIcons name="barley" size={18} color={tierTheme.accent} />
+          <Text style={[styles.badgeText, { color: tierTheme.accent }]}>Open-field farm · {harvestedText(product.harvested_at)}</Text>
         </View>
 
         <Text style={styles.name}>{product.name}</Text>
-        <Text style={styles.price}>
+        <Text style={[styles.price, { color: tierTheme.accent }]}>
           {unitPrice === null ? 'Final price at checkout' : formatPrice(unitPrice)} <Text style={styles.unit}>per {product.unit}</Text>
         </Text>
-        <Text style={[styles.tier, (tier === 'bulk' || tier === 'mega_bulk') && styles.bulkTier]}>{volumeTierLabel(tier)} pricing</Text>
+        <Text style={[styles.tier, { color: tierTheme.accent }]}>{volumeTierLabel(tier)} pricing</Text>
         <Text style={styles.min}>
           Wholesale from {product.wholesale_min_qty} {product.unit}. Other farms may fulfill larger quantities.
         </Text>
@@ -133,7 +134,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               animate={{ scale: pressed ? 0.9 : 1 }}
               transition={{ type: 'spring', damping: 10, stiffness: 300 }}
             >
-              <Pressable onPress={onAdd} style={styles.addBtn}>
+              <Pressable onPress={onAdd} style={[styles.addBtn, { backgroundColor: tierTheme.accent }]}>
                 <Ionicons name="cart" size={22} color={colors.white} />
                 <Text style={styles.addText}>{unitPrice === null ? 'Add to basket · price at checkout' : `Add · ${formatPrice(unitPrice * qty)}`}</Text>
               </Pressable>

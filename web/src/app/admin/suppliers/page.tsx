@@ -12,13 +12,29 @@ import { cn, formatTZS, timeAgo } from '@/lib/format';
 import { can } from '@/lib/roles';
 import { countsAsSale, orderTotal } from '@/lib/stats';
 import { useDB, useScope, useToast } from '@/lib/store';
+import { fetchAdmin } from '@/lib/supabase';
 import type { Application, Supplier, SupplierStatus } from '@/lib/types';
+
+type LocationOption = { code: string; name: string };
 
 const FARM_STATUS: Record<SupplierStatus, { label: string; cls: string }> = {
   active: { label: 'Selling', cls: 'bg-leaf-soft text-leaf-deep' },
   pending: { label: 'Waiting', cls: 'bg-sun-soft text-[#8A5A00]' },
   suspended: { label: 'Paused', cls: 'bg-[#FFEBEE] text-[#B71C1C]' },
 };
+
+function supplierLocation(supplier: Supplier) {
+  return [supplier.districtName, supplier.regionName || supplier.region, supplier.countryName]
+    .filter((part, index, parts) => !!part && parts.indexOf(part) === index)
+    .join(', ');
+}
+
+function applicationLocation(application: Application) {
+  return [application.districtName, application.regionName || application.region, application.countryName]
+    .filter((part, index, parts) => !!part && parts.indexOf(part) === index)
+    .join(', ');
+}
+
 function Farms() {
   const { me, suppliers, products, orders } = useScope();
   const applications = useDB((s) => s.applications);
@@ -26,6 +42,7 @@ function Farms() {
   const deleteDeclinedApplication = useDB((s) => s.deleteDeclinedApplication);
   const setSupplierStatus = useDB((s) => s.setSupplierStatus);
   const setSupplierCoordinates = useDB((s) => s.setSupplierCoordinates);
+  const setSupplierLocation = useDB((s) => s.setSupplierLocation);
   const mergeSupplier = useDB((s) => s.mergeSupplier);
   const archiveSupplier = useDB((s) => s.archiveSupplier);
   const addSupplier = useDB((s) => s.addSupplier);
@@ -37,17 +54,53 @@ function Farms() {
   const [deletingApplication, setDeletingApplication] = useState<Application | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [locationEditing, setLocationEditing] = useState<Supplier | null>(null);
+  const [areaEditing, setAreaEditing] = useState<Supplier | null>(null);
   const [mergeSource, setMergeSource] = useState<Supplier | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [archiveFarm, setArchiveFarm] = useState<Supplier | null>(null);
   const [farmActionBusy, setFarmActionBusy] = useState(false);
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
-  const [form, setForm] = useState({ name: '', region: '', contactName: '', contactEmail: '', contactPhone: '' });
+  const [areaForm, setAreaForm] = useState({
+    countryCode: '', countryName: '', regionCode: '', regionName: '', districtCode: '', districtName: '',
+  });
+  const [form, setForm] = useState({
+    name: '', countryCode: '', countryName: '', regionCode: '', regionName: '',
+    districtCode: '', districtName: '', contactName: '', contactEmail: '', contactPhone: '',
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [countries, setCountries] = useState<LocationOption[]>([]);
+  const [regions, setRegions] = useState<LocationOption[]>([]);
+  const [districts, setDistricts] = useState<LocationOption[]>([]);
+  const [areaRegions, setAreaRegions] = useState<LocationOption[]>([]);
+  const [areaDistricts, setAreaDistricts] = useState<LocationOption[]>([]);
 
   useEffect(() => {
     if (window.location.hash === '#applications') setTab('applications');
   }, []);
+  useEffect(() => {
+    void fetchAdmin<LocationOption[]>('/locations/countries')
+      .then(setCountries)
+      .catch((error: unknown) => push(error instanceof Error ? error.message : 'Could not load countries.', 'bad'));
+  }, [push]);
+  useEffect(() => {
+    let active = true;
+    setAreaRegions([]);
+    setAreaDistricts([]);
+    if (!areaForm.countryCode) return () => { active = false; };
+    void fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(areaForm.countryCode)}/regions`)
+      .then((options) => { if (active) setAreaRegions(options); })
+      .catch((error: unknown) => { if (active) push(error instanceof Error ? error.message : 'Could not load farm regions.', 'bad'); });
+    return () => { active = false; };
+  }, [areaForm.countryCode, push]);
+  useEffect(() => {
+    let active = true;
+    setAreaDistricts([]);
+    if (!areaForm.countryCode || !areaForm.regionCode) return () => { active = false; };
+    void fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(areaForm.countryCode)}/regions/${encodeURIComponent(areaForm.regionCode)}/districts`)
+      .then((options) => { if (active) setAreaDistricts(options); })
+      .catch((error: unknown) => { if (active) push(error instanceof Error ? error.message : 'Could not load farm districts.', 'bad'); });
+    return () => { active = false; };
+  }, [areaForm.countryCode, areaForm.regionCode, push]);
 
   const stats = useMemo(
     () =>
@@ -84,16 +137,28 @@ function Farms() {
   async function saveFarm() {
     const err: Record<string, string> = {};
     if (form.name.trim().length < 2) err.name = 'Enter the farm name.';
-    if (form.region.trim().length < 2) err.region = 'Enter a country or region.';
+    if (!form.countryCode) err.countryCode = 'Choose a country.';
+    if (form.regionName.trim().length < 2) err.regionName = 'Choose or enter a region or state.';
+    if (form.regionName.trim().length > 100) err.regionName = 'Region or state must be 100 characters or fewer.';
+    if (form.districtName.trim().length > 100) err.districtName = 'District or city must be 100 characters or fewer.';
     if (form.contactName.trim().length < 2) err.contactName = 'Enter the owner’s name.';
     if (!/^\S+@\S+\.\S+$/.test(form.contactEmail)) err.contactEmail = 'Check the email address. We send the sign-in link here.';
     if (form.contactPhone.trim().length < 9) err.contactPhone = 'Enter a phone number.';
     setErrors(err);
     if (Object.keys(err).length) return;
     try {
-      await addSupplier({ ...form, name: form.name.trim(), contactName: form.contactName.trim(), contactEmail: form.contactEmail.trim() });
+      await addSupplier({
+        ...form, name: form.name.trim(), regionCode: form.regionCode
+          || form.regionName.trim().toUpperCase().replace(/[^A-Z0-9-]+/g, '-')
+          || form.regionName.trim().toUpperCase(),
+        contactName: form.contactName.trim(), contactEmail: form.contactEmail.trim(),
+        districtCode: form.districtCode || null, districtName: form.districtName || null,
+      });
       push(`${form.name.trim()} was added. A sign-in link was sent to ${form.contactEmail.trim()}.`);
-      setForm({ name: '', region: '', contactName: '', contactEmail: '', contactPhone: '' });
+      setForm({
+        name: '', countryCode: '', countryName: '', regionCode: '', regionName: '',
+        districtCode: '', districtName: '', contactName: '', contactEmail: '', contactPhone: '',
+      });
       setAdding(false);
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not add this farm.', 'bad');
@@ -114,6 +179,28 @@ function Farms() {
       setLocationEditing(null);
     } catch (error) {
       push(error instanceof Error ? error.message : 'Could not save farm coordinates.', 'bad');
+    }
+  }
+
+  async function saveArea() {
+    if (!areaEditing) return;
+    if (!areaForm.countryCode || !areaForm.regionName.trim() || areaForm.regionName.trim().length > 100
+      || areaForm.districtName.trim().length > 100) {
+      push('Choose a country and provide a region. Location names must be 100 characters or fewer.', 'bad');
+      return;
+    }
+    try {
+      await setSupplierLocation(areaEditing.id, {
+        ...areaForm,
+        regionCode: areaForm.regionCode || areaForm.regionName.trim().toUpperCase().replace(/[^A-Z0-9-]+/g, '-')
+          || areaForm.regionName.trim().toUpperCase(),
+        districtCode: areaForm.districtName.trim() ? (areaForm.districtCode || areaForm.districtName.trim()) : null,
+        districtName: areaForm.districtName.trim() || null,
+      });
+      push(`Operation area saved for ${areaEditing.name}.`);
+      setAreaEditing(null);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not save this farm’s operation area.', 'bad');
     }
   }
 
@@ -184,6 +271,36 @@ function Farms() {
   }
 
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setCountry = async (countryCode: string) => {
+    setForm((current) => ({
+      ...current, countryCode, countryName: countries.find((item) => item.code === countryCode)?.name ?? '',
+      regionCode: '', regionName: '', districtCode: '', districtName: '',
+    }));
+    setRegions([]);
+    setDistricts([]);
+    if (!countryCode) return;
+    try {
+      setRegions(await fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(countryCode)}/regions`));
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not load regions.', 'bad');
+    }
+  };
+  const setRegion = async (regionCode: string) => {
+    setForm((current) => ({
+      ...current, regionCode, regionName: regions.find((item) => item.code === regionCode)?.name ?? '',
+      districtCode: '', districtName: '',
+    }));
+    setDistricts([]);
+    if (!regionCode || !form.countryCode) return;
+    try {
+      setDistricts(await fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(form.countryCode)}/regions/${encodeURIComponent(regionCode)}/districts`));
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not load districts.', 'bad');
+    }
+  };
+  const setDistrict = (districtName: string) => {
+    setForm((current) => ({ ...current, districtCode: districtName, districtName }));
+  };
 
   return (
     <>
@@ -238,7 +355,7 @@ function Farms() {
                   <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl bg-leaf-soft text-3xl">{s.emoji}</span>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-display text-xl font-extrabold">{s.name}</h3>
-                    <p className="flex items-center gap-1.5 text-ink-mute"><MapPin size={15} /> {s.region}</p>
+                    <p className="flex items-center gap-1.5 text-ink-mute"><MapPin size={15} /> {supplierLocation(s)}</p>
                   </div>
                   <span className={cn('rounded-full px-3 py-1 text-sm font-bold', merged ? 'bg-ink/10 text-ink-mute' : meta.cls)}>{merged ? 'Merged' : meta.label}</span>
                 </div>
@@ -256,8 +373,26 @@ function Farms() {
                 {canManage && !merged && (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <p className="mb-2 text-sm text-ink-mute">
-                      GPS: {s.latitude === null || s.longitude === null ? 'Not configured — products are not location-matched' : `${s.latitude.toFixed(5)}, ${s.longitude.toFixed(5)}`}
+                      GPS: {s.latitude === null || s.longitude === null ? 'Not configured — products remain visible but are not location-prioritized' : `${s.latitude.toFixed(5)}, ${s.longitude.toFixed(5)}`}
                     </p>
+                    <Button
+                      size="sm"
+                      variant="soft"
+                      icon={<MapPin size={16} />}
+                      onClick={() => {
+                        setAreaForm({
+                          countryCode: s.countryCode ?? '',
+                          countryName: s.countryName ?? '',
+                          regionCode: s.regionCode ?? '',
+                          regionName: s.regionName ?? s.region,
+                          districtCode: s.districtCode ?? '',
+                          districtName: s.districtName ?? '',
+                        });
+                        setAreaEditing(s);
+                      }}
+                    >
+                      Edit operation area
+                    </Button>
                     <Button
                       size="sm"
                       variant="soft"
@@ -309,7 +444,7 @@ function Farms() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-display text-xl font-extrabold">{a.farmName}</h3>
-                    <p className="text-ink-soft">{a.contactName} · {a.region} · {a.farmSize}</p>
+                    <p className="text-ink-soft">{a.contactName} · {applicationLocation(a)} · {a.farmSize}</p>
                     <p className="mt-1 text-ink-soft">Grows: <b className="text-ink">{a.produce}</b></p>
                     <p className="mt-1 text-sm text-ink-mute">{a.phone} · {a.email} · applied {timeAgo(a.at)}</p>
                   </div>
@@ -339,13 +474,103 @@ function Farms() {
         <div className="space-y-4">
           <p className="text-ink-soft">We create the farm and email the owner a link to set up their sign-in.</p>
           <Field label="Farm name" error={errors.name}><Input value={form.name} onChange={set('name')} /></Field>
-          <Field label="Country or region" error={errors.region}><Input value={form.region} onChange={set('region')} placeholder="Country, state, or region" autoComplete="address-level1" /></Field>
+          <Field label="Country" error={errors.countryCode}>
+            <Select value={form.countryCode} onChange={(event) => setCountry(event.target.value)}>
+              <option value="">Choose a country</option>
+              {countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Region / state" error={errors.regionName}>
+            {regions.length > 0
+              ? <Select value={form.regionCode} onChange={(event) => setRegion(event.target.value)}>
+                <option value="">Choose a region or state</option>
+                {regions.map((region) => <option key={region.code} value={region.code}>{region.name}</option>)}
+              </Select>
+              : <Input value={form.regionName} onChange={(event) => setForm((current) => ({ ...current, regionCode: '', regionName: event.target.value, districtCode: '', districtName: '' }))} placeholder="Enter region or state" autoComplete="address-level1" />}
+          </Field>
+          <Field label="District / city (optional)" error={errors.districtName}>
+            {districts.length > 0
+              ? <Select value={form.districtCode} onChange={(event) => setDistrict(event.target.value)}>
+                <option value="">Entire region / state</option>
+                {districts.map((district, index) => <option key={`${district.code}-${index}`} value={district.name}>{district.name}</option>)}
+              </Select>
+              : <Input value={form.districtName} onChange={(event) => setDistrict(event.target.value)} placeholder="Enter district or city" />}
+          </Field>
           <Field label="Owner's name" error={errors.contactName}><Input value={form.contactName} onChange={set('contactName')} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Owner's email" error={errors.contactEmail}><Input type="email" value={form.contactEmail} onChange={set('contactEmail')} /></Field>
             <Field label="Owner's phone" error={errors.contactPhone}><Input value={form.contactPhone} onChange={set('contactPhone')} inputMode="tel" /></Field>
           </div>
           <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setAdding(false)}>Cancel</Button><Button onClick={() => { void saveFarm(); }}>Add farm</Button></div>
+        </div>
+      </Modal>
+
+      <Modal open={!!areaEditing} onClose={() => setAreaEditing(null)} title={`Farm operation area${areaEditing ? ` · ${areaEditing.name}` : ''}`}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-soft">Set a verified country and region so scoped team members can see only the operations assigned to their area.</p>
+          <Field label="Country">
+            <Select value={areaForm.countryCode} onChange={(event) => {
+              const countryCode = event.target.value;
+              setAreaForm((current) => ({
+                ...current,
+                countryCode,
+                countryName: countries.find((country) => country.code === countryCode)?.name ?? '',
+                regionCode: '',
+                regionName: '',
+                districtCode: '',
+                districtName: '',
+              }));
+            }}>
+              <option value="">Choose a country</option>
+              {countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Region / state">
+            {areaRegions.length > 0
+              ? <Select value={areaForm.regionCode} onChange={(event) => {
+                const regionCode = event.target.value;
+                setAreaForm((current) => ({
+                  ...current,
+                  regionCode,
+                  regionName: areaRegions.find((region) => region.code === regionCode)?.name ?? '',
+                  districtCode: '',
+                  districtName: '',
+                }));
+              }}>
+                <option value="">Choose a region or state</option>
+                {areaRegions.map((region) => <option key={region.code} value={region.code}>{region.name}</option>)}
+              </Select>
+              : <Input value={areaForm.regionName} onChange={(event) => setAreaForm((current) => ({
+                ...current,
+                regionCode: '',
+                regionName: event.target.value,
+                districtCode: '',
+                districtName: '',
+              }))} placeholder="Enter region or state" />}
+          </Field>
+          <Field label="District / city (optional)">
+            {areaDistricts.length > 0
+              ? <Select value={areaForm.districtCode} onChange={(event) => {
+                const district = areaDistricts.find((entry) => entry.code === event.target.value);
+                setAreaForm((current) => ({
+                  ...current,
+                  districtCode: district?.code ?? '',
+                  districtName: district?.name ?? '',
+                }));
+              }}>
+                <option value="">Entire region / state</option>
+                {areaDistricts.map((district) => <option key={district.code} value={district.code}>{district.name}</option>)}
+              </Select>
+              : <Input value={areaForm.districtName} onChange={(event) => setAreaForm((current) => ({
+                ...current,
+                districtCode: event.target.value,
+                districtName: event.target.value,
+              }))} placeholder="Enter district or city" />}
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setAreaEditing(null)}>Cancel</Button>
+            <Button onClick={() => { void saveArea(); }}>Save operation area</Button>
+          </div>
         </div>
       </Modal>
 
@@ -398,7 +623,7 @@ function Farms() {
             <Select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>
               <option value="">Choose an active farm</option>
               {suppliers.filter((target) => target.id !== mergeSource?.id && target.status === 'active' && !target.mergedIntoSupplierId).map((target) => (
-                <option key={target.id} value={target.id}>{target.name} · {target.region}</option>
+                <option key={target.id} value={target.id}>{target.name} · {supplierLocation(target)}</option>
               ))}
             </Select>
           </Field>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Alert, FlatList, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import BrandMark from '../components/BrandMark';
-import { deletePaymentMethod, fetchPaymentMethods, SavedPaymentMethod, savePaymentMethod, submitSupplierApplication } from '../lib/api';
+import {
+  deletePaymentMethod, fetchLocationCountries, fetchLocationDistricts, fetchLocationRegions,
+  fetchPaymentMethods, LocationOption, SavedPaymentMethod, savePaymentMethod, submitSupplierApplication,
+} from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { colors, radius, shadow } from '../theme';
@@ -488,12 +491,61 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(profile.phone);
   const [location, setLocation] = useState('');
+  const [countries, setCountries] = useState<LocationOption[]>([]);
+  const [regions, setRegions] = useState<LocationOption[]>([]);
+  const [districts, setDistricts] = useState<LocationOption[]>([]);
+  const [country, setCountry] = useState<LocationOption | null>(null);
+  const [region, setRegion] = useState<LocationOption | null>(null);
+  const [district, setDistrict] = useState<LocationOption | null>(null);
+  const [manualRegion, setManualRegion] = useState('');
+  const [manualDistrict, setManualDistrict] = useState('');
   const [products, setProducts] = useState('');
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    void fetchLocationCountries().then(setCountries).catch((error: unknown) => {
+      Alert.alert('Could not load countries', error instanceof Error ? error.message : 'Please try again.');
+    });
+  }, []);
+
+  const chooseCountry = async (option: LocationOption) => {
+    setCountry(option);
+    setRegion(null);
+    setDistrict(null);
+    setManualRegion('');
+    setManualDistrict('');
+    setRegions([]);
+    setDistricts([]);
+    try {
+      setRegions(await fetchLocationRegions(option.code));
+    } catch (error) {
+      Alert.alert('Could not load regions', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
+
+  const chooseRegion = async (option: LocationOption) => {
+    if (!country) return;
+    setRegion(option);
+    setDistrict(null);
+    setManualDistrict('');
+    setDistricts([]);
+    try {
+      setDistricts(await fetchLocationDistricts(country.code, option.code));
+    } catch (error) {
+      Alert.alert('Could not load districts', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
+
   const submit = async () => {
-    if (!farmName.trim() || !contactName.trim() || !email.trim() || !phone.trim() || !location.trim() || !products.trim()) {
-      Alert.alert('Complete your application', 'Fill in the farm, contact, location and product details before submitting.');
+    const regionName = region?.name ?? manualRegion.trim();
+    const regionCode = region?.code ?? (
+      manualRegion.trim().toUpperCase().replace(/[^A-Z0-9-]+/g, '-')
+      || regionName.toUpperCase()
+    ).slice(0, 100);
+    const districtName = district?.name ?? manualDistrict.trim();
+    const districtCode = district?.code ?? (districtName ? districtName.slice(0, 100) : null);
+    if (!farmName.trim() || !contactName.trim() || !email.trim() || !phone.trim() || !location.trim() || !country || !regionName || !products.trim()) {
+      Alert.alert('Complete your application', 'Fill in the farm, contact, country, region, location and product details before submitting.');
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || phone.trim().length < 5) {
@@ -502,10 +554,19 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
     }
     setBusy(true);
     try {
-      const result = await submitSupplierApplication({ farmName, contactName, email, phone, location, products });
+      const result = await submitSupplierApplication({
+        farmName, contactName, email, phone, location,
+        countryCode: country.code, countryName: country.name,
+        regionCode, regionName, districtCode, districtName: districtName || null, products,
+      });
       Alert.alert('Application sent', `Your supplier application is ${result.status}. We’ll be in touch.`);
       setFarmName('');
       setLocation('');
+      setCountry(null);
+      setRegion(null);
+      setDistrict(null);
+      setManualRegion('');
+      setManualDistrict('');
       setProducts('');
     } catch (error) {
       Alert.alert('Could not submit application', error instanceof Error ? error.message : 'Please check your details and try again.');
@@ -532,7 +593,14 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
       <Field label="Contact name" value={contactName} onChangeText={setContactName} autoComplete="name" />
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
       <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-      <Field label="Farm location" value={location} onChangeText={setLocation} placeholder="District, ward or nearby landmark" />
+      <LocationOptionPicker label="Country" value={country?.name ?? ''} options={countries} onSelect={(option) => { void chooseCountry(option); }} />
+      {country && regions.length > 0
+        ? <LocationOptionPicker label="Region / state" value={region?.name ?? ''} options={regions} onSelect={(option) => { void chooseRegion(option); }} />
+        : country && <Field label="Region / state" value={manualRegion} onChangeText={setManualRegion} placeholder="Enter region or state" />}
+      {(region || manualRegion.trim()) && districts.length > 0
+        ? <LocationOptionPicker label="District / city (optional)" value={district?.name ?? ''} options={[{ code: '', name: 'Entire region / state' }, ...districts]} onSelect={(option) => { setDistrict(option.code ? option : null); }} />
+        : (region || manualRegion.trim()) && <Field label="District / city (optional)" value={manualDistrict} onChangeText={setManualDistrict} />}
+      <Field label="Specific farm location" value={location} onChangeText={setLocation} placeholder="Ward, village or nearby landmark" />
       <Field label="What do you grow or supply?" value={products} onChangeText={setProducts} multiline placeholder="List your main crops or products" />
       <ActionButton title={busy ? 'Submitting…' : 'Send application'} onPress={submit} disabled={busy} />
     </ScrollView>
@@ -664,6 +732,43 @@ function Field({ label, helper, ...props }: { label: string; helper?: string } &
   );
 }
 
+function LocationOptionPicker({
+  label, value, options, onSelect,
+}: {
+  label: string;
+  value: string;
+  options: LocationOption[];
+  onSelect: (option: LocationOption) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.label}>{label}</Text>
+      <Pressable style={styles.pickerButton} onPress={() => setVisible(true)}>
+        <Text style={[styles.pickerValue, !value && styles.pickerPlaceholder]}>{value || `Choose ${label.toLowerCase()}`}</Text>
+        <Ionicons name="chevron-down" size={18} color={colors.muted} />
+      </Pressable>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={() => setVisible(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setVisible(false)}>
+          <Pressable style={styles.pickerSheet} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.cardTitle}>Choose {label.toLowerCase()}</Text>
+            <FlatList
+              data={options}
+              keyExtractor={(option, index) => `${option.code}-${index}`}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <Pressable style={styles.pickerOption} onPress={() => { onSelect(item); setVisible(false); }}>
+                  <Text style={styles.pickerValue}>{item.name}</Text>
+                </Pressable>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 function ActionButton({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable style={[styles.actionButton, disabled && { opacity: 0.6 }]} onPress={onPress} disabled={disabled}>
@@ -708,6 +813,12 @@ const styles = StyleSheet.create({
   fieldWrap: { marginBottom: 14 },
   label: { color: colors.ink, fontSize: 13, fontWeight: '800', marginBottom: 6 },
   input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white, paddingHorizontal: 14, color: colors.ink, fontSize: 15 },
+  pickerButton: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pickerValue: { color: colors.ink, fontSize: 15 },
+  pickerPlaceholder: { color: colors.muted },
+  pickerBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  pickerSheet: { maxHeight: '75%', padding: 20, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.cream },
+  pickerOption: { minHeight: 50, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: colors.line },
   multiline: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 7 },
   emailVerificationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginBottom: 14, borderRadius: radius.md, backgroundColor: colors.white },

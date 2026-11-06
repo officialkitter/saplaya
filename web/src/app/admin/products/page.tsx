@@ -16,6 +16,7 @@ import { isLow } from '@/lib/stats';
 import { fetchAdmin } from '@/lib/supabase';
 import { useDB, useScope, useToast } from '@/lib/store';
 import type { Product, Supplier } from '@/lib/types';
+import { tierPrices } from '@/lib/volume';
 
 const CATEGORIES = ['Vegetables', 'Leafy', 'Fruit', 'Grains'];
 const UNITS = ['kg', 'bunch', 'piece', 'head', 'cob'];
@@ -75,6 +76,8 @@ function Products() {
   const [productActionBusy, setProductActionBusy] = useState(false);
   const [form, setForm] = useState<Form>(blank);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pricingPercentages, setPricingPercentages] = useState({ wholesale: 70, bulk: 65, mega_bulk: 55 });
+  const [pricingPolicyReady, setPricingPolicyReady] = useState(false);
 
   const farmName = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
   const visible = useMemo(() => {
@@ -109,6 +112,17 @@ function Products() {
   useEffect(() => {
     if (can(me?.role, 'stock.adjust', me?.permissions)) void loadStockCatalog();
   }, [loadStockCatalog, me?.role]);
+
+  useEffect(() => {
+    void fetchAdmin<typeof pricingPercentages>('/admin/pricing-policy')
+      .then((policy) => {
+        setPricingPercentages(policy);
+        setPricingPolicyReady(true);
+      })
+      .catch((error: unknown) => {
+        push(error instanceof Error ? error.message : 'Could not load automatic pricing rules.', 'bad');
+      });
+  }, [push]);
 
   if (!me) return null;
   const canEdit = can(me.role, 'products.edit', me.permissions) && !!farmId;
@@ -204,13 +218,15 @@ function Products() {
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function save() {
+    if (!pricingPolicyReady) {
+      push('Wait for the owner pricing rules to load before saving.', 'bad');
+      return;
+    }
     const err: Record<string, string> = {};
     const retail = Number(form.retail);
-    const wholesale = Number(form.wholesale);
+    const wholesale = tierPrices(retail, pricingPercentages).wholesale;
     if (form.name.trim().length < 2) err.name = 'Give the product a name.';
-    if (!(retail > 0)) err.retail = 'Enter the shop price.';
-    if (!(wholesale > 0)) err.wholesale = 'Enter the bulk price.';
-    else if (retail > 0 && wholesale >= retail) err.wholesale = 'The bulk price should be lower than the shop price.';
+    if (!Number.isSafeInteger(retail) || retail < 2) err.retail = 'Enter a whole TSh retail price of at least 2.';
     if (!(Number(form.min) > 0)) err.min = 'Enter the smallest bulk order.';
     setErrors(err);
     if (Object.keys(err).length || !me || !farmId) return;
@@ -226,7 +242,7 @@ function Products() {
         await addProduct({ ...base, supplierId: farmId, bulkPrice: null, megaBulkPrice: null }, Math.max(0, Number(form.opening) || 0), me.name);
         push(`${base.name} listing saved. Shared prices are centrally approved; new catalog entries need review before sale.`);
       } else if (editing) {
-        const priceChanged = editing.retailPrice !== base.retailPrice || editing.wholesalePrice !== base.wholesalePrice;
+        const priceChanged = editing.retailPrice !== base.retailPrice;
         await updateProduct(editing.id, base);
         push(priceChanged
           ? `${base.name} was updated. Its price request is waiting for Saplaya review.`
@@ -448,8 +464,17 @@ function Products() {
             <Field label="Sold by"><Select value={form.unit} onChange={set('unit')}>{UNITS.map((c) => <option key={c}>{c}</option>)}</Select></Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Suggested shop price (TSh)" error={errors.retail} hint="Shared customer prices require Saplaya approval"><Input type="number" inputMode="numeric" value={form.retail} onChange={set('retail')} /></Field>
-            <Field label="Suggested bulk price (TSh)" error={errors.wholesale} hint="A lower bulk price; submitted for central review"><Input type="number" inputMode="numeric" value={form.wholesale} onChange={set('wholesale')} /></Field>
+            <Field label="Suggested retail price (TSh)" error={errors.retail} hint="Shared customer prices require owner approval">
+              <Input type="number" inputMode="numeric" min="2" value={form.retail} onChange={set('retail')} />
+            </Field>
+            <Field label={`Calculated wholesale · ${pricingPercentages.wholesale}% of retail`}>
+              <Input value={form.retail ? formatTZS(tierPrices(Number(form.retail), pricingPercentages).wholesale) : 'Enter a retail price'} readOnly />
+            </Field>
+          </div>
+          <div className="grid gap-3 rounded-2xl bg-leaf-soft p-4 text-sm sm:grid-cols-2">
+            <p className="font-semibold text-leaf-deep">Bulk · {pricingPercentages.bulk}%: {form.retail ? formatTZS(tierPrices(Number(form.retail), pricingPercentages).bulk) : '—'}</p>
+            <p className="font-semibold text-leaf-deep">Mega-bulk · {pricingPercentages.mega_bulk}%: {form.retail ? formatTZS(tierPrices(Number(form.retail), pricingPercentages).mega_bulk) : '—'}</p>
+            <p className="text-ink-soft sm:col-span-2">The owner controls these percentages. All suggested tiers are calculated from retail and submitted for approval together.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Smallest bulk order" error={errors.min}><Input type="number" inputMode="numeric" value={form.min} onChange={set('min')} /></Field>
@@ -463,7 +488,7 @@ function Products() {
           </label>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
-            <Button onClick={() => { void save(); }}>{editing === 'new' ? 'Add product' : 'Save changes'}</Button>
+            <Button disabled={!pricingPolicyReady} onClick={() => { void save(); }}>{editing === 'new' ? 'Add product' : 'Save changes'}</Button>
           </div>
         </div>
       </Modal>

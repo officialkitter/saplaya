@@ -11,8 +11,8 @@ const H = 64;
 
 /** Big, obvious two-option slide toggle. */
 export function ModeToggle() {
-  const { mode, setMode } = useStore();
-  const wholesale = mode === 'wholesale';
+  const { baseMode, setMode } = useStore();
+  const wholesale = baseMode === 'wholesale';
   const [w, setW] = React.useState(0);
   const half = w / 2;
 

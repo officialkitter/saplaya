@@ -12,7 +12,7 @@ import { CheckoutQuote, confirmPayment, DeliveryEta, DeliveryOption, fetchChecko
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow } from '../theme';
+import { colors, radius, shadow, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -33,7 +33,7 @@ export default function CheckoutScreen({ navigation }: any) {
   const [savedPaymentMethods, setSavedPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
-  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('24h');
+  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [quoteError, setQuoteError] = useState('');
@@ -44,6 +44,12 @@ export default function CheckoutScreen({ navigation }: any) {
   const [cashRequestKey, setCashRequestKey] = useState('');
   const [pendingVerification, setPendingVerification] = useState<{ txRef: string; orderTrackingId: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const dailyDelivery = mode === 'retail' || mode === 'wholesale';
+  const availableDeliveryOptions = useMemo(() => deliveryOptions.filter((option) =>
+    dailyDelivery ? option.value === 'morning' || option.value === 'evening'
+      : option.value !== 'morning' && option.value !== 'evening',
+  ), [deliveryOptions, dailyDelivery]);
+  const tierTheme = volumeTheme(mode);
 
   const km = quote?.distance_km;
   const speedFee = quote?.speed_fee;
@@ -83,7 +89,7 @@ export default function CheckoutScreen({ navigation }: any) {
         active = false;
       };
     }
-    if (!lines.length || !deliveryOptions.some((option) => option.value === deliveryWindow)) {
+    if (!lines.length || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) {
       setQuoteLoading(false);
       return () => {
         active = false;
@@ -106,7 +112,7 @@ export default function CheckoutScreen({ navigation }: any) {
     return () => {
       active = false;
     };
-  }, [quoteKey, quoteRefreshVersion, deliveryOptions, lines, mode, deliveryWindow, place.lat, place.lng, place.approximate]);
+  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, lines, mode, deliveryWindow, place.lat, place.lng, place.approximate]);
 
   useEffect(() => {
     if (!name && profile.fullName) setName(profile.fullName);
@@ -138,9 +144,6 @@ export default function CheckoutScreen({ navigation }: any) {
     void fetchDeliveryOptions().then((options) => {
       if (!active) return;
       setDeliveryOptions(options);
-      if (options.length && !options.some((option) => option.value === deliveryWindow)) {
-        setDeliveryWindow(options[0].value);
-      }
     }).catch((error: unknown) => {
       console.error('Could not load delivery options:', error);
     });
@@ -148,6 +151,11 @@ export default function CheckoutScreen({ navigation }: any) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
+    setDeliveryWindow(dailyDelivery ? 'morning' : '24h');
+  }, [availableDeliveryOptions, dailyDelivery, deliveryWindow]);
 
   const chooseAddress = async (id: string) => {
     const saved = addresses.find((address) => address.id === id);
@@ -170,7 +178,7 @@ export default function CheckoutScreen({ navigation }: any) {
       Alert.alert('Precise delivery location required', 'Choose a saved address or enable GPS before checkout so we can locate the closest stocked farms.');
       return false;
     }
-    if (!deliveryOptions.length || speedFee === undefined) {
+    if (!availableDeliveryOptions.length || speedFee === undefined) {
       Alert.alert('Delivery options unavailable', 'No delivery times have a configured price yet. Please try again later.');
       return false;
     }
@@ -333,7 +341,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
   if (!lines.length) {
     return (
-      <SafeAreaView style={styles.root} edges={['top']}>
+      <SafeAreaView style={[styles.root, { backgroundColor: tierTheme.background }]} edges={['top']}>
         <ScreenHeader title="Checkout" onBack={() => navigation.goBack()} />
         <View style={styles.empty}>
           <Ionicons name="basket-outline" size={74} color={colors.greenLight} />
@@ -348,7 +356,7 @@ export default function CheckoutScreen({ navigation }: any) {
   }
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: tierTheme.background }]} edges={['top']}>
       <ScreenHeader title="Checkout" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 230 }}>
@@ -390,10 +398,12 @@ export default function CheckoutScreen({ navigation }: any) {
             )}
           </View>
 
-          <Text style={styles.heading}>Choose a delivery timeframe</Text>
-          <Text style={styles.subheading}>Delivery options are shown only after their price has been configured.</Text>
+          <Text style={[styles.heading, { color: tierTheme.accent }]}>{dailyDelivery ? 'Choose a delivery window' : 'Choose a bulk delivery timeframe'}</Text>
+          <Text style={styles.subheading}>{dailyDelivery
+            ? 'Everyday orders are delivered in the morning or evening.'
+            : 'Bulk orders use a scheduled delivery timeframe configured by the owner.'}</Text>
           <View style={styles.choiceRow}>
-            {deliveryOptions.map((option) => (
+            {availableDeliveryOptions.map((option) => (
               <Pressable
                 key={option.value}
                 style={[styles.choiceCard, deliveryWindow === option.value && styles.choiceSelected]}
@@ -405,14 +415,14 @@ export default function CheckoutScreen({ navigation }: any) {
                 accessibilityRole="radio"
                 accessibilityState={{ selected: deliveryWindow === option.value }}
               >
-                <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? colors.green : colors.muted} />
+                <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? tierTheme.accent : colors.muted} />
                 <Text style={styles.choiceTitle}>{option.title}</Text>
                 <Text style={styles.choiceHint}>{option.fee === 0 ? 'No timeframe surcharge' : `+${formatPrice(option.fee)}`}</Text>
               </Pressable>
             ))}
           </View>
-          {deliveryOptions.length === 0 && (
-            <Text style={styles.warning}>Delivery timeframes are temporarily unavailable because no delivery prices are configured.</Text>
+          {availableDeliveryOptions.length === 0 && (
+            <Text style={styles.warning}>{dailyDelivery ? 'Daily delivery windows are temporarily unavailable.' : 'Bulk delivery timeframes are unavailable until an owner configures their prices.'}</Text>
           )}
           {quoteError.length > 0 && <Text style={styles.warning}>{quoteError}</Text>}
           {quoteLoading && <Text style={styles.helper}>Refreshing stock, farm distance and delivery price…</Text>}
@@ -537,12 +547,12 @@ export default function CheckoutScreen({ navigation }: any) {
           )}
 
           {pendingVerification ? (
-            <Pressable style={styles.primaryButton} onPress={retryVerification} disabled={busy}>
+            <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.accent }]} onPress={retryVerification} disabled={busy}>
               {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryText}>Retry payment verification</Text>}
             </Pressable>
           ) : (
             <Pressable
-              style={[styles.primaryButton, (busy || quoteLoading || !quote) && styles.disabled]}
+              style={[styles.primaryButton, { backgroundColor: tierTheme.accent }, (busy || quoteLoading || !quote) && styles.disabled]}
               onPress={startCheckout}
               disabled={busy || quoteLoading || !quote}
             >

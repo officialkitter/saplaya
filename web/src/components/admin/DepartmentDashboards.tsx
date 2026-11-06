@@ -32,7 +32,15 @@ type DashboardAnalytics = {
     reporting_note: string;
   };
   stores?: { summary: Summary; farms: { name: string; orders: number; delivered_value: number }[] };
-  system?: Record<string, number>;
+  system?: {
+    farms?: number;
+    products?: number;
+    team_members?: number;
+    open_applications?: number;
+    pending_catalog_products?: number;
+    departments?: number;
+    roles?: number;
+  };
 };
 
 function Metric({ label, value, note }: { label: string; value: string | number; note?: string }) {
@@ -194,13 +202,13 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
       {data?.system && (
         <Panel title="System administration" subtitle="Current platform records and queues. Access remains permission-gated.">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Active farms" value={data.system.farms} />
-            <Metric label="Product listings" value={data.system.products} />
-            <Metric label="Active team members" value={data.system.team_members} />
-            <Metric label="Open farm applications" value={data.system.open_applications} />
-            <Metric label="Shared catalog prices awaiting approval" value={data.system.pending_catalog_products} />
-            <Metric label="Departments" value={data.system.departments} />
-            <Metric label="Roles" value={data.system.roles} />
+            {data.system.farms !== undefined && <Metric label="Active farms" value={data.system.farms} />}
+            {data.system.products !== undefined && <Metric label="Product listings" value={data.system.products} />}
+            {data.system.team_members !== undefined && <Metric label="Active team members" value={data.system.team_members} />}
+            {data.system.open_applications !== undefined && <Metric label="Open farm applications" value={data.system.open_applications} />}
+            {data.system.pending_catalog_products !== undefined && <Metric label="Shared catalog prices awaiting approval" value={data.system.pending_catalog_products} />}
+            {data.system.departments !== undefined && <Metric label="Departments" value={data.system.departments} />}
+            {data.system.roles !== undefined && <Metric label="Roles" value={data.system.roles} />}
           </div>
         </Panel>
       )}

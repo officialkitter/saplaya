@@ -60,7 +60,7 @@ export type CheckoutInput = {
   payment_phone?: string;
 };
 
-export type DeliveryEta = '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
+export type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 export type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
 export type CheckoutQuote = {
   items: {
@@ -184,17 +184,56 @@ export function fetchOrderHistory() {
   return authenticatedRequest<CustomerOrder[]>('/orders');
 }
 
+export type LocationOption = { code: string; name: string };
+
+async function fetchLocationOptions(path: string): Promise<LocationOption[]> {
+  const response = await fetch(`${API_URL}${path}`);
+  if (!response.ok) throw new Error('Could not load country and region options.');
+  return response.json();
+}
+
+export function fetchLocationCountries() {
+  return fetchLocationOptions('/locations/countries');
+}
+
+export function fetchLocationRegions(countryCode: string) {
+  return fetchLocationOptions(`/locations/countries/${encodeURIComponent(countryCode)}/regions`);
+}
+
+export function fetchLocationDistricts(countryCode: string, regionCode: string) {
+  return fetchLocationOptions(`/locations/countries/${encodeURIComponent(countryCode)}/regions/${encodeURIComponent(regionCode)}/districts`);
+}
+
 export function submitSupplierApplication(input: {
   farmName: string;
   contactName: string;
   email: string;
   phone: string;
   location: string;
+  countryCode: string;
+  countryName: string;
+  regionCode: string;
+  regionName: string;
+  districtCode: string | null;
+  districtName: string | null;
   products: string;
 }) {
   return authenticatedRequest<{ id: string; status: string; created_at: string }>('/supplier-applications', {
     method: 'POST',
-    body: input,
+    body: {
+      farmName: input.farmName,
+      contactName: input.contactName,
+      email: input.email,
+      phone: input.phone,
+      location: input.location,
+      country_code: input.countryCode,
+      country_name: input.countryName,
+      region_code: input.regionCode,
+      region_name: input.regionName,
+      district_code: input.districtCode,
+      district_name: input.districtName,
+      products: input.products,
+    },
   });
 }
 

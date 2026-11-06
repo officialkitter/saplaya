@@ -24,15 +24,19 @@ export type Perm =
   | 'marketing.view'
   | 'stores.view'
   | 'system.view'
-  | 'team.roles.manage';
+  | 'team.roles.manage'
+  | 'management.view'
+  | 'management.manage';
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';
-export type Mode = 'retail' | 'wholesale';
+export type Mode = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
 export type SupplierStatus = 'pending' | 'active' | 'suspended';
 export type MemberStatus = 'invited' | 'active' | 'suspended';
 export type MovementKind = 'sale' | 'restock' | 'adjustment' | 'cancel_return';
-export type DeliveryEta = '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
+export type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 export const DELIVERY_ETAS: { value: DeliveryEta; title: string }[] = [
+  { value: 'morning', title: 'Morning delivery window' },
+  { value: 'evening', title: 'Evening delivery window' },
   { value: '12h', title: '12 hours' },
   { value: '24h', title: '24 hours' },
   { value: '48h', title: '48 hours' },
@@ -54,6 +58,12 @@ export interface Supplier {
   latitude: number | null;
   longitude: number | null;
   commissionPct: number;
+  countryCode?: string | null;
+  countryName?: string | null;
+  regionCode?: string | null;
+  regionName?: string | null;
+  districtCode?: string | null;
+  districtName?: string | null;
   joinedAt: number;
   emoji: string;
 }
@@ -101,6 +111,8 @@ export interface SupplierOrder {
   area: string;
   mode: Mode;
   items: OrderItem[];
+  assigneeId?: string | null;
+  assigneeName?: string | null;
 }
 
 export interface Movement {
@@ -128,6 +140,21 @@ export interface TeamMember {
   department?: string;
   departmentTheme?: string;
   status: MemberStatus;
+  phone?: string | null;
+  age?: number | null;
+  jobTitle?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  avatarPath?: string | null;
+  operationScopeMode?: 'global' | 'restricted';
+  operationScopes?: {
+    countryCode: string;
+    countryName: string;
+    regionCode: string;
+    regionName: string;
+    districtCode: string | null;
+    districtName: string | null;
+  }[];
 }
 
 export interface Application {
@@ -137,6 +164,9 @@ export interface Application {
   email: string;
   phone: string;
   region: string;
+  countryName?: string;
+  regionName?: string;
+  districtName?: string | null;
   produce: string;
   farmSize: string;
   status: 'new' | 'approved' | 'rejected';
@@ -151,5 +181,6 @@ export interface Settings {
   farFee: number;
   commissionPct: number;
   wholesaleMinDefault: number;
+  tierPricePercentages: { wholesale: number; bulk: number; mega_bulk: number };
   deliveryOptionFees: Record<DeliveryEta, number | null>;
 }

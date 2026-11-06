@@ -1,6 +1,7 @@
 import { Mode, Product } from '../types';
 
 export type VolumeTier = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
+export type BaseMode = 'retail' | 'wholesale';
 
 export function volumeTier(product: Product, qty: number, mode: Mode): VolumeTier {
   const wholesaleMinimum = Math.max(1, product.wholesale_min_qty);
@@ -39,4 +40,14 @@ export function unlockedVolumeTier(product: Product, previousQty: number, nextQt
   const next = volumeTier(product, nextQty, mode);
   if (previous === next || (next !== 'bulk' && next !== 'mega_bulk')) return null;
   return next;
+}
+
+export function orderMode(lines: { product: Product; qty: number }[], preferredMode: BaseMode): Mode {
+  let mode: Mode = preferredMode;
+  for (const { product, qty } of lines) {
+    const tier = volumeTier(product, qty, preferredMode);
+    if (tier === 'mega_bulk' || (tier === 'bulk' && mode !== 'mega_bulk')
+      || (tier === 'wholesale' && mode === 'retail')) mode = tier;
+  }
+  return mode;
 }

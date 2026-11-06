@@ -19,7 +19,7 @@ const StorefrontCartContext = createContext<StorefrontCartValue | null>(null);
 function isCartLine(value: unknown): value is StorefrontCartLine {
   if (typeof value !== 'object' || value === null) return false;
   const line = value as Record<string, unknown>;
-  return typeof line.qty === 'number' && Number.isInteger(line.qty) && line.qty > 0 && line.qty <= 10000
+  return typeof line.qty === 'number' && Number.isFinite(line.qty) && line.qty > 0 && line.qty <= 10000
     && isStorefrontProduct(line.product);
 }
 
@@ -61,10 +61,11 @@ export function StorefrontCartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setQuantity = useCallback((productId: string, qty: number) => {
+    if (!Number.isFinite(qty)) return;
     setLines((current) => qty <= 0
       ? current.filter((line) => line.product.id !== productId)
       : current.map((line) => line.product.id === productId
-        ? { ...line, qty: Math.min(line.product.stock, 10000, Math.max(1, Math.floor(qty))) }
+        ? { ...line, qty: Math.min(line.product.stock, 10000, Math.max(0.01, qty)) }
         : line));
   }, []);
 

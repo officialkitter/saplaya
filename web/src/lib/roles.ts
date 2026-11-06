@@ -8,6 +8,7 @@ export const PERMS: Record<BuiltinRole, Perm[]> = {
     'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
     'team.manage', 'settings.manage',
     'finance.view', 'marketing.view', 'stores.view', 'system.view', 'team.roles.manage',
+    'management.view', 'management.manage',
   ],
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
@@ -104,6 +105,8 @@ export const PERM_ROWS: { perm: Perm; label: string }[] = [
   { perm: 'stores.view', label: 'See farm/store performance summaries' },
   { perm: 'system.view', label: 'See platform administration metrics' },
   { perm: 'team.roles.manage', label: 'Create departments and configurable roles' },
+  { perm: 'management.view', label: 'View employee activities and commission details' },
+  { perm: 'management.manage', label: 'Manage employee scopes, order assignments and commission targets' },
 ];
 
 /** Which roles a person is allowed to hand out. Nobody can create a role above their own. */

@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStorefrontCart } from '@/lib/cart';
 import { useGlobalMarket } from '@/lib/global-market';
 import { storefrontRequest } from '@/lib/storefront-auth';
+import { orderMode, volumePrice, volumeTier } from '@/lib/volume';
 
-type DeliveryEta = '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
+type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
 
 type CheckoutQuote = {
@@ -29,8 +30,8 @@ export default function CheckoutPage() {
   const market = useGlobalMarket();
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [options, setOptions] = useState<CheckoutOptions | null>(null);
-  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('24h');
-  const [mode, setMode] = useState<'retail' | 'wholesale'>('retail');
+  const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
+  const [preferredMode, setPreferredMode] = useState<'retail' | 'wholesale'>('retail');
   const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'online'>('cash_on_delivery');
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [quoteError, setQuoteError] = useState('');
@@ -42,6 +43,19 @@ export default function CheckoutPage() {
   const [setupError, setSetupError] = useState('');
   const cashRequestKey = useRef<string | null>(null);
 
+  const mode = useMemo(() => orderMode(lines, preferredMode), [lines, preferredMode]);
+  const isDailyDelivery = mode === 'retail' || mode === 'wholesale';
+  const availableDeliveryOptions = useMemo(() => deliveryOptions.filter((option) =>
+    isDailyDelivery ? option.value === 'morning' || option.value === 'evening'
+      : option.value !== 'morning' && option.value !== 'evening',
+  ), [deliveryOptions, isDailyDelivery]);
+  const theme = mode === 'mega_bulk'
+    ? { accent: '#5E35B1', soft: '#EDE7F6', background: '#F6F1FC', label: 'Mega-bulk' }
+    : mode === 'bulk'
+      ? { accent: '#00897B', soft: '#E0F2F1', background: '#EFF9F8', label: 'Bulk' }
+      : mode === 'wholesale'
+        ? { accent: '#8A5A26', soft: '#FFF4DF', background: '#FFFBF2', label: 'Wholesale' }
+        : { accent: '#2E7D32', soft: '#E8F5E9', background: '#F9FBF7', label: 'Retail' };
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
     mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
@@ -56,9 +70,6 @@ export default function CheckoutPage() {
       if (!active) return;
       setDeliveryOptions(delivery);
       setOptions(checkout);
-      if (delivery.length && !delivery.some((option) => option.value === deliveryWindow)) {
-        setDeliveryWindow(delivery[0].value);
-      }
     }).catch((cause: unknown) => {
       if (!active) return;
       setSetupError(cause instanceof Error ? cause.message : 'Checkout options are unavailable.');
@@ -67,11 +78,16 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
+    if (availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
+    setDeliveryWindow(isDailyDelivery ? 'morning' : '24h');
+  }, [availableDeliveryOptions, deliveryWindow, isDailyDelivery]);
+
+  useEffect(() => {
     let active = true;
     setQuote(null);
     setQuoteError('');
     setAcceptedFee(false);
-    if (!items.length || !market.location || !deliveryOptions.some((option) => option.value === deliveryWindow)) return;
+    if (!items.length || !market.location || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
     void storefrontRequest<CheckoutQuote>('/checkout/quote', {
       mode,
       delivery_window: deliveryWindow,
@@ -84,7 +100,7 @@ export default function CheckoutPage() {
       if (active) setQuoteError(cause instanceof Error ? cause.message : 'Could not prepare your delivery quote.');
     });
     return () => { active = false; };
-  }, [quoteKey, deliveryOptions, items, market.location, mode, deliveryWindow]);
+  }, [quoteKey, availableDeliveryOptions, items, market.location, mode, deliveryWindow]);
 
   useEffect(() => {
     cashRequestKey.current = null;
@@ -148,9 +164,12 @@ export default function CheckoutPage() {
 
   return (
     <main className="mx-auto grid max-w-6xl gap-8 px-5 py-10 lg:grid-cols-[1fr_360px]">
-      <section>
+      <section style={{ backgroundColor: theme.background }} className="rounded-3xl p-4 sm:p-6">
         <Link href="/" className="text-sm font-bold text-leaf-deep underline">Continue browsing</Link>
-        <h1 className="mt-4 font-display text-3xl font-extrabold">Your basket</h1>
+        <h1 className="mt-4 font-display text-3xl font-extrabold" style={{ color: theme.accent }}>{theme.label} basket</h1>
+        <p role="status" className="mt-2 inline-flex rounded-full px-3 py-1 text-sm font-bold" style={{ color: theme.accent, backgroundColor: theme.soft }}>
+          {theme.label} mode · updates automatically when an item reaches its quantity tier
+        </p>
         {!lines.length ? (
           <div className="mt-6 rounded-3xl border border-line bg-white p-8 text-center">
             <p className="font-bold">Your basket is empty.</p>
@@ -162,7 +181,10 @@ export default function CheckoutPage() {
               <li key={product.id} className="flex items-center gap-4 rounded-2xl border border-line bg-white p-4">
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate font-bold">{product.name}</h2>
-                  <p className="text-sm text-ink-mute">{product.category} · {formatTZS(product.retail_price)} per {product.unit}</p>
+                  <p className="text-sm text-ink-mute">{product.category} · {formatTZS(volumePrice(product, qty, preferredMode) ?? product.retail_price)} per {product.unit}</p>
+                  <p className="mt-1 text-xs font-extrabold" style={{ color: theme.accent }}>
+                    {volumeTier(product, qty, preferredMode).replace('_', '-')} pricing
+                  </p>
                   {quote?.items.find((item) => item.requested_product_id === product.id) && (
                     <p className="mt-1 text-sm font-bold text-leaf-deep">
                       Quoted {formatTZS(quote.items.find((item) => item.requested_product_id === product.id)!.unit_price)} per {product.unit}
@@ -173,7 +195,8 @@ export default function CheckoutPage() {
                 <input
                   id={`quantity-${product.id}`}
                   type="number"
-                  min="1"
+                  min="0.01"
+                  step="any"
                   max={Math.min(10000, product.stock)}
                   value={qty}
                   onChange={(event) => setQuantity(product.id, Number(event.target.value))}
@@ -186,8 +209,8 @@ export default function CheckoutPage() {
         )}
       </section>
 
-      <aside className="h-fit rounded-3xl border border-line bg-white p-5 shadow-soft">
-        <h2 className="font-display text-xl font-extrabold">Delivery and payment</h2>
+      <aside className="h-fit rounded-3xl border border-line bg-white p-5 shadow-soft" style={{ borderColor: `${theme.accent}66` }}>
+        <h2 className="font-display text-xl font-extrabold" style={{ color: theme.accent }}>Delivery and payment</h2>
         {setupError && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{setupError}</p>}
         <div className="mt-4 space-y-3">
           <button type="button" onClick={market.requestLocation} className="w-full rounded-xl border border-leaf px-4 py-3 text-left font-bold text-leaf-deep">
@@ -197,14 +220,14 @@ export default function CheckoutPage() {
           {market.location && <p className="text-xs text-ink-mute">Coordinates are used to match farms and calculate delivery. They are not shown in the public shop.</p>}
 
           <label className="block text-sm font-bold">Order type
-            <select value={mode} onChange={(event) => setMode(event.target.value as 'retail' | 'wholesale')} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
+            <select value={preferredMode} onChange={(event) => setPreferredMode(event.target.value as 'retail' | 'wholesale')} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
               <option value="retail">Retail</option>
               <option value="wholesale">Wholesale</option>
             </select>
           </label>
-          <label className="block text-sm font-bold">Delivery timeframe
+          <label className="block text-sm font-bold">{isDailyDelivery ? 'Delivery window' : 'Bulk delivery timeframe'}
             <select value={deliveryWindow} onChange={(event) => setDeliveryWindow(event.target.value as DeliveryEta)} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
-              {deliveryOptions.map((option) => <option key={option.value} value={option.value}>{option.title} · {formatTZS(option.fee)}</option>)}
+              {availableDeliveryOptions.map((option) => <option key={option.value} value={option.value}>{option.title} · {formatTZS(option.fee)}</option>)}
             </select>
           </label>
 
@@ -248,7 +271,7 @@ export default function CheckoutPage() {
             </div>
           )}
           {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-          <button type="button" onClick={() => { void submit(); }} disabled={busy || lines.length === 0} className="w-full rounded-xl bg-leaf px-4 py-3 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => { void submit(); }} disabled={busy || lines.length === 0} style={{ backgroundColor: theme.accent }} className="w-full rounded-xl px-4 py-3 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50">
             {busy ? 'Placing order…' : paymentMethod === 'online' ? 'Continue to secure payment' : 'Place order'}
           </button>
         </div>

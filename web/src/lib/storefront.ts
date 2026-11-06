@@ -10,6 +10,8 @@ export type StorefrontProduct = {
   retail_price: number;
   wholesale_price: number;
   wholesale_min_qty: number;
+  bulk_price: number | null;
+  mega_bulk_price: number | null;
   stock: number;
   image_url: string | null;
   harvested_at: string;
@@ -33,6 +35,8 @@ export function isStorefrontProduct(value: unknown): value is StorefrontProduct 
     && Number.isFinite(product.wholesale_price)
     && typeof product.wholesale_min_qty === 'number'
     && Number.isFinite(product.wholesale_min_qty)
+    && (product.bulk_price === null || (typeof product.bulk_price === 'number' && Number.isFinite(product.bulk_price)))
+    && (product.mega_bulk_price === null || (typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)))
     && typeof product.stock === 'number'
     && Number.isFinite(product.stock)
     && (typeof product.image_url === 'string' || product.image_url === null)

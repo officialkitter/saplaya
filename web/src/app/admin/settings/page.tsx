@@ -28,8 +28,17 @@ function SettingsPage() {
       deliveryOptionFees: { ...previous.deliveryOptionFees, [eta]: fee },
     }));
   };
+  const setTierPercentage = (tier: keyof typeof f.tierPricePercentages, value: string) => {
+    setF((previous) => ({
+      ...previous,
+      tierPricePercentages: { ...previous.tierPricePercentages, [tier]: Number(value) },
+    }));
+  };
   const fee = deliveryFee(km, f);
   const valid = f.freeRadiusKm >= 0 && f.midRadiusKm > f.freeRadiusKm && f.midFee >= 0 && f.farFee >= f.midFee && f.commissionPct >= 0 && f.commissionPct <= 40
+    && f.tierPricePercentages.wholesale > f.tierPricePercentages.bulk
+    && f.tierPricePercentages.bulk > f.tierPricePercentages.mega_bulk
+    && Object.values(f.tierPricePercentages).every((percent) => Number.isFinite(percent) && percent >= 1 && percent <= 99)
     && Object.values(f.deliveryOptionFees).every((price) => price === null || (Number.isSafeInteger(price) && price >= 0));
 
   async function save() {
@@ -46,8 +55,39 @@ function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Delivery prices and what Saplaya keeps from each sale. Only the Owner can change these." />
+      <PageHeader title="Settings" subtitle="Price tiers, delivery rules, and what Saplaya keeps from each sale. Only authorized owners and administrators can change these." />
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <Panel title="Automatic volume pricing" subtitle="All tiers are calculated from the retail price, rounded to the nearest TZS, and applied to approved prices when these rules change.">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {([
+              ['wholesale', 'Wholesale'],
+              ['bulk', 'Bulk'],
+              ['mega_bulk', 'Mega-bulk'],
+            ] as const).map(([tier, label]) => (
+              <Field
+                key={tier}
+                label={`${label} · ${f.tierPricePercentages[tier]}% of retail`}
+                error={tier === 'wholesale' && f.tierPricePercentages.wholesale <= f.tierPricePercentages.bulk
+                  ? 'Wholesale must exceed the bulk percentage.'
+                  : tier === 'bulk' && f.tierPricePercentages.bulk <= f.tierPricePercentages.mega_bulk
+                    ? 'Bulk must exceed the mega-bulk percentage.'
+                    : undefined}
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  max={99}
+                  step="0.1"
+                  value={f.tierPricePercentages[tier]}
+                  onChange={(event) => setTierPercentage(tier, event.target.value)}
+                />
+              </Field>
+            ))}
+          </div>
+          <p className="mt-4 rounded-xl bg-leaf-soft p-3 text-sm text-leaf-deep">
+            Example: retail TSh 1,000 produces wholesale TSh 700, bulk TSh 650, and mega-bulk TSh 550 at the default rates.
+          </p>
+        </Panel>
         <Panel title="Delivery prices" subtitle="The app and the server use these tiers to price every order.">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Free delivery up to (km)"><Input type="number" min={0} value={f.freeRadiusKm} onChange={num('freeRadiusKm')} /></Field>
@@ -64,9 +104,9 @@ function SettingsPage() {
           </div>
         </Panel>
 
-        <Panel title="Delivery timeframes" subtitle="Enter an extra delivery charge in TZS to enable a timeframe. Blank options stay unavailable to customers.">
+        <Panel title="Bulk delivery timeframes" subtitle="Retail and wholesale orders use the morning/evening windows. Configure timeframes here for bulk and mega-bulk orders.">
           <div className="grid gap-4 sm:grid-cols-2">
-            {DELIVERY_ETAS.map((option) => (
+            {DELIVERY_ETAS.filter((option) => option.value !== 'morning' && option.value !== 'evening').map((option) => (
               <Field key={option.value} label={`${option.title} surcharge (TZS)`}>
                 <Input
                   type="number"
