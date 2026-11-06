@@ -32,3 +32,11 @@ export function volumeTierLabel(tier: VolumeTier): string {
   if (tier === 'wholesale') return 'Wholesale';
   return 'Retail';
 }
+
+export function unlockedVolumeTier(product: Product, previousQty: number, nextQty: number, mode: Mode): 'bulk' | 'mega_bulk' | null {
+  if (nextQty <= previousQty) return null;
+  const previous = volumeTier(product, previousQty, mode);
+  const next = volumeTier(product, nextQty, mode);
+  if (previous === next || (next !== 'bulk' && next !== 'mega_bulk')) return null;
+  return volumePrice(product, nextQty, mode) === null ? null : next;
+}

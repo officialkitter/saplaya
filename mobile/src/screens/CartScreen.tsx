@@ -6,13 +6,22 @@ import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, shadow } from '../theme';
-import { volumeTierLabel } from '../lib/volume';
+import { unlockedVolumeTier, volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
+import CelebrationModal from '../components/CelebrationModal';
+import type { CartLine } from '../types';
 
 export default function CartScreen({ navigation }: any) {
-  const { lines, setQty, subtotal, priceOf, tierOf } = useStore();
+  const { lines, setQty, subtotal, priceOf, tierOf, mode } = useStore();
   const { formatPrice } = useCurrency();
+  const [unlocked, setUnlocked] = useState<{ name: string; tier: 'bulk' | 'mega_bulk' } | null>(null);
   const hasUnpricedTier = lines.some((line) => priceOf(line.product, line.qty) === null);
+
+  const updateQuantity = (line: CartLine, qty: number) => {
+    const tier = unlockedVolumeTier(line.product, line.qty, qty, mode);
+    if (tier) setUnlocked({ name: line.product.name, tier });
+    setQty(line.product.id, qty);
+  };
 
   const openCheckout = () => {
     const rootNavigation = navigation.getParent('RootStack');
@@ -63,9 +72,9 @@ export default function CartScreen({ navigation }: any) {
                 {volumeTierLabel(tierOf(item.product, item.qty))}
               </Text>
               <View style={styles.stepper}>
-                <Pressable onPress={() => setQty(item.product.id, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={colors.green} /></Pressable>
-                <QuantityInput qty={item.qty} onChange={(qty) => setQty(item.product.id, qty)} />
-                <Pressable onPress={() => setQty(item.product.id, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={colors.green} /></Pressable>
+                <Pressable onPress={() => updateQuantity(item, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={colors.green} /></Pressable>
+                <QuantityInput qty={item.qty} onChange={(qty) => updateQuantity(item, qty)} />
+                <Pressable onPress={() => updateQuantity(item, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={colors.green} /></Pressable>
               </View>
               <Pressable style={styles.remove} onPress={() => setQty(item.product.id, 0)} accessibilityRole="button">
                 <Ionicons name="trash-outline" size={15} color="#C62828" />
@@ -86,6 +95,14 @@ export default function CartScreen({ navigation }: any) {
           <Text style={styles.totalLabel}>Items</Text>
           <Text style={styles.total}>{formatPrice(subtotal)}</Text>
         </View>
+        <CelebrationModal
+          visible={unlocked !== null}
+          title={`Congratulations! ${unlocked?.tier === 'mega_bulk' ? 'Mega-bulk' : 'Bulk'} unlocked`}
+          message={`${unlocked?.name ?? 'Your item'} now qualifies for ${unlocked?.tier === 'mega_bulk' ? 'mega-bulk' : 'bulk'} pricing.`}
+          detail="The price applies to this product and quantity in your basket."
+          buttonLabel="Back to basket"
+          onClose={() => setUnlocked(null)}
+        />
         <Pressable style={[styles.cta, hasUnpricedTier && styles.disabled, { flex: 1, marginLeft: 16 }]} onPress={openCheckout} disabled={hasUnpricedTier}>
           <Text style={styles.ctaText}>{hasUnpricedTier ? 'Bulk price not available' : 'Continue to checkout'}</Text>
         </Pressable>

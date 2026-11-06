@@ -234,7 +234,7 @@ export default function CheckoutScreen({ navigation }: any) {
       setLastOrderId(result.order_id);
       setPayment(null);
       setPendingVerification(null);
-      navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order } });
+      navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order, newlyPlaced: true } });
     } catch (error) {
       Alert.alert(
         'Payment verification pending',
@@ -280,7 +280,7 @@ export default function CheckoutScreen({ navigation }: any) {
         };
         clear();
         setLastOrderId(result.order_id);
-        navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order } });
+        navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order, newlyPlaced: true } });
         return;
       }
 

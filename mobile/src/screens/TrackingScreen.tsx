@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -12,7 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CustomerOrder, fetchOrderHistory, OrderItem } from '../lib/api';
 import { getCustomerDataContext } from '../lib/customer-auth';
 import RouteMap from '../components/RouteMap';
@@ -22,6 +24,7 @@ import { formatTanzaniaDate, formatTanzaniaDateTime } from '../lib/date-time';
 import { useStore } from '../store/StoreContext';
 import { colors, OrderStatus, radius, statusColor, statusLabel } from '../theme';
 import { useCurrency } from '../lib/currency';
+import CelebrationModal from '../components/CelebrationModal';
 
 const ONGOING_STATUSES = new Set<OrderStatus>(['pending', 'packing', 'en_route']);
 
@@ -31,8 +34,9 @@ function mergeOrders(remoteOrders: CustomerOrder[], previousOrders: CustomerOrde
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
-export default function TrackingScreen({ route }: any) {
+export default function TrackingScreen({ route, navigation }: any) {
   const { width } = useWindowDimensions();
+  const isFocused = useIsFocused();
   const { isSignedIn } = useAccount();
   const { lastOrderId } = useStore();
   const { formatPrice } = useCurrency();
@@ -44,6 +48,8 @@ export default function TrackingScreen({ route }: any) {
   const [status, setStatus] = useState<OrderStatus>(routeOrder?.status ?? 'pending');
   const [loading, setLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+  const [deliveredOrderId, setDeliveredOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!routeOrder) return;
@@ -95,10 +101,43 @@ export default function TrackingScreen({ route }: any) {
 
   useEffect(() => {
     if (visibleOrders.some((order) => order.id === selectedId)) return;
+    if (orderView === 'ongoing' && selectedOrder?.status === 'delivered') {
+      setOrderView('history');
+      return;
+    }
     const nextOrder = visibleOrders[0];
     setSelectedId(nextOrder?.id ?? null);
     setStatus(nextOrder?.status ?? 'pending');
   }, [orderView, orders, selectedId]);
+
+  useEffect(() => {
+    if (!isFocused || !route?.params?.newlyPlaced || !routeOrderId) return;
+    setPlacedOrderId(routeOrderId);
+    navigation.setParams({ newlyPlaced: false });
+  }, [isFocused, navigation, route?.params?.newlyPlaced, routeOrderId]);
+
+  useEffect(() => {
+    if (!isFocused || placedOrderId || !selectedOrder || selectedOrder.status !== 'delivered') return;
+    let active = true;
+    const orderId = selectedOrder.id;
+    void AsyncStorage.getItem(`saplaya.delivery-celebrated.${orderId}`).then((seen) => {
+      if (active && !seen) setDeliveredOrderId(orderId);
+    }).catch((error: unknown) => {
+      console.error('Could not check delivery celebration:', error);
+      if (active) setDeliveredOrderId(orderId);
+    });
+    return () => { active = false; };
+  }, [isFocused, placedOrderId, selectedOrder?.id, selectedOrder?.status]);
+
+  const closeDeliveryCelebration = () => {
+    if (!deliveredOrderId) return;
+    const orderId = deliveredOrderId;
+    setDeliveredOrderId(null);
+    void AsyncStorage.setItem(`saplaya.delivery-celebrated.${orderId}`, 'true').catch((error: unknown) => {
+      console.error('Could not save delivery celebration:', error);
+      Alert.alert('Could not save confirmation', 'You may see this delivery message again.');
+    });
+  };
 
   useEffect(() => {
     if (!selectedId) return;
@@ -308,6 +347,22 @@ export default function TrackingScreen({ route }: any) {
           </>
         )}
       </ScrollView>
+      <CelebrationModal
+        visible={placedOrderId !== null}
+        title="Congratulations! Order placed"
+        message="Your order has been received. We’ll keep you updated as it makes its way to you."
+        detail={placedOrderId ? `Order #${placedOrderId.slice(0, 8)}` : undefined}
+        buttonLabel="Track my order"
+        onClose={() => setPlacedOrderId(null)}
+      />
+      <CelebrationModal
+        visible={deliveredOrderId !== null && placedOrderId === null}
+        title="Congratulations! Your order arrived"
+        message="Your order has been marked as delivered. Thank you for shopping with Saplaya!"
+        detail={deliveredOrderId ? `Order #${deliveredOrderId.slice(0, 8)}` : undefined}
+        buttonLabel="View order"
+        onClose={closeDeliveryCelebration}
+      />
     </SafeAreaView>
   );
 }

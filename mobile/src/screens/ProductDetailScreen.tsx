@@ -11,6 +11,8 @@ import { colors, radius } from '../theme';
 import { Product } from '../types';
 import { volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
+import CelebrationModal from '../components/CelebrationModal';
+import { unlockedVolumeTier } from '../lib/volume';
 
 const H = Dimensions.get('window').height;
 
@@ -21,7 +23,7 @@ function harvestedText(iso: string) {
 
 export default function ProductDetailScreen({ route, navigation }: any) {
   const product: Product = route.params.product;
-  const { mode, priceOf, tierOf, add } = useStore();
+  const { mode, priceOf, tierOf, add, lines } = useStore();
   const { formatPrice } = useCurrency();
   const { fly } = useFly();
   const insets = useSafeAreaInsets();
@@ -33,14 +35,26 @@ export default function ProductDetailScreen({ route, navigation }: any) {
   const tier = tierOf(product, qty);
   const unavailableTier = unitPrice === null;
   const [pressed, setPressed] = useState(false);
+  const [unlocked, setUnlocked] = useState<{ tier: 'bulk' | 'mega_bulk'; inBasket: boolean } | null>(null);
   const btn = useRef<View>(null);
+
+  const updateQuantity = (next: number) => {
+    const newTier = unlockedVolumeTier(product, qty, next, mode);
+    if (newTier) setUnlocked({ tier: newTier, inBasket: false });
+    setQty(next);
+  };
 
   const onAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setPressed(true);
     setTimeout(() => setPressed(false), 140);
     btn.current?.measureInWindow((x, y, w, h) => fly({ x: x + w / 2, y: y + h / 2 }));
-    if (unitPrice !== null) add(product, qty);
+    if (unitPrice !== null) {
+      const previousQty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
+      const newTier = unlockedVolumeTier(product, previousQty, previousQty + qty, mode);
+      if (previousQty > 0 && newTier && newTier !== tier) setUnlocked({ tier: newTier, inBasket: true });
+      add(product, qty);
+    }
   };
 
   return (
@@ -84,7 +98,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
           <View style={styles.stepper}>
             <Pressable onPress={() => {
               const next = Math.max(minQty, qty - 1);
-              setQty(next);
+              updateQuantity(next);
               setQtyText(String(next));
             }} style={styles.stepBtn} accessibilityLabel="Less">
               <Ionicons name="remove" size={26} color={colors.green} />
@@ -95,14 +109,14 @@ export default function ProductDetailScreen({ route, navigation }: any) {
                 setQtyText(value);
                 if (/^\d*\.?\d*$/.test(value) && value !== '') {
                   const parsed = Number(value);
-                  if (parsed > 0 && parsed <= 10000) setQty(parsed);
+                  if (parsed > 0 && parsed <= 10000) updateQuantity(parsed);
                 }
               }}
               keyboardType="decimal-pad"
               onEndEditing={({ nativeEvent }) => {
                 const parsed = Number(nativeEvent.text);
                 const next = !Number.isFinite(parsed) || parsed < minQty || parsed > 10000 ? minQty : parsed;
-                setQty(next);
+                updateQuantity(next);
                 setQtyText(String(next));
               }}
               style={styles.qty}
@@ -110,7 +124,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             />
             <Pressable onPress={() => {
               const next = Math.min(10000, qty + 1);
-              setQty(next);
+              updateQuantity(next);
               setQtyText(String(next));
             }} style={styles.stepBtn} accessibilityLabel="More" disabled={qty >= 10000}>
               <Ionicons name="add" size={26} color={colors.green} />
@@ -127,6 +141,14 @@ export default function ProductDetailScreen({ route, navigation }: any) {
                 <Text style={styles.addText}>{unitPrice === null ? 'Bulk price not set' : `Add · ${formatPrice(unitPrice * qty)}`}</Text>
               </Pressable>
             </MotiView>
+            <CelebrationModal
+              visible={unlocked !== null}
+              title={`Congratulations! ${unlocked?.tier === 'mega_bulk' ? 'Mega-bulk' : 'Bulk'} unlocked`}
+              message={`${product.name} now qualifies for ${unlocked?.tier === 'mega_bulk' ? 'mega-bulk' : 'bulk'} pricing${unlocked?.inBasket ? ' in your basket' : ''}.`}
+              detail={unlocked?.inBasket ? 'Your combined basket quantity qualifies for this price.' : 'The price shown is per unit for this product and quantity.'}
+              buttonLabel="Continue shopping"
+              onClose={() => setUnlocked(null)}
+            />
           </View>
         </View>
       </MotiView>
