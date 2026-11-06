@@ -38,5 +38,5 @@ export function unlockedVolumeTier(product: Product, previousQty: number, nextQt
   const previous = volumeTier(product, previousQty, mode);
   const next = volumeTier(product, nextQty, mode);
   if (previous === next || (next !== 'bulk' && next !== 'mega_bulk')) return null;
-  return volumePrice(product, nextQty, mode) === null ? null : next;
+  return next;
 }

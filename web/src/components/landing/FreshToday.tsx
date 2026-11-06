@@ -6,9 +6,11 @@ import { SmartImage } from '@/components/ui/SmartImage';
 import { localDayPeriod, type LocalDayPeriod } from '@/lib/format';
 import { useStorefrontProducts } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
+import { useStorefrontCart } from '@/lib/cart';
 
 export function FreshToday() {
   const market = useGlobalMarket();
+  const { add } = useStorefrontCart();
   const { products, loading, error, retry } = useStorefrontProducts(40, market.location);
   const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -63,7 +65,11 @@ export function FreshToday() {
         </p>
         {market.location && (
           <p className="mt-2 text-sm font-semibold text-leaf-deep">
-            Nearby farms are prioritized using your device location. Your coordinates are not displayed.
+            {market.placeNameStatus === 'ready'
+              ? <>Showing nearby farms in {market.placeName} · Google Maps. Your coordinates are not displayed.</>
+              : market.placeNameStatus === 'loading'
+                ? 'Finding the place name for your current location…'
+                : 'Nearby farms are prioritized using your current location. The place name is unavailable.'}
           </p>
         )}
         {market.ratesLoading && market.currency !== 'TZS' ? (
@@ -144,6 +150,13 @@ export function FreshToday() {
                             Wholesale · {market.formatPrice(product.wholesale_price)} from {product.wholesale_min_qty}
                           </span>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => add(product)}
+                          className="mt-3 w-full rounded-xl bg-leaf px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-leaf-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf"
+                        >
+                          Add to basket
+                        </button>
                       </div>
                     </article>
                   ))}

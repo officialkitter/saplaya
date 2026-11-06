@@ -7,6 +7,7 @@ import { useBoot, useDB } from '@/lib/store';
 import { getSupabase } from '@/lib/supabase';
 import { loadAdminData } from '@/lib/admin-data';
 import { GlobalMarketProvider } from '@/lib/global-market';
+import { StorefrontCartProvider } from '@/lib/cart';
 
 function clearAdminData() {
   useDB.setState({
@@ -73,8 +74,10 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">
       <GlobalMarketProvider>
-        {children}
-        <Toaster />
+        <StorefrontCartProvider>
+          {children}
+          <Toaster />
+        </StorefrontCartProvider>
       </GlobalMarketProvider>
     </MotionConfig>
   );

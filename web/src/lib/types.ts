@@ -50,6 +50,7 @@ export interface Supplier {
   contactEmail: string;
   contactPhone: string;
   status: SupplierStatus;
+  mergedIntoSupplierId?: string | null;
   latitude: number | null;
   longitude: number | null;
   commissionPct: number;

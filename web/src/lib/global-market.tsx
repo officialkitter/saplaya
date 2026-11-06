@@ -6,6 +6,8 @@ type MarketLocation = { lat: number; lng: number; accuracy: number };
 type ExchangeRates = { base: 'TZS'; rates: Record<string, number>; updated_at: string };
 type MarketContextValue = {
   location: MarketLocation | null;
+  placeName: string | null;
+  placeNameStatus: 'idle' | 'loading' | 'ready' | 'unavailable';
   locationError: string;
   requestLocation: () => void;
   clearLocation: () => void;
@@ -62,9 +64,43 @@ function localeCurrency(locale: string) {
 function localeAccent(locale: string): string {
   const region = localeRegion(locale);
   if (!region) return '#00695C';
+  return regionAccent(region);
+}
+
+function regionAccent(region: string): string {
   if (REGION_ACCENTS[region]) return REGION_ACCENTS[region];
   const hash = [...region].reduce((value, character) => value + character.charCodeAt(0), 0);
   return MARKET_ACCENTS[hash % MARKET_ACCENTS.length];
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<{ placeName: string; countryName: string | null; countryCode: string | null }> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '');
+  if (!apiUrl) throw new Error('The location-name service is not configured.');
+  const response = await fetch(`${apiUrl}/location/reverse-geocode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lng }),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`The location-name service returned ${response.status}.`);
+  const result: unknown = await response.json();
+  if (typeof result !== 'object' || result === null) {
+    throw new Error('The location-name response was invalid.');
+  }
+  const locationName = result as Record<string, unknown>;
+  if (
+    typeof locationName.place_name !== 'string'
+    || !locationName.place_name.trim()
+    || !(typeof locationName.country_name === 'string' || locationName.country_name === null)
+    || !(typeof locationName.country_code === 'string' || locationName.country_code === null)
+  ) {
+    throw new Error('The location-name response was invalid.');
+  }
+  return {
+    placeName: locationName.place_name,
+    countryName: locationName.country_name,
+    countryCode: locationName.country_code,
+  };
 }
 
 function isExchangeRates(value: unknown): value is ExchangeRates {
@@ -91,6 +127,8 @@ async function loadExchangeRates(): Promise<ExchangeRates> {
 
 export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<MarketLocation | null>(null);
+  const [placeName, setPlaceName] = useState<string | null>(null);
+  const [placeNameStatus, setPlaceNameStatus] = useState<MarketContextValue['placeNameStatus']>('idle');
   const [locationError, setLocationError] = useState('');
   const [currency, setCurrencyState] = useState('TZS');
   const [rates, setRates] = useState<Record<string, number>>({ TZS: 1 });
@@ -99,6 +137,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   const [ratesUnavailable, setRatesUnavailable] = useState(false);
   const [locale, setLocale] = useState('en-US');
   const [countryName, setCountryName] = useState<string | null>(null);
+  const [countryCode, setCountryCode] = useState<string | null>(null);
   const locationRequestId = useRef(0);
 
   const setCurrency = useCallback((nextCurrency: string) => {
@@ -113,8 +152,13 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
 
   const requestLocation = useCallback(() => {
     const requestId = ++locationRequestId.current;
+    setPlaceName(null);
+    setPlaceNameStatus('loading');
+    setCountryName(null);
+    setCountryCode(null);
     if (!navigator.geolocation) {
       setLocationError('Location services are not available in this browser.');
+      setPlaceNameStatus('unavailable');
       return;
     }
     setLocationError('');
@@ -134,6 +178,17 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
           accuracy: position.coords.accuracy,
         };
         setLocation(next);
+        void reverseGeocode(next.lat, next.lng).then((namedLocation) => {
+          if (requestId !== locationRequestId.current) return;
+          setPlaceName(namedLocation.placeName);
+          setCountryName(namedLocation.countryName);
+          setCountryCode(namedLocation.countryCode);
+          setPlaceNameStatus('ready');
+        }).catch((error: unknown) => {
+          if (requestId !== locationRequestId.current) return;
+          console.error('Could not resolve the current location name:', error);
+          setPlaceNameStatus('unavailable');
+        });
         try {
           window.sessionStorage.setItem(LOCATION_KEY, JSON.stringify(next));
         } catch (error) {
@@ -149,6 +204,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
             : 'Could not determine your location. Try again or browse without location.';
         setLocationError(message);
         setLocation(null);
+        setPlaceNameStatus('unavailable');
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
     );
@@ -157,6 +213,10 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   const clearLocation = useCallback(() => {
     locationRequestId.current += 1;
     setLocation(null);
+    setPlaceName(null);
+    setPlaceNameStatus('idle');
+    setCountryName(null);
+    setCountryCode(null);
     setLocationError('');
     try {
       window.sessionStorage.removeItem(LOCATION_KEY);
@@ -170,8 +230,6 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     let active = true;
     const detectedLocale = navigator.language || 'en-US';
     setLocale(detectedLocale);
-    const region = localeRegion(detectedLocale);
-    setCountryName(region ? new Intl.DisplayNames([detectedLocale], { type: 'region' }).of(region) ?? null : null);
     let savedCurrency: string | null = null;
     try {
       savedCurrency = window.localStorage.getItem(CURRENCY_KEY);
@@ -214,11 +272,13 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<MarketContextValue>(() => ({
     location,
+    placeName,
+    placeNameStatus,
     locationError,
     requestLocation,
     clearLocation,
     countryName,
-    marketAccent: localeAccent(locale),
+    marketAccent: countryCode ? regionAccent(countryCode) : localeAccent(locale),
     currency,
     setCurrency,
     currencies: CURRENCIES.filter((code) => typeof rates[code] === 'number'),
@@ -226,7 +286,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     exchangeUpdatedAt,
     ratesLoading,
     ratesUnavailable,
-  }), [location, locationError, requestLocation, clearLocation, countryName, locale, currency, setCurrency, rates, formatPrice, exchangeUpdatedAt, ratesLoading, ratesUnavailable]);
+  }), [location, placeName, placeNameStatus, locationError, requestLocation, clearLocation, countryName, countryCode, locale, currency, setCurrency, rates, formatPrice, exchangeUpdatedAt, ratesLoading, ratesUnavailable]);
 
   return <MarketContext.Provider value={value}>{children}</MarketContext.Provider>;
 }

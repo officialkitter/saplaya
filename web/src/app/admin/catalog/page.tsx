@@ -9,7 +9,7 @@ import { Field, Input } from '@/components/ui/Fields';
 import { Modal } from '@/components/ui/Modal';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { formatTZS, localDateTime } from '@/lib/format';
-import { useToast } from '@/lib/store';
+import { useMe, useToast } from '@/lib/store';
 
 type CatalogItem = {
   id: string;
@@ -19,8 +19,8 @@ type CatalogItem = {
   retail_price: number;
   wholesale_price: number;
   wholesale_min_qty: number;
-  bulk_price: number | null;
-  mega_bulk_price: number | null;
+  bulk_price?: number | null;
+  mega_bulk_price?: number | null;
   image_url: string | null;
   price_approved: boolean;
 };
@@ -58,6 +58,9 @@ const blankForm: Form = {
 
 function SharedCatalog() {
   const push = useToast((state) => state.push);
+  const me = useMe();
+  const canViewTierPricing = me?.role === 'platform_owner'
+    || (me?.roleScope === 'platform' && ['administrator', 'platform_admin'].includes(me.role));
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [proposals, setProposals] = useState<PriceProposal[]>([]);
   const [query, setQuery] = useState('');
@@ -102,8 +105,8 @@ function SharedCatalog() {
       retail_price: String(item.retail_price),
       wholesale_price: String(item.wholesale_price),
       wholesale_min_qty: String(item.wholesale_min_qty),
-      bulk_price: item.bulk_price === null ? '' : String(item.bulk_price),
-      mega_bulk_price: item.mega_bulk_price === null ? '' : String(item.mega_bulk_price),
+      bulk_price: item.bulk_price == null ? '' : String(item.bulk_price),
+      mega_bulk_price: item.mega_bulk_price == null ? '' : String(item.mega_bulk_price),
     });
   };
 
@@ -295,8 +298,8 @@ function SharedCatalog() {
                   <th className="px-3 py-3">Product</th>
                   <th className="px-3 py-3">Retail</th>
                   <th className="px-3 py-3">Wholesale</th>
-                  <th className="px-3 py-3">Bulk</th>
-                  <th className="px-3 py-3">Mega-bulk</th>
+                  {canViewTierPricing && <th className="px-3 py-3">Bulk</th>}
+                  {canViewTierPricing && <th className="px-3 py-3">Mega-bulk</th>}
                   <th className="px-3 py-3">Approval</th>
                   <th className="px-3 py-3 text-right"> </th>
                 </tr>
@@ -310,8 +313,8 @@ function SharedCatalog() {
                     </td>
                     <td className="px-3 py-3 font-semibold">{formatTZS(item.retail_price)}</td>
                     <td className="px-3 py-3 font-semibold">{formatTZS(item.wholesale_price)}</td>
-                    <td className="px-3 py-3 font-semibold">{item.bulk_price === null ? 'Not set' : formatTZS(item.bulk_price)}</td>
-                    <td className="px-3 py-3 font-semibold">{item.mega_bulk_price === null ? 'Not set' : formatTZS(item.mega_bulk_price)}</td>
+                    {canViewTierPricing && <td className="px-3 py-3 font-semibold">{item.bulk_price == null ? 'Not set' : formatTZS(item.bulk_price)}</td>}
+                    {canViewTierPricing && <td className="px-3 py-3 font-semibold">{item.mega_bulk_price == null ? 'Not set' : formatTZS(item.mega_bulk_price)}</td>}
                     <td className="px-3 py-3">
                       <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${item.price_approved ? 'bg-leaf-soft text-leaf-deep' : 'bg-sun-soft text-sun-deep'}`}>
                         {item.price_approved ? 'Approved' : 'Needs approval'}
@@ -338,8 +341,12 @@ function SharedCatalog() {
               <Field label="Retail price (TZS)"><Input type="number" min="1" value={form.retail_price} onChange={(event) => setForm({ ...form, retail_price: event.target.value })} /></Field>
               <Field label="Wholesale price (TZS)"><Input type="number" min="1" value={form.wholesale_price} onChange={(event) => setForm({ ...form, wholesale_price: event.target.value })} /></Field>
               <Field label="Wholesale minimum quantity"><Input type="number" min="1" value={form.wholesale_min_qty} onChange={(event) => setForm({ ...form, wholesale_min_qty: event.target.value })} /></Field>
-              <Field label="Bulk price at 10× wholesale minimum (TZS)"><Input type="number" min="1" value={form.bulk_price} onChange={(event) => setForm({ ...form, bulk_price: event.target.value })} placeholder="Not configured" /></Field>
-              <Field label="Mega-bulk price at 100× wholesale minimum (TZS)"><Input type="number" min="1" value={form.mega_bulk_price} onChange={(event) => setForm({ ...form, mega_bulk_price: event.target.value })} placeholder="Not configured" /></Field>
+              {canViewTierPricing && (
+                <>
+                  <Field label="Bulk price at 10× wholesale minimum (TZS)"><Input type="number" min="1" value={form.bulk_price} onChange={(event) => setForm({ ...form, bulk_price: event.target.value })} placeholder="Not configured" /></Field>
+                  <Field label="Mega-bulk price at 100× wholesale minimum (TZS)"><Input type="number" min="1" value={form.mega_bulk_price} onChange={(event) => setForm({ ...form, mega_bulk_price: event.target.value })} placeholder="Not configured" /></Field>
+                </>
+              )}
             </div>
             <div className="rounded-2xl border border-line p-4">
               <div className="flex flex-wrap items-center gap-4">

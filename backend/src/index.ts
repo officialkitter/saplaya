@@ -22,6 +22,8 @@ const {
   PORT = '3000',
   PUBLIC_API_URL,
   PAYMENT_APP_CALLBACK_URL = 'saplaya://payment-callback',
+  WEB_CHECKOUT_CALLBACK_URL,
+  GOOGLE_MAPS_API_KEY,
   WEB_ORIGIN = '*', // e.g. https://admin.saplaya.com
 } = process.env;
 
@@ -80,6 +82,12 @@ type AuthedRequest = Request & {
 };
 
 const isPlatform = (m: Member) => m.supplier_id === null;
+const isPlatformAdministrator = (m: Member) =>
+  isPlatform(m) && ['platform_owner', 'administrator', 'platform_admin'].includes(m.role);
+const canViewTierPricing = (m: Member) =>
+  m.role === 'platform_owner'
+  || (m.role_scope === 'platform' && ['administrator', 'platform_admin'].includes(m.role))
+  || (m.role === 'supplier_owner' && m.role_scope === 'farm');
 
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? 'saplaya-v1';
 const FIREBASE_APP_NAME = 'saplaya-backend';
@@ -465,6 +473,80 @@ app.get('/health', async (_req, res) => {
   res.json({ ok: true, service: 'saplaya-api', database: 'connected' });
 });
 
+app.post('/location/reverse-geocode', async (req, res) => {
+  if (!GOOGLE_MAPS_API_KEY) {
+    return res.status(503).json({ error: 'Location-name service is not configured.' });
+  }
+  const coordinates = z.object({
+    lat: z.number().finite().min(-90).max(90),
+    lng: z.number().finite().min(-180).max(180),
+  }).safeParse(req.body);
+  if (!coordinates.success) {
+    return res.status(400).json({ error: 'Provide valid latitude and longitude coordinates.' });
+  }
+
+  try {
+    const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+    url.searchParams.set('latlng', `${coordinates.data.lat},${coordinates.data.lng}`);
+    url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
+    url.searchParams.set('language', 'en');
+    const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!response.ok) {
+      console.error('Google Maps reverse-geocoding request failed with HTTP status.', response.status);
+      return res.status(503).json({ error: 'Location name is temporarily unavailable.' });
+    }
+
+    const payload: unknown = await response.json();
+    const result = z.object({
+      status: z.string(),
+      results: z.array(z.object({
+        address_components: z.array(z.object({
+          long_name: z.string(),
+          short_name: z.string(),
+          types: z.array(z.string()),
+        })),
+      })),
+    }).safeParse(payload);
+    if (!result.success) {
+      console.error('Google Maps returned an invalid reverse-geocoding response.');
+      return res.status(503).json({ error: 'Location name is temporarily unavailable.' });
+    }
+    if (result.data.status === 'ZERO_RESULTS') {
+      return res.status(404).json({ error: 'No named location was found for these coordinates.' });
+    }
+    if (result.data.status !== 'OK' || !result.data.results[0]) {
+      console.error('Google Maps reverse-geocoding service returned status.', result.data.status);
+      return res.status(503).json({ error: 'Location name is temporarily unavailable.' });
+    }
+
+    const components = result.data.results[0].address_components;
+    const component = (type: string) => components.find((item) => item.types.includes(type));
+    const neighborhood = component('neighborhood') ?? component('sublocality_level_1');
+    const townOrCity = component('locality') ?? component('postal_town');
+    const administrativeArea = component('administrative_area_level_2')
+      ?? component('administrative_area_level_1');
+    const country = component('country');
+    const placeName = [...new Set([
+      neighborhood?.long_name,
+      townOrCity?.long_name ?? administrativeArea?.long_name,
+      country?.long_name,
+    ].filter((part): part is string => Boolean(part)))].join(', ');
+    if (!placeName) {
+      return res.status(404).json({ error: 'No named location was found for these coordinates.' });
+    }
+
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({
+      place_name: placeName,
+      country_name: country?.long_name ?? null,
+      country_code: country?.short_name ?? null,
+    });
+  } catch (error) {
+    console.error('Google Maps reverse-geocoding request failed.', error instanceof Error ? error.name : 'Unknown error');
+    return res.status(503).json({ error: 'Location name is temporarily unavailable.' });
+  }
+});
+
 app.get('/products', async (req, res) => {
   const requestedPage = Number(req.query.page ?? 0);
   const requestedSize = Number(req.query.size ?? 20);
@@ -553,8 +635,6 @@ app.get('/products', async (req, res) => {
     stock: product.stock,
     image_url: product.image_url,
     harvested_at: product.harvested_at,
-    bulk_price: product.bulk_price,
-    mega_bulk_price: product.mega_bulk_price,
     farm_distance_km: distance === null ? null : Number(distance.toFixed(2)),
   }));
   res.json({ items, hasMore: selectedProducts.length > (page + 1) * size });
@@ -635,7 +715,24 @@ app.get('/delivery-options', async (_req, res) => {
   return res.json(options);
 });
 
+app.get('/checkout/options', async (_req, res) => {
+  let onlinePayment = false;
+  if (WEB_CHECKOUT_CALLBACK_URL && isPesapalConfigured()) {
+    const { data, error } = await db.from('payment_provider_config')
+      .select('ipn_id')
+      .eq('provider', 'pesapal')
+      .maybeSingle();
+    if (error) {
+      console.error('Could not check web payment readiness:', error.message);
+      return res.status(503).json({ error: 'Could not load checkout payment options.' });
+    }
+    onlinePayment = Boolean(data?.ipn_id);
+  }
+  return res.json({ cash_on_delivery: true, online_payment: onlinePayment });
+});
+
 const checkoutSchema = z.object({
+  client_platform: z.enum(['mobile', 'web']).default('mobile'),
   mode: z.enum(['retail', 'wholesale']),
   delivery_window: z.enum(['12h', '24h', '48h', '72h', '7d', '10d', '14d']),
   delivery_fee_accepted: z.boolean().default(false),
@@ -678,7 +775,7 @@ function normalizedProductName(name: string) {
   return name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
 }
 
-app.post('/checkout/quote', async (req, res) => {
+app.post('/checkout/quote', requireUser, async (req, res) => {
   const parsed = checkoutQuoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { mode, delivery_window: deliveryWindow, items, lat, lng } = parsed.data;
@@ -816,6 +913,16 @@ function paymentCallbackUrl(transactionRef: string, orderTrackingId: string) {
   return callback.toString();
 }
 
+function webPaymentCallbackUrl(transactionRef: string, orderTrackingId: string) {
+  if (!WEB_CHECKOUT_CALLBACK_URL) {
+    throw new Error('Web checkout callback URL is not configured.');
+  }
+  const callback = new URL(WEB_CHECKOUT_CALLBACK_URL);
+  callback.searchParams.set('tx_ref', transactionRef);
+  callback.searchParams.set('order_tracking_id', orderTrackingId);
+  return callback.toString();
+}
+
 function isPesapalConfigured() {
   return Boolean(
     (process.env.PESAPAL_CONSUMER_KEY || process.env.PESAPAL_CUSTOMER_KEY)
@@ -852,8 +959,11 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
 
   const parsed = checkoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (parsed.data.client_platform === 'web' && !WEB_CHECKOUT_CALLBACK_URL) {
+    return res.status(503).json({ error: 'Web payment return URL is not configured on the server.' });
+  }
   const {
-    mode, items, lat, lng, customer, delivery_window: deliveryWindow,
+    client_platform: clientPlatform, mode, items, lat, lng, customer, delivery_window: deliveryWindow,
     delivery_fee_accepted: deliveryFeeAccepted, quoted_delivery_fee: quotedDeliveryFee,
   } = parsed.data;
   const phone = normalizedTanzanianPhone(parsed.data.payment_phone ?? customer.phone);
@@ -944,6 +1054,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     customer_name: customer.name,
     customer_phone: customer.phone,
     delivery_window: deliveryWindow,
+    client_platform: clientPlatform,
     amount,
     currency: 'TZS',
   });
@@ -1263,11 +1374,26 @@ async function notifyCustomerOrderStatus(orderId: string, status: string) {
   }
 }
 
-app.get('/payments/callback', (req, res) => {
+app.get('/payments/callback', async (req, res) => {
   const transactionRef = String(req.query.OrderMerchantReference ?? req.query.tx_ref ?? '');
   const orderTrackingId = String(req.query.OrderTrackingId ?? req.query.order_tracking_id ?? '');
   if (!/^saplaya-[0-9a-f-]{36}$/i.test(transactionRef) || !orderTrackingId) {
     return res.redirect(302, paymentCallbackUrl('', ''));
+  }
+  const { data: payment, error } = await db.from('checkout_payments')
+    .select('client_platform')
+    .eq('transaction_ref', transactionRef)
+    .eq('gateway_transaction_id', orderTrackingId)
+    .maybeSingle();
+  if (error) {
+    console.error('Could not resolve payment callback destination:', error.message);
+    return res.status(503).send('Payment return is temporarily unavailable. Contact support with your payment reference.');
+  }
+  if (payment?.client_platform === 'web') {
+    if (!WEB_CHECKOUT_CALLBACK_URL) {
+      return res.status(503).send('Web payment return URL is not configured. Contact support with your payment reference.');
+    }
+    return res.redirect(302, webPaymentCallbackUrl(transactionRef, orderTrackingId));
   }
   return res.redirect(302, paymentCallbackUrl(transactionRef, orderTrackingId));
 });
@@ -1733,12 +1859,16 @@ app.get('/admin/products', requirePerm('products.view'), async (req: AuthedReque
     return res.status(500).json({ error: 'Could not load product approval status.' });
   }
   const approvals = new Map((catalogs.data ?? []).map((catalog) => [catalog.id, catalog.price_approved]));
-  res.json((data ?? []).map((product) => ({
-    ...product,
-    approval_status: !product.catalog_product_id
-      ? 'unlinked'
-      : approvals.get(product.catalog_product_id) ? 'approved' : 'pending',
-  })));
+  res.json((data ?? []).map((product) => {
+    const { bulk_price, mega_bulk_price, ...safeProduct } = product;
+    return {
+      ...safeProduct,
+      ...(canViewTierPricing(m) ? { bulk_price, mega_bulk_price } : {}),
+      approval_status: !product.catalog_product_id
+        ? 'unlinked'
+        : approvals.get(product.catalog_product_id) ? 'approved' : 'pending',
+    };
+  }));
 });
 
 const productSchema = z.object({
@@ -1792,6 +1922,36 @@ app.patch('/admin/products/:id', requirePerm('products.edit'), async (req: Authe
   res.json(data);
 });
 
+app.post('/admin/products/:id/merge', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
+  if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can merge products.' });
+  const sourceId = z.string().uuid().safeParse(req.params.id);
+  const target = z.object({ target_product_id: z.string().uuid() }).safeParse(req.body);
+  if (!sourceId.success || !target.success) {
+    return res.status(400).json({ error: target.success ? 'Invalid source product ID.' : target.error.flatten() });
+  }
+  const { data, error } = await db.rpc('merge_farm_products', {
+    p_source_product_id: sourceId.data,
+    p_target_product_id: target.data.target_product_id,
+  });
+  if (error) {
+    console.error('Could not merge farm product records:', error.message);
+    return res.status(409).json({ error: error.message });
+  }
+  return res.json(data);
+});
+
+app.delete('/admin/products/:id', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
+  if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can remove products.' });
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid product ID.' });
+  const { data, error } = await db.rpc('archive_farm_product', { p_product_id: id.data });
+  if (error) {
+    console.error('Could not remove farm product:', error.message);
+    return res.status(409).json({ error: error.message });
+  }
+  return res.json(data);
+});
+
 app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: AuthedRequest, res: Response) => {
   const m = req.member!;
   let supplierId = m.supplier_id;
@@ -1804,7 +1964,7 @@ app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: Au
 
   const [{ data: items, error: catalogError }, { data: listings, error: listingsError }] = await Promise.all([
     db.from('catalog_products')
-      .select('id, name, category, unit, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, image_url, price_approved')
+      .select('id, name, category, unit, retail_price, wholesale_price, wholesale_min_qty, image_url, price_approved')
       .eq('price_approved', true).order('category').order('name'),
     db.from('products')
       .select('id, catalog_product_id, name, stock, active')
@@ -1892,7 +2052,7 @@ app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: 
   return res.json(data);
 });
 
-app.get('/admin/catalog', requirePerm('catalog.manage'), async (_req: AuthedRequest, res: Response) => {
+app.get('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
   const [{ data: items, error: catalogError }, { data: proposals, error: proposalError }] = await Promise.all([
     db.from('catalog_products').select('*').order('category').order('name'),
     db.from('catalog_price_proposals').select('id, catalog_product_id, supplier_id, product_id, retail_price, wholesale_price, status, created_at').eq('status', 'pending').order('created_at'),
@@ -1901,7 +2061,14 @@ app.get('/admin/catalog', requirePerm('catalog.manage'), async (_req: AuthedRequ
     console.error('Could not load the central product catalog:', catalogError?.message ?? proposalError?.message);
     return res.status(500).json({ error: 'Could not load the product catalog.' });
   }
-  return res.json({ items, proposals });
+  const safeItems = (items ?? []).map((item) => {
+    const { bulk_price, mega_bulk_price, ...safeItem } = item;
+    return {
+      ...safeItem,
+      ...(canViewTierPricing(req.member!) ? { bulk_price, mega_bulk_price } : {}),
+    };
+  });
+  return res.json({ items: safeItems, proposals });
 });
 
 const catalogCreateSchema = z.object({
@@ -1929,13 +2096,20 @@ const catalogCreateSchema = z.object({
 app.post('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
   const parsed = catalogCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!canViewTierPricing(req.member!) && (parsed.data.bulk_price !== null || parsed.data.mega_bulk_price !== null)) {
+    return res.status(403).json({ error: 'Only farm owners and platform administrators can set confidential volume prices.' });
+  }
   const { data, error } = await db.from('catalog_products').insert(parsed.data).select('*').single();
   if (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'A catalog product with this name already exists.' });
     console.error('Could not add a shared catalog product:', error.message);
     return res.status(500).json({ error: 'Could not add this catalog product.' });
   }
-  return res.status(201).json(data);
+  const { bulk_price, mega_bulk_price, ...safeData } = data;
+  return res.status(201).json({
+    ...safeData,
+    ...(canViewTierPricing(req.member!) ? { bulk_price, mega_bulk_price } : {}),
+  });
 });
 
 const catalogUpdateSchema = z.object({
@@ -1965,8 +2139,9 @@ app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: Authe
   if (!id.success || !parsed.success) {
     return res.status(400).json({ error: parsed.success ? 'Invalid catalog product ID.' : parsed.error.flatten() });
   }
+  const { bulk_price: _bulkPrice, mega_bulk_price: _megaBulkPrice, ...publicUpdates } = parsed.data;
   const { data, error } = await db.from('catalog_products')
-    .update(parsed.data)
+    .update(canViewTierPricing(req.member!) ? parsed.data : publicUpdates)
     .eq('id', id.data)
     .select()
     .maybeSingle();
@@ -1975,7 +2150,11 @@ app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: Authe
     return res.status(500).json({ error: 'Could not update this catalog product.' });
   }
   if (!data) return res.status(404).json({ error: 'Catalog product not found.' });
-  return res.json(data);
+  const { bulk_price, mega_bulk_price, ...safeData } = data;
+  return res.json({
+    ...safeData,
+    ...(canViewTierPricing(req.member!) ? { bulk_price, mega_bulk_price } : {}),
+  });
 });
 
 app.post('/admin/catalog-proposals/:id/review', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
@@ -2047,6 +2226,36 @@ app.get('/admin/suppliers', requirePerm('suppliers.view_all'), async (_req: Auth
   const { data, error } = await db.from('suppliers').select('*').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+app.post('/admin/suppliers/:id/merge', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
+  if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can merge farms.' });
+  const sourceId = z.string().uuid().safeParse(req.params.id);
+  const target = z.object({ target_supplier_id: z.string().uuid() }).safeParse(req.body);
+  if (!sourceId.success || !target.success) {
+    return res.status(400).json({ error: target.success ? 'Invalid source farm ID.' : target.error.flatten() });
+  }
+  const { data, error } = await db.rpc('merge_farm_records', {
+    p_source_supplier_id: sourceId.data,
+    p_target_supplier_id: target.data.target_supplier_id,
+  });
+  if (error) {
+    console.error('Could not merge farm records:', error.message);
+    return res.status(409).json({ error: error.message });
+  }
+  return res.json(data);
+});
+
+app.delete('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
+  if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can remove farms.' });
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid farm ID.' });
+  const { data, error } = await db.rpc('archive_farm_record', { p_supplier_id: id.data });
+  if (error) {
+    console.error('Could not remove farm record:', error.message);
+    return res.status(409).json({ error: error.message });
+  }
+  return res.json(data);
 });
 
 app.patch('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {

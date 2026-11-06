@@ -15,7 +15,6 @@ export default function CartScreen({ navigation }: any) {
   const { lines, setQty, subtotal, priceOf, tierOf, mode } = useStore();
   const { formatPrice } = useCurrency();
   const [unlocked, setUnlocked] = useState<{ name: string; tier: 'bulk' | 'mega_bulk' } | null>(null);
-  const hasUnpricedTier = lines.some((line) => priceOf(line.product, line.qty) === null);
 
   const updateQuantity = (line: CartLine, qty: number) => {
     const tier = unlockedVolumeTier(line.product, line.qty, qty, mode);
@@ -66,7 +65,7 @@ export default function CartScreen({ navigation }: any) {
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.name} numberOfLines={1}>{item.product.name}</Text>
               <Text style={styles.price}>
-                {priceOf(item.product, item.qty) === null ? 'Bulk price not set' : formatPrice((priceOf(item.product, item.qty) ?? 0) * item.qty)}
+                {priceOf(item.product, item.qty) === null ? 'Price confirmed at checkout' : formatPrice((priceOf(item.product, item.qty) ?? 0) * item.qty)}
               </Text>
               <Text style={[styles.tierLabel, (tierOf(item.product, item.qty) === 'bulk' || tierOf(item.product, item.qty) === 'mega_bulk') && styles.bulkTier]}>
                 {volumeTierLabel(tierOf(item.product, item.qty))}
@@ -85,14 +84,14 @@ export default function CartScreen({ navigation }: any) {
         )}
         ListFooterComponent={
           <View style={styles.summary}>
-            <Row label="Items" value={formatPrice(subtotal)} />
+            <Row label="Estimated items" value={formatPrice(subtotal)} />
             <Text style={styles.dist}>Farm availability, delivery distance and fees are confirmed at checkout.</Text>
           </View>
         }
       />
       <View style={styles.bar}>
         <View>
-          <Text style={styles.totalLabel}>Items</Text>
+          <Text style={styles.totalLabel}>Estimate</Text>
           <Text style={styles.total}>{formatPrice(subtotal)}</Text>
         </View>
         <CelebrationModal
@@ -103,8 +102,8 @@ export default function CartScreen({ navigation }: any) {
           buttonLabel="Back to basket"
           onClose={() => setUnlocked(null)}
         />
-        <Pressable style={[styles.cta, hasUnpricedTier && styles.disabled, { flex: 1, marginLeft: 16 }]} onPress={openCheckout} disabled={hasUnpricedTier}>
-          <Text style={styles.ctaText}>{hasUnpricedTier ? 'Bulk price not available' : 'Continue to checkout'}</Text>
+        <Pressable style={[styles.cta, { flex: 1, marginLeft: 16 }]} onPress={openCheckout}>
+          <Text style={styles.ctaText}>Continue to checkout</Text>
         </Pressable>
       </View>
     </SafeAreaView>

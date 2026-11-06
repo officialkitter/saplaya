@@ -2,11 +2,12 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
-import { MapPin, Menu, X } from 'lucide-react';
+import { MapPin, Menu, ShoppingBasket, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Logo } from '@/components/ui/Logo';
 import { LinkButton } from '@/components/ui/Button';
 import { useGlobalMarket } from '@/lib/global-market';
+import { useStorefrontCart } from '@/lib/cart';
 
 const LINKS = [
   { href: '#how', label: 'How it works' },
@@ -18,7 +19,8 @@ const LINKS = [
 export function Nav() {
   const [open, setOpen] = useState(false);
   const requested = useRef(false);
-  const { location, locationError, requestLocation, clearLocation, currency, setCurrency, currencies } = useGlobalMarket();
+  const { count } = useStorefrontCart();
+  const { location, placeName, placeNameStatus, locationError, requestLocation, clearLocation, currency, setCurrency, currencies } = useGlobalMarket();
   useEffect(() => {
     if (requested.current) return;
     requested.current = true;
@@ -29,10 +31,18 @@ export function Nav() {
       <button
         type="button"
         onClick={location ? clearLocation : requestLocation}
-        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-white px-3 py-2 text-sm font-bold text-ink-soft transition hover:bg-leaf-soft"
-        aria-label={location ? 'Stop using your current location' : 'Use your current location to find nearby farms'}
+        className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-white px-3 py-2 text-sm font-bold text-ink-soft transition hover:bg-leaf-soft"
+        aria-label={location ? `Current location: ${placeName ?? 'name unavailable'}. Clear location.` : 'Use my current location to find nearby farms'}
+        title={placeName ?? undefined}
       >
-        <MapPin size={16} aria-hidden />{location ? 'Location on · Clear' : 'Use my location'}
+        <MapPin size={16} className="shrink-0" aria-hidden />
+        {location ? (
+          <>
+            <span className="max-w-[150px] truncate sm:max-w-[210px]">{placeNameStatus === 'ready' ? placeName : placeNameStatus === 'loading' ? 'Finding location…' : 'Location name unavailable'}</span>
+            {placeNameStatus === 'ready' && <span className="shrink-0 text-[10px] font-semibold">Google Maps</span>}
+            <span aria-hidden>×</span>
+          </>
+        ) : 'Use my location'}
       </button>
       <label className="sr-only" htmlFor={id}>Display currency</label>
       <select
@@ -61,6 +71,9 @@ export function Nav() {
         </nav>
         <div className="hidden shrink-0 items-center gap-2 xl:flex">
           {marketControls('market-currency-desktop')}
+          <Link href="/checkout" className="inline-flex items-center gap-2 rounded-full bg-leaf-soft px-4 py-2.5 text-sm font-extrabold text-leaf-deep transition hover:bg-leaf hover:text-white">
+            <ShoppingBasket size={17} /> Basket{count ? ` · ${count}` : ''}
+          </Link>
           <LinkButton href="/login" variant="ghost">Member sign in</LinkButton>
           <LinkButton href="#download" variant="sun">Get the app</LinkButton>
         </div>
@@ -86,6 +99,9 @@ export function Nav() {
                 <LinkButton href="/login" variant="soft">Member sign in</LinkButton>
                 <LinkButton href="#download" variant="sun">Get the app</LinkButton>
               </div>
+              <Link href="/checkout" onClick={() => setOpen(false)} className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-leaf-soft px-4 py-3 font-extrabold text-leaf-deep">
+                <ShoppingBasket size={18} /> Basket{count ? ` · ${count}` : ''}
+              </Link>
             </div>
           </motion.div>
         )}

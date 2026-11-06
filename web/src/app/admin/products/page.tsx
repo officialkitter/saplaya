@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { EyeOff, PackagePlus, Pencil, Plus, Search } from 'lucide-react';
+import { EyeOff, GitMerge, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { RestockModal } from '@/components/admin/RestockModal';
@@ -56,6 +56,8 @@ function Products() {
   const updateProduct = useDB((s) => s.updateProduct);
   const stockCatalogProduct = useDB((s) => s.stockCatalogProduct);
   const publishCatalogProduct = useDB((s) => s.publishCatalogProduct);
+  const mergeProduct = useDB((s) => s.mergeProduct);
+  const archiveProduct = useDB((s) => s.archiveProduct);
   const push = useToast((s) => s.push);
 
   const [q, setQ] = useState('');
@@ -67,6 +69,10 @@ function Products() {
   const [stockQuantity, setStockQuantity] = useState('10');
   const [editing, setEditing] = useState<Product | 'new' | null>(null);
   const [restockId, setRestockId] = useState<string | null>(null);
+  const [mergeSource, setMergeSource] = useState<Product | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [removingProduct, setRemovingProduct] = useState<Product | null>(null);
+  const [productActionBusy, setProductActionBusy] = useState(false);
   const [form, setForm] = useState<Form>(blank);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -107,6 +113,7 @@ function Products() {
   if (!me) return null;
   const canEdit = can(me.role, 'products.edit', me.permissions) && !!farmId;
   const canStock = can(me.role, 'stock.adjust', me.permissions);
+  const canManageRecords = !farmId && ['platform_owner', 'administrator', 'platform_admin'].includes(me.role);
   const visibleCatalog = (stockCatalog?.items ?? []).filter((item) => {
     const text = q.trim().toLowerCase();
     return !text || `${item.name} ${item.category}`.toLowerCase().includes(text);
@@ -155,6 +162,37 @@ function Products() {
       push(error instanceof Error ? error.message : 'Could not make this product available.', 'bad');
     } finally {
       setStockCatalogBusyId(null);
+    }
+  }
+
+  async function mergeFarmProductRecords() {
+    if (!mergeSource || !mergeTargetId) return;
+    setProductActionBusy(true);
+    try {
+      await mergeProduct(mergeSource.id, mergeTargetId);
+      push(`${mergeSource.name} was merged. Its inventory and history were preserved.`);
+      setMergeSource(null);
+      setMergeTargetId('');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not merge these products.', 'bad');
+    } finally {
+      setProductActionBusy(false);
+    }
+  }
+
+  async function removeFarmProduct() {
+    if (!removingProduct) return;
+    setProductActionBusy(true);
+    try {
+      const archived = await archiveProduct(removingProduct.id);
+      push(archived
+        ? `${removingProduct.name} was archived; its order and inventory history was retained.`
+        : `${removingProduct.name} was deleted.`);
+      setRemovingProduct(null);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not remove this product.', 'bad');
+    } finally {
+      setProductActionBusy(false);
     }
   }
 
@@ -349,6 +387,18 @@ function Products() {
                       <dd className="font-extrabold text-[#6B4A12]">{formatTZS(p.wholesalePrice)}<span className="text-xs font-medium">/{p.unit}</span></dd>
                     </div>
                   </dl>
+                  {(p.bulkPrice !== null || p.megaBulkPrice !== null) && (
+                    <dl className="mt-3 grid grid-cols-2 gap-3 rounded-2xl border border-dashed border-leaf/40 bg-leaf-soft/40 p-3">
+                      <div>
+                        <dt className="text-xs font-semibold text-leaf-deep">Confidential bulk price</dt>
+                        <dd className="font-extrabold text-leaf-deep">{p.bulkPrice === null ? 'Not configured' : `${formatTZS(p.bulkPrice)}/${p.unit}`}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold text-leaf-deep">Confidential mega-bulk price</dt>
+                        <dd className="font-extrabold text-leaf-deep">{p.megaBulkPrice === null ? 'Not configured' : `${formatTZS(p.megaBulkPrice)}/${p.unit}`}</dd>
+                      </div>
+                    </dl>
+                  )}
                   <div className="mt-4">
                     <div className="flex items-baseline justify-between">
                       <span className="text-sm font-semibold text-ink-mute">In stock</span>
@@ -358,10 +408,28 @@ function Products() {
                       <motion.div initial={{ width: 0 }} animate={{ width: `${Math.max(4, ratio * 100)}%` }} transition={{ duration: 0.8 }} className="h-full rounded-full" style={{ backgroundColor: low ? '#FFB300' : '#4CAF50' }} />
                     </div>
                   </div>
-                  {(canEdit || canStock) && (
-                    <div className="mt-4 flex gap-2">
+                  {(canEdit || canStock || canManageRecords) && (
+                    <div className="mt-4 flex flex-wrap gap-2">
                       {canStock && <Button size="sm" variant="soft" className="flex-1" icon={<PackagePlus size={17} />} onClick={() => setRestockId(p.id)}>Add stock</Button>}
                       {canEdit && <Button size="sm" variant="ghost" className="flex-1" icon={<Pencil size={17} />} onClick={() => openForm(p)}>Edit</Button>}
+                      {canManageRecords && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="soft"
+                            icon={<GitMerge size={17} />}
+                            onClick={() => {
+                              setMergeSource(p);
+                              setMergeTargetId('');
+                            }}
+                          >
+                            Merge
+                          </Button>
+                          <Button size="sm" variant="danger" icon={<Trash2 size={17} />} onClick={() => setRemovingProduct(p)}>
+                            Remove
+                          </Button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -396,6 +464,42 @@ function Products() {
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
             <Button onClick={() => { void save(); }}>{editing === 'new' ? 'Add product' : 'Save changes'}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={mergeSource !== null} onClose={() => { if (!productActionBusy) setMergeSource(null); }} title={`Merge product${mergeSource ? ` · ${mergeSource.name}` : ''}`}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-soft">
+            Products can only be merged within the same farm. Available stock moves to the chosen listing; order and inventory history remains attached to the original product. Complete or cancel its open orders first.
+          </p>
+          <Field label="Keep this listing">
+            <Select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>
+              <option value="">Choose a product</option>
+              {products.filter((target) => target.supplierId === mergeSource?.supplierId && target.id !== mergeSource?.id && target.active).map((target) => (
+                <option key={target.id} value={target.id}>{target.name} · {formatNum(target.stock)} {target.unit}</option>
+              ))}
+            </Select>
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={productActionBusy} onClick={() => setMergeSource(null)}>Cancel</Button>
+            <Button icon={<GitMerge size={17} />} disabled={!mergeTargetId || productActionBusy} onClick={() => { void mergeFarmProductRecords(); }}>
+              {productActionBusy ? 'Merging…' : 'Merge products'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={removingProduct !== null} onClose={() => { if (!productActionBusy) setRemovingProduct(null); }} title="Remove product">
+        <div className="space-y-4">
+          <p className="text-sm text-ink-soft">
+            {removingProduct?.name} will be removed from the shop. If orders or inventory movements reference it, the record will be archived instead of permanently deleted.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={productActionBusy} onClick={() => setRemovingProduct(null)}>Cancel</Button>
+            <Button variant="danger" icon={<Trash2 size={17} />} disabled={productActionBusy} onClick={() => { void removeFarmProduct(); }}>
+              {productActionBusy ? 'Removing…' : 'Remove product'}
+            </Button>
           </div>
         </div>
       </Modal>

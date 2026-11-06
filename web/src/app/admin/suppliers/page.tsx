@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Mail, MapPin, Pause, Phone, Play, Plus, Sprout, Trash2, X } from 'lucide-react';
+import { Check, GitMerge, Mail, MapPin, Pause, Phone, Play, Plus, Sprout, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
@@ -26,6 +26,8 @@ function Farms() {
   const deleteDeclinedApplication = useDB((s) => s.deleteDeclinedApplication);
   const setSupplierStatus = useDB((s) => s.setSupplierStatus);
   const setSupplierCoordinates = useDB((s) => s.setSupplierCoordinates);
+  const mergeSupplier = useDB((s) => s.mergeSupplier);
+  const archiveSupplier = useDB((s) => s.archiveSupplier);
   const addSupplier = useDB((s) => s.addSupplier);
   const push = useToast((s) => s.push);
 
@@ -35,6 +37,10 @@ function Farms() {
   const [deletingApplication, setDeletingApplication] = useState<Application | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [locationEditing, setLocationEditing] = useState<Supplier | null>(null);
+  const [mergeSource, setMergeSource] = useState<Supplier | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [archiveFarm, setArchiveFarm] = useState<Supplier | null>(null);
+  const [farmActionBusy, setFarmActionBusy] = useState(false);
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
   const [form, setForm] = useState({ name: '', region: '', contactName: '', contactEmail: '', contactPhone: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -70,6 +76,7 @@ function Farms() {
 
   if (!me) return null;
   const canManage = can(me.role, 'suppliers.manage', me.permissions);
+  const canManageRecords = !me.supplierId && ['platform_owner', 'administrator', 'platform_admin'].includes(me.role);
   const canDeleteApplication = canManage && !me.supplierId && can(me.role, 'settings.manage', me.permissions);
   const newApps = applications.filter((a) => a.status === 'new').length;
   const sorted = [...applications].sort((a, b) => (a.status === 'new' ? -1 : 1) - (b.status === 'new' ? -1 : 1) || b.at - a.at);
@@ -147,6 +154,35 @@ function Farms() {
     }
   }
 
+  async function mergeFarmRecords() {
+    if (!mergeSource || !mergeTargetId) return;
+    setFarmActionBusy(true);
+    try {
+      await mergeSupplier(mergeSource.id, mergeTargetId);
+      push(`${mergeSource.name} was merged. Historical orders and inventory records were preserved.`);
+      setMergeSource(null);
+      setMergeTargetId('');
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not merge these farms.', 'bad');
+    } finally {
+      setFarmActionBusy(false);
+    }
+  }
+
+  async function removeFarmRecord() {
+    if (!archiveFarm) return;
+    setFarmActionBusy(true);
+    try {
+      await archiveSupplier(archiveFarm.id);
+      push(`${archiveFarm.name} was removed from the active platform. Historical records were preserved.`);
+      setArchiveFarm(null);
+    } catch (error) {
+      push(error instanceof Error ? error.message : 'Could not remove this farm.', 'bad');
+    } finally {
+      setFarmActionBusy(false);
+    }
+  }
+
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
@@ -195,6 +231,7 @@ function Farms() {
           {suppliers.map((s, i) => {
             const st = stats.get(s.id)!;
             const meta = FARM_STATUS[s.status];
+            const merged = Boolean(s.mergedIntoSupplierId);
             return (
               <motion.article id={`farm-${s.id}`} key={s.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-[1.75rem] border border-line bg-white p-5 shadow-soft">
                 <div className="flex items-start gap-4">
@@ -203,8 +240,9 @@ function Farms() {
                     <h3 className="font-display text-xl font-extrabold">{s.name}</h3>
                     <p className="flex items-center gap-1.5 text-ink-mute"><MapPin size={15} /> {s.region}</p>
                   </div>
-                  <span className={cn('rounded-full px-3 py-1 text-sm font-bold', meta.cls)}>{meta.label}</span>
+                  <span className={cn('rounded-full px-3 py-1 text-sm font-bold', merged ? 'bg-ink/10 text-ink-mute' : meta.cls)}>{merged ? 'Merged' : meta.label}</span>
                 </div>
+                {merged && <p className="mt-2 text-sm font-semibold text-ink-mute">Merged into {suppliers.find((farm) => farm.id === s.mergedIntoSupplierId)?.name ?? 'another farm'} · historical records retained</p>}
                 <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
                   <div className="rounded-2xl bg-milk p-3"><dd className="font-display text-xl font-extrabold">{st.products}</dd><dt className="text-xs font-semibold text-ink-mute">Products</dt></div>
                   <div className="rounded-2xl bg-milk p-3"><dd className="font-display text-xl font-extrabold">{st.open}</dd><dt className="text-xs font-semibold text-ink-mute">Open orders</dt></div>
@@ -215,8 +253,8 @@ function Farms() {
                   <p className="flex items-center gap-2"><Phone size={15} /> {s.contactPhone}</p>
                   <p className="flex items-center gap-2"><Mail size={15} /> {s.contactEmail}</p>
                 </div>
-                {canManage && (
-                  <div className="mt-4">
+                {canManage && !merged && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
                     <p className="mb-2 text-sm text-ink-mute">
                       GPS: {s.latitude === null || s.longitude === null ? 'Not configured — products are not location-matched' : `${s.latitude.toFixed(5)}, ${s.longitude.toFixed(5)}`}
                     </p>
@@ -234,6 +272,24 @@ function Farms() {
                     >
                       Set farm GPS
                     </Button>
+                    {canManageRecords && s.status === 'active' && suppliers.some((target) => target.id !== s.id && target.status === 'active' && !target.mergedIntoSupplierId) && (
+                      <Button
+                        size="sm"
+                        variant="soft"
+                        icon={<GitMerge size={16} />}
+                        onClick={() => {
+                          setMergeSource(s);
+                          setMergeTargetId('');
+                        }}
+                      >
+                        Merge farm
+                      </Button>
+                    )}
+                    {canManageRecords && (
+                      <Button size="sm" variant="danger" icon={<Trash2 size={16} />} onClick={() => setArchiveFarm(s)}>
+                        Remove farm
+                      </Button>
+                    )}
                     <Button size="sm" variant={s.status === 'suspended' ? 'soft' : 'danger'} icon={s.status === 'suspended' ? <Play size={16} /> : <Pause size={16} />} onClick={() => setToggle(s)}>
                       {s.status === 'suspended' ? 'Let this farm sell again' : 'Pause this farm'}
                     </Button>
@@ -332,6 +388,40 @@ function Farms() {
             </div>
           </div>
         )}
+      </Modal>
+      <Modal open={mergeSource !== null} onClose={() => { if (!farmActionBusy) setMergeSource(null); }} title={`Merge farm${mergeSource ? ` · ${mergeSource.name}` : ''}`}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-soft">
+            Active stock will be transferred to matching listings at the selected farm. Historical orders, products and inventory movements remain attached to the original farm. Complete or cancel its open orders first.
+          </p>
+          <Field label="Keep this farm">
+            <Select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}>
+              <option value="">Choose an active farm</option>
+              {suppliers.filter((target) => target.id !== mergeSource?.id && target.status === 'active' && !target.mergedIntoSupplierId).map((target) => (
+                <option key={target.id} value={target.id}>{target.name} · {target.region}</option>
+              ))}
+            </Select>
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={farmActionBusy} onClick={() => setMergeSource(null)}>Cancel</Button>
+            <Button icon={<GitMerge size={17} />} disabled={!mergeTargetId || farmActionBusy} onClick={() => { void mergeFarmRecords(); }}>
+              {farmActionBusy ? 'Merging…' : 'Review and merge'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={archiveFarm !== null} onClose={() => { if (!farmActionBusy) setArchiveFarm(null); }} title="Remove farm">
+        <div className="space-y-4">
+          <p className="text-sm text-ink-soft">
+            {archiveFarm?.name} will be paused and its active products removed from the shop. Historical orders and inventory records are retained. Complete or cancel open orders first.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={farmActionBusy} onClick={() => setArchiveFarm(null)}>Cancel</Button>
+            <Button variant="danger" icon={<Trash2 size={17} />} disabled={farmActionBusy} onClick={() => { void removeFarmRecord(); }}>
+              {farmActionBusy ? 'Removing…' : 'Remove farm'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </>
   );

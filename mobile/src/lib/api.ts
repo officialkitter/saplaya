@@ -48,6 +48,7 @@ async function authenticatedRequest<T>(path: string, options: AuthenticatedOptio
 }
 
 export type CheckoutInput = {
+  client_platform?: 'mobile' | 'web';
   mode: Mode;
   delivery_window: DeliveryEta;
   delivery_fee_accepted: boolean;
@@ -84,20 +85,7 @@ export async function fetchCheckoutQuote(input: {
   lat: number;
   lng: number;
 }): Promise<CheckoutQuote> {
-  const response = await fetch(`${API_URL}/checkout/quote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  const result = await response.json() as CheckoutQuote | { error?: string };
-  if (!response.ok) {
-    throw new Error(
-      typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
-        ? result.error
-        : 'Could not prepare your delivery quote.',
-    );
-  }
-  return result as CheckoutQuote;
+  return authenticatedRequest<CheckoutQuote>('/checkout/quote', { method: 'POST', body: input });
 }
 
 export async function fetchDeliveryOptions(): Promise<DeliveryOption[]> {

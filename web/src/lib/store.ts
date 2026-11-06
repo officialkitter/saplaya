@@ -20,6 +20,10 @@ interface Actions {
   addSupplier: (s: { name: string; region: string; contactName: string; contactEmail: string; contactPhone: string }) => Promise<void>;
   setSupplierStatus: (id: string, status: SupplierStatus) => Promise<void>;
   setSupplierCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>;
+  mergeSupplier: (sourceId: string, targetId: string) => Promise<void>;
+  archiveSupplier: (id: string) => Promise<void>;
+  mergeProduct: (sourceId: string, targetId: string) => Promise<void>;
+  archiveProduct: (id: string) => Promise<boolean>;
   inviteMember: (m: { name: string; email: string; role: Role; supplierId: string | null }) => Promise<string | null>;
   setMemberStatus: (id: string, status: MemberStatus) => Promise<void>;
   saveSettings: (s: Settings) => Promise<void>;
@@ -188,6 +192,36 @@ const createAdminStore: StateCreator<DB> = (set) => {
         body: JSON.stringify({ latitude, longitude }),
       });
       await reload();
+    },
+
+    mergeSupplier: async (sourceId, targetId) => {
+      await fetchAdmin(`/admin/suppliers/${encodeURIComponent(sourceId)}/merge`, {
+        method: 'POST',
+        body: JSON.stringify({ target_supplier_id: targetId }),
+      });
+      await reload();
+    },
+
+    archiveSupplier: async (id) => {
+      await fetchAdmin(`/admin/suppliers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await reload();
+    },
+
+    mergeProduct: async (sourceId, targetId) => {
+      await fetchAdmin(`/admin/products/${encodeURIComponent(sourceId)}/merge`, {
+        method: 'POST',
+        body: JSON.stringify({ target_product_id: targetId }),
+      });
+      await reload();
+    },
+
+    archiveProduct: async (id) => {
+      const result = await fetchAdmin<{ archived: boolean }>(
+        `/admin/products/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      );
+      await reload();
+      return result.archived;
     },
 
     inviteMember: async (member) => {

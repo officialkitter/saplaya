@@ -55,7 +55,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setLastOrderId,
       count: lines.reduce((n, l) => n + l.qty, 0),
       tierOf,
-      subtotal: lines.reduce((n, l) => n + (priceOf(l.product, l.qty) ?? 0) * l.qty, 0),
+      subtotal: lines.reduce((n, l) => n + (priceOf(l.product, l.qty) ?? l.product.wholesale_price) * l.qty, 0),
     }),
     [mode, lines, add, setQty, clear, priceOf, tierOf, lastOrderId]
   );

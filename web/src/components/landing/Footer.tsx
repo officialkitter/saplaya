@@ -34,13 +34,15 @@ export function Download() {
 }
 
 export function Footer() {
-  const { location, marketAccent } = useGlobalMarket();
+  const { location, placeName, placeNameStatus, marketAccent } = useGlobalMarket();
   return (
     <footer className="border-t border-line bg-white">
       <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-5 py-10 sm:flex-row sm:items-center">
         <Logo />
-        <p className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: marketAccent }}>
-          {location ? 'Nearby farm selection enabled' : 'Global marketplace'}
+        <p className="max-w-full rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: marketAccent }}>
+          {location
+            ? <>{placeNameStatus === 'ready' ? placeName : placeNameStatus === 'loading' ? 'Finding location…' : 'Location name unavailable'}{placeNameStatus === 'ready' && ' · Google Maps'}</>
+            : 'Global marketplace'}
         </p>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-[15px] font-semibold text-ink-soft" aria-label="Footer">
           <a href="#how" className="hover:text-leaf">How it works</a>

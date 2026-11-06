@@ -93,6 +93,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       contactEmail: text(supplier.contact_email),
       contactPhone: text(supplier.contact_phone),
       status: text(supplier.status, 'pending') as 'pending' | 'active' | 'suspended',
+      mergedIntoSupplierId: typeof supplier.merged_into_supplier_id === 'string' ? supplier.merged_into_supplier_id : null,
       latitude: numberOrNull(supplier.latitude),
       longitude: numberOrNull(supplier.longitude),
       commissionPct: number(supplier.commission_pct, 8),

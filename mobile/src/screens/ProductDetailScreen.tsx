@@ -33,7 +33,6 @@ export default function ProductDetailScreen({ route, navigation }: any) {
   const [qtyText, setQtyText] = useState(String(minQty));
   const unitPrice = priceOf(product, qty);
   const tier = tierOf(product, qty);
-  const unavailableTier = unitPrice === null;
   const [pressed, setPressed] = useState(false);
   const [unlocked, setUnlocked] = useState<{ tier: 'bulk' | 'mega_bulk'; inBasket: boolean } | null>(null);
   const btn = useRef<View>(null);
@@ -49,12 +48,10 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     setPressed(true);
     setTimeout(() => setPressed(false), 140);
     btn.current?.measureInWindow((x, y, w, h) => fly({ x: x + w / 2, y: y + h / 2 }));
-    if (unitPrice !== null) {
-      const previousQty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
-      const newTier = unlockedVolumeTier(product, previousQty, previousQty + qty, mode);
-      if (previousQty > 0 && newTier && newTier !== tier) setUnlocked({ tier: newTier, inBasket: true });
-      add(product, qty);
-    }
+    const previousQty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
+    const newTier = unlockedVolumeTier(product, previousQty, previousQty + qty, mode);
+    if (previousQty > 0 && newTier && newTier !== tier) setUnlocked({ tier: newTier, inBasket: true });
+    add(product, qty);
   };
 
   return (
@@ -87,7 +84,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
         <Text style={styles.name}>{product.name}</Text>
         <Text style={styles.price}>
-          {unitPrice === null ? 'Price not set' : formatPrice(unitPrice)} <Text style={styles.unit}>per {product.unit}</Text>
+          {unitPrice === null ? 'Final price at checkout' : formatPrice(unitPrice)} <Text style={styles.unit}>per {product.unit}</Text>
         </Text>
         <Text style={[styles.tier, (tier === 'bulk' || tier === 'mega_bulk') && styles.bulkTier]}>{volumeTierLabel(tier)} pricing</Text>
         <Text style={styles.min}>
@@ -136,9 +133,9 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               animate={{ scale: pressed ? 0.9 : 1 }}
               transition={{ type: 'spring', damping: 10, stiffness: 300 }}
             >
-              <Pressable onPress={onAdd} style={[styles.addBtn, unavailableTier && styles.disabled]} disabled={unavailableTier}>
+              <Pressable onPress={onAdd} style={styles.addBtn}>
                 <Ionicons name="cart" size={22} color={colors.white} />
-                <Text style={styles.addText}>{unitPrice === null ? 'Bulk price not set' : `Add · ${formatPrice(unitPrice * qty)}`}</Text>
+                <Text style={styles.addText}>{unitPrice === null ? 'Add to basket · price at checkout' : `Add · ${formatPrice(unitPrice * qty)}`}</Text>
               </Pressable>
             </MotiView>
             <CelebrationModal

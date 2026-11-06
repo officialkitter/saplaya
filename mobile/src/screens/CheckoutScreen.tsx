@@ -48,7 +48,6 @@ export default function CheckoutScreen({ navigation }: any) {
   const km = quote?.distance_km;
   const speedFee = quote?.speed_fee;
   const estimate = quote?.amount ?? 0;
-  const unpricedLines = lines.filter((line) => priceOf(line.product, line.qty) === null);
   const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
   const quoteKey = useMemo(
     () => JSON.stringify({
@@ -181,10 +180,6 @@ export default function CheckoutScreen({ navigation }: any) {
     }
     if (paidDelivery && !acceptedDeliveryFee) {
       Alert.alert('Confirm delivery charge', 'Accept the server-quoted delivery charge to continue, or change the delivery address.');
-      return false;
-    }
-    if (unpricedLines.length) {
-      Alert.alert('Volume price unavailable', 'A bulk or mega-bulk price is not configured for every item. Reduce the quantities or contact Saplaya.');
       return false;
     }
     if (!name.trim() || !email.trim() || !phone.trim()) {
@@ -547,9 +542,9 @@ export default function CheckoutScreen({ navigation }: any) {
             </Pressable>
           ) : (
             <Pressable
-              style={[styles.primaryButton, (busy || quoteLoading || !quote || unpricedLines.length > 0) && styles.disabled]}
+              style={[styles.primaryButton, (busy || quoteLoading || !quote) && styles.disabled]}
               onPress={startCheckout}
-              disabled={busy || quoteLoading || !quote || unpricedLines.length > 0}
+              disabled={busy || quoteLoading || !quote}
             >
               {busy
                 ? <ActivityIndicator color={colors.white} />
