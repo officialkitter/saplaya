@@ -31,3 +31,5 @@ android/local.properties
 # Signing keys
 *.keystore
 *.jks
+
+mobile/node_modules_broken/

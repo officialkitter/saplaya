@@ -85,7 +85,7 @@ function SettingsPage() {
             ))}
           </div>
           <p className="mt-4 rounded-xl bg-leaf-soft p-3 text-sm text-leaf-deep">
-            Example: retail TSh 1,000 produces wholesale TSh 700, bulk TSh 650, and mega-bulk TSh 550 at the default rates.
+            At the default rates, wholesale is 70% of retail, bulk is 65%, and mega-bulk is 55%.
           </p>
         </Panel>
         <Panel title="Delivery prices" subtitle="The app and the server use these tiers to price every order.">
@@ -104,7 +104,7 @@ function SettingsPage() {
           </div>
         </Panel>
 
-        <Panel title="Bulk delivery timeframes" subtitle="Retail and wholesale orders use the morning/evening windows. Configure timeframes here for bulk and mega-bulk orders.">
+        <Panel title="Bulk delivery timeframes" subtitle="Configure timeframes for bulk and mega-bulk orders.">
           <div className="grid gap-4 sm:grid-cols-2">
             {DELIVERY_ETAS.filter((option) => option.value !== 'morning' && option.value !== 'evening').map((option) => (
               <Field key={option.value} label={`${option.title} surcharge (TZS)`}>

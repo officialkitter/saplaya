@@ -4,11 +4,12 @@ import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Product } from '../types';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow } from '../theme';
+import { colors, radius, shadow, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 
 export default function ProductCard({ product, index, onPress }: { product: Product; index: number; onPress: () => void }) {
   const { mode, priceOf } = useStore();
+  const tierTheme = volumeTheme(mode);
   const { formatPrice } = useCurrency();
   return (
     <MotiView
@@ -27,11 +28,11 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
         )}
         <View style={styles.body}>
           <Text numberOfLines={1} style={styles.name}>{product.name}</Text>
-          <Text style={styles.price}>
+          <Text style={[styles.price, { color: tierTheme.accent }]}>
             {formatPrice(priceOf(product) ?? 0)}
             <Text style={styles.unit}> / {product.unit}</Text>
           </Text>
-          {mode === 'wholesale' && <Text style={styles.min}>Min {product.wholesale_min_qty} {product.unit}</Text>}
+          {mode === 'wholesale' && <Text style={[styles.min, { color: tierTheme.accent }]}>Min {product.wholesale_min_qty} {product.unit}</Text>}
           {typeof product.farm_distance_km === 'number' && (
             <Text style={styles.distance}>{product.farm_distance_km.toFixed(1)} km away</Text>
           )}

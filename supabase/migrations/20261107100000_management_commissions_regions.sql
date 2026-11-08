@@ -212,7 +212,7 @@ begin
     where target_sales_tzs is null or target_sales_tzs <= 0
       or commission_rate_pct is null or commission_rate_pct not between 0.2 and 0.5
   ) then
-    raise exception 'Commission targets must be positive and commission rates must be between 0.2% and 0.5%';
+    raise exception 'Commission targets must be positive and commission rates must be between 0.2%% and 0.5%%';
   end if;
   if exists (
     select 1

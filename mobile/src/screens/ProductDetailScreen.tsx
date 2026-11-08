@@ -9,7 +9,6 @@ import { useStore } from '../store/StoreContext';
 import { useFly } from '../store/FlyContext';
 import { colors, radius, volumeTheme } from '../theme';
 import { Product } from '../types';
-import { volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
 import { unlockedVolumeTier } from '../lib/volume';
@@ -23,7 +22,7 @@ function harvestedText(iso: string) {
 
 export default function ProductDetailScreen({ route, navigation }: any) {
   const product: Product = route.params.product;
-  const { mode, baseMode, priceOf, tierOf, add, lines } = useStore();
+  const { baseMode, priceOf, tierOf, add, lines } = useStore();
   const { formatPrice } = useCurrency();
   const { fly } = useFly();
   const insets = useSafeAreaInsets();
@@ -57,7 +56,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
   return (
     <View style={[styles.root, { backgroundColor: tierTheme.background }]}>
-      {/* 60% hero */}
+      {/* Product photo */}
       <View style={styles.hero}>
         {product.image_url ? (
           <Image source={{ uri: product.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
@@ -71,25 +70,24 @@ export default function ProductDetailScreen({ route, navigation }: any) {
         </Pressable>
       </View>
 
-      {/* 40% sliding sheet */}
+      {/* Product details and quantity controls */}
       <MotiView
-        from={{ translateY: H * 0.4 }}
+        from={{ translateY: H * 0.48 }}
         animate={{ translateY: 0 }}
         transition={{ type: 'spring', damping: 16, stiffness: 120 }}
-        style={[styles.sheet, { backgroundColor: tierTheme.surface, borderTopColor: tierTheme.accent, borderTopWidth: tier === 'retail' || tier === 'wholesale' ? 0 : 4 }]}
+        style={[styles.sheet, { backgroundColor: tierTheme.surface, borderTopColor: tierTheme.accent, borderTopWidth: tier === 'retail' || tier === 'wholesale' ? 0 : 4, paddingBottom: Math.max(insets.bottom, 18) }]}
       >
         <View style={[styles.badge, { backgroundColor: tierTheme.soft }]}>
           <MaterialCommunityIcons name="barley" size={18} color={tierTheme.accent} />
-          <Text style={[styles.badgeText, { color: tierTheme.accent }]}>Open-field farm · {harvestedText(product.harvested_at)}</Text>
+          <Text numberOfLines={1} style={[styles.badgeText, { color: tierTheme.accent }]}>Open-field farm · {harvestedText(product.harvested_at)}</Text>
         </View>
 
-        <Text style={styles.name}>{product.name}</Text>
+        <Text numberOfLines={2} style={styles.name}>{product.name}</Text>
         <Text style={[styles.price, { color: tierTheme.accent }]}>
           {unitPrice === null ? 'Final price at checkout' : formatPrice(unitPrice)} <Text style={styles.unit}>per {product.unit}</Text>
         </Text>
-        <Text style={[styles.tier, { color: tierTheme.accent }]}>{volumeTierLabel(tier)} pricing</Text>
-        <Text style={styles.min}>
-          Wholesale from {product.wholesale_min_qty} {product.unit}. Other farms may fulfill larger quantities.
+        <Text style={styles.orderTotal}>
+          {unitPrice === null ? 'Total confirmed at checkout' : `Order total · ${formatPrice(unitPrice * qty)}`}
         </Text>
 
         <View style={styles.actions}>
@@ -129,14 +127,19 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             </Pressable>
           </View>
 
-          <View ref={btn} collapsable={false} style={{ flex: 1 }}>
+          <View ref={btn} collapsable={false} style={styles.addButtonWrap}>
             <MotiView
               animate={{ scale: pressed ? 0.9 : 1 }}
               transition={{ type: 'spring', damping: 10, stiffness: 300 }}
             >
-              <Pressable onPress={onAdd} style={[styles.addBtn, { backgroundColor: tierTheme.accent }]}>
-                <Ionicons name="cart" size={22} color={colors.white} />
-                <Text style={styles.addText}>{unitPrice === null ? 'Add to basket · price at checkout' : `Add · ${formatPrice(unitPrice * qty)}`}</Text>
+              <Pressable
+                onPress={onAdd}
+                style={[styles.addBtn, { backgroundColor: tierTheme.button }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${qty} ${product.unit} to basket${unitPrice === null ? '' : ` for ${formatPrice(unitPrice * qty)}`}`}
+              >
+                <Ionicons name="cart" size={20} color={tierTheme.buttonText} />
+                <Text numberOfLines={1} style={[styles.addText, { color: tierTheme.buttonText }]}>Add to basket</Text>
               </Pressable>
             </MotiView>
             <CelebrationModal
@@ -156,23 +159,22 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
-  hero: { height: '60%', backgroundColor: colors.line },
+  hero: { height: '54%', backgroundColor: colors.line },
   imageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5E9' },
   back: { position: 'absolute', left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '41%', backgroundColor: colors.white, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 22, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, elevation: 12 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%', backgroundColor: colors.white, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 20, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, elevation: 12 },
   badge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
-  badgeText: { color: colors.green, fontWeight: '800', fontSize: 13 },
-  name: { fontSize: 28, fontWeight: '900', color: colors.ink, marginTop: 14 },
-  price: { fontSize: 22, fontWeight: '800', color: colors.green, marginTop: 4 },
-  unit: { fontSize: 15, color: colors.muted, fontWeight: '500' },
-  min: { marginTop: 6, color: colors.yellowDeep, fontWeight: '800' },
-  tier: { marginTop: 8, color: colors.green, fontWeight: '800' },
-  bulkTier: { color: colors.bulk },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 'auto', marginBottom: 6, alignItems: 'center' },
+  badgeText: { flexShrink: 1, color: colors.green, fontWeight: '800', fontSize: 13 },
+  name: { fontSize: 26, fontWeight: '900', color: colors.ink, marginTop: 10 },
+  price: { fontSize: 21, fontWeight: '800', color: colors.green, marginTop: 4 },
+  unit: { fontSize: 14, color: colors.muted, fontWeight: '500' },
+  orderTotal: { color: colors.muted, fontWeight: '700', fontSize: 14, marginTop: 3 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 'auto', marginBottom: 4, alignItems: 'center' },
   stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F8E9', borderRadius: radius.lg, padding: 4 },
-  stepBtn: { width: 48, height: 52, alignItems: 'center', justifyContent: 'center' },
-  qty: { minWidth: 48, textAlign: 'center', fontSize: 18, fontWeight: '900', color: colors.ink, paddingVertical: 8 },
-  addBtn: { height: 60, borderRadius: radius.lg, backgroundColor: colors.green, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  stepBtn: { width: 40, height: 48, alignItems: 'center', justifyContent: 'center' },
+  qty: { minWidth: 38, textAlign: 'center', fontSize: 17, fontWeight: '900', color: colors.ink, paddingVertical: 8 },
+  addButtonWrap: { flex: 1, minWidth: 0 },
+  addBtn: { minHeight: 54, borderRadius: radius.lg, backgroundColor: colors.green, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
   disabled: { backgroundColor: colors.muted },
-  addText: { color: colors.white, fontSize: 18, fontWeight: '900' },
+  addText: { flexShrink: 1, color: colors.white, fontSize: 14, fontWeight: '900' },
 });

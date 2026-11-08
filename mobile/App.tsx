@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AnimatePresence } from 'moti/build/core';
 import { View as MotiView } from 'moti/build/components/view';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Navigation from './src/navigation';
 import SplashMorph from './src/components/SplashMorph';
@@ -77,14 +77,14 @@ export default function App() {
   }, [routeToShop]);
 
   useEffect(() => {
-    if (hasSeenOnboarding === null || !startupReady) return;
+    if (hasSeenOnboarding === null || (Platform.OS !== 'web' && !startupReady)) return;
     void SplashScreen.hideAsync().catch((error: unknown) => {
       console.error('Could not hide the native splash screen:', error);
     });
   }, [hasSeenOnboarding, startupReady]);
 
   useEffect(() => {
-    if (splashAnimationFinished && navigationReady && startupReady) setSplash(false);
+    if (splashAnimationFinished && navigationReady && (Platform.OS === 'web' || startupReady)) setSplash(false);
   }, [navigationReady, splashAnimationFinished, startupReady]);
 
   return (
@@ -102,20 +102,24 @@ export default function App() {
                       onReady={handleNavigationReady}
                     />
                   )}
-                  <AnimatePresence>
-                    {splash && (
-                      <MotiView
-                        key="splash"
-                        style={StyleSheet.absoluteFill}
-                        from={{ opacity: 1 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ type: 'timing', duration: 400 }}
-                      >
-                        <SplashMorph onFinish={finish} />
-                      </MotiView>
-                    )}
-                  </AnimatePresence>
+                  {Platform.OS === 'web' ? (
+                    splash && <View style={StyleSheet.absoluteFill}><SplashMorph onFinish={finish} /></View>
+                  ) : (
+                    <AnimatePresence>
+                      {splash && (
+                        <MotiView
+                          key="splash"
+                          style={StyleSheet.absoluteFill}
+                          from={{ opacity: 1 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ type: 'timing', duration: 400 }}
+                        >
+                          <SplashMorph onFinish={finish} />
+                        </MotiView>
+                      )}
+                    </AnimatePresence>
+                  )}
                 </FlyProvider>
               </StoreProvider>
             </CurrencyProvider>

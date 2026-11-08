@@ -29,16 +29,16 @@ export function ModeToggle() {
     >
       <MotiView
         style={[styles.thumb, { width: Math.max(0, half - 6) }]}
-        animate={{ translateX: wholesale ? half : 0, backgroundColor: wholesale ? colors.yellowDeep : colors.green }}
+        animate={{ translateX: wholesale ? half : 0, backgroundColor: wholesale ? colors.yellow : colors.green }}
         transition={{ type: 'spring', damping: 14, stiffness: 160 }}
       />
       <View style={styles.label}>
-        <Ionicons name="basket" size={22} color={wholesale ? colors.muted : colors.white} />
-        <Text style={[styles.text, { color: wholesale ? colors.muted : colors.white }]}>Retail</Text>
+        <Ionicons name="basket" size={20} color={wholesale ? colors.muted : colors.white} />
+        <Text numberOfLines={1} style={[styles.text, { color: wholesale ? colors.muted : colors.white }]}>Retail</Text>
       </View>
       <View style={styles.label}>
-        <MaterialCommunityIcons name="package-variant-closed" size={22} color={wholesale ? colors.ink : colors.muted} />
-        <Text style={[styles.text, { color: wholesale ? colors.ink : colors.muted }]}>Wholesale</Text>
+        <MaterialCommunityIcons name="package-variant-closed" size={20} color={wholesale ? colors.ink : colors.muted} />
+        <Text numberOfLines={1} style={[styles.text, { color: wholesale ? colors.ink : colors.muted }]}>Wholesale</Text>
       </View>
     </Pressable>
   );
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   thumb: { position: 'absolute', left: 3, top: 3, height: H - 10, borderRadius: radius.xl - 4 },
-  label: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  text: { fontSize: 18, fontWeight: '800' },
+  label: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  text: { flexShrink: 1, fontSize: 16, fontWeight: '800' },
   backdrop: { ...StyleSheet.absoluteFill, overflow: 'hidden' },
 });

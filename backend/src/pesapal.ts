@@ -226,7 +226,8 @@ export type PesapalTransactionStatus = {
   merchant_reference?: string;
   payment_status_description?: string;
   payment_status_code?: string | number;
-  status?: string;
+  status_code?: string | number;
+  status?: string | number;
   amount?: string | number;
   currency?: string;
 };
@@ -242,8 +243,8 @@ export async function getTransactionStatus(orderTrackingId: string): Promise<Pes
 
 export function isPaymentCompleted(status: PesapalTransactionStatus): boolean {
   const description = status.payment_status_description?.trim().toUpperCase();
-  const paymentStatus = status.status?.trim().toUpperCase();
-  const code = String(status.payment_status_code ?? '');
+  const paymentStatus = typeof status.status === 'string' ? status.status.trim().toUpperCase() : '';
+  const code = String(status.status_code ?? status.payment_status_code ?? '');
 
   if (description) return description === 'COMPLETED';
   if (code) return code === '1';
@@ -252,7 +253,9 @@ export function isPaymentCompleted(status: PesapalTransactionStatus): boolean {
 
 export function isPaymentFailed(status: PesapalTransactionStatus): boolean {
   const description = status.payment_status_description?.trim().toUpperCase();
-  const paymentStatus = status.status?.trim().toUpperCase();
-  return ['FAILED', 'CANCELLED'].includes(description ?? '')
-    || ['FAILED', 'CANCELLED'].includes(paymentStatus ?? '');
+  const paymentStatus = typeof status.status === 'string' ? status.status.trim().toUpperCase() : '';
+  const code = String(status.status_code ?? status.payment_status_code ?? '');
+  return ['FAILED', 'CANCELLED', 'REVERSED'].includes(description ?? '')
+    || ['FAILED', 'CANCELLED', 'REVERSED'].includes(paymentStatus)
+    || ['2', '3'].includes(code);
 }

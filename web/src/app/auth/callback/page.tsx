@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, LoaderCircle, LockKeyhole } from 'lucide-rea
 import { useEffect, useState, type FormEvent } from 'react';
 import { LogoMark } from '@/components/ui/Logo';
 import { getSupabase } from '@/lib/supabase';
+import { processAuthCallback, type CallbackResult } from '@/lib/auth-callback';
 
 type CallbackState =
   | { status: 'processing'; message: string }
@@ -11,21 +12,7 @@ type CallbackState =
   | { status: 'error'; message: string };
 
 const APP_CALLBACK = 'saplaya://auth/callback';
-const APP_AUTH_TYPES = new Set(['magiclink', 'signup', 'invite']);
-
-function readAuthParams() {
-  const hash = new URLSearchParams(window.location.hash.slice(1));
-  const query = new URLSearchParams(window.location.search);
-  return {
-    hash,
-    type: hash.get('type') ?? query.get('type'),
-    accessToken: hash.get('access_token'),
-    refreshToken: hash.get('refresh_token'),
-    code: query.get('code'),
-    errorDescription: hash.get('error_description') ?? query.get('error_description'),
-    errorCode: hash.get('error_code') ?? query.get('error_code'),
-  };
-}
+let pendingCallback: { href: string; result: Promise<CallbackResult> } | undefined;
 
 function deepLinkWithSession(accessToken: string, refreshToken: string, type: string) {
   const fragment = new URLSearchParams({
@@ -45,58 +32,41 @@ export default function AuthCallbackPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [adminReset, setAdminReset] = useState(false);
+  const [isInvite, setIsInvite] = useState(false);
 
   useEffect(() => {
     let active = true;
     const processCallback = async () => {
       const isAdminReset = new URLSearchParams(window.location.search).get('returnTo') === '/login';
       if (active) setAdminReset(isAdminReset);
-      const { hash, type, accessToken, refreshToken, code, errorDescription, errorCode } = readAuthParams();
-      if (errorDescription || errorCode) {
-        throw new Error(errorDescription ?? 'This sign-in link has expired or is no longer valid.');
+      const href = window.location.href;
+      if (!pendingCallback || pendingCallback.href !== href) {
+        pendingCallback = { href, result: processAuthCallback(getSupabase(), href) };
       }
-
-      const supabase = getSupabase();
-      if (code) {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) throw error;
-        if (!data.session) throw new Error('The sign-in link did not return an active session.');
-        if (active) {
-          if (type === 'recovery') {
-            setState({ status: 'recovery', message: 'Choose a new password for your Saplaya account.' });
-          } else {
-            deepLinkWithSession(data.session.access_token, data.session.refresh_token, type ?? 'magiclink');
-          }
-        }
-        return;
-      }
-
-      if (!type || !accessToken || !refreshToken) {
-        throw new Error('This link is incomplete. Request a new sign-in link and try again.');
-      }
-
-      if (!APP_AUTH_TYPES.has(type) && type !== 'recovery') {
-        throw new Error('This type of sign-in link is not supported.');
-      }
-
-      const { data, error } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (error) throw error;
-      if (!data.session) throw new Error('The sign-in link did not return an active session.');
-
+      const result = await pendingCallback.result;
       if (!active) return;
-      if (type === 'recovery') {
-        setState({ status: 'recovery', message: 'Choose a new password for your Saplaya account.' });
+      if (result.kind === 'oauth') {
+        window.location.replace('/login');
         return;
       }
-      deepLinkWithSession(data.session.access_token, data.session.refresh_token, type);
+      if (result.kind === 'password') {
+        window.history.replaceState(null, '', result.team ? '/auth/callback?returnTo=%2Flogin' : '/auth/callback');
+        setAdminReset(result.team);
+        setIsInvite(result.invite);
+        setState({ status: 'recovery', message: result.invite
+          ? 'Choose a password to finish setting up your team account.'
+          : 'Choose a new password for your Saplaya account.' });
+        return;
+      }
+      window.history.replaceState(null, '', '/auth/callback');
+      deepLinkWithSession(result.session.access_token, result.session.refresh_token, result.type);
     };
 
     void processCallback().catch((error: unknown) => {
       console.error('Saplaya auth callback failed:', error);
       if (active) {
+        const teamReturn = new URLSearchParams(window.location.search).get('returnTo') === '/login';
+        window.history.replaceState(null, '', teamReturn ? '/auth/callback?returnTo=%2Flogin' : '/auth/callback');
         setState({
           status: 'error',
           message: error instanceof Error ? error.message : 'We could not verify this link. Request a new one and try again.',
@@ -125,7 +95,7 @@ export default function AuthCallbackPage() {
       const supabase = getSupabase();
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
-      if (!data.session) throw new Error('Your recovery link has expired. Request a new password reset link.');
+      if (!data.session) throw new Error('Your link has expired. Request a new invitation or password reset link.');
 
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
@@ -133,9 +103,9 @@ export default function AuthCallbackPage() {
       const { data: updated, error: updatedSessionError } = await supabase.auth.getSession();
       if (updatedSessionError) throw updatedSessionError;
       if (!updated.session) throw new Error('Your password was updated, but we could not finish signing you in.');
-      if (new URLSearchParams(window.location.search).get('returnTo') === '/login') {
+      if (adminReset) {
         const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
-        if (signOutError) console.error('Could not clear the password recovery session:', signOutError);
+        if (signOutError) throw new Error('Your password was saved, but the temporary session could not be cleared. Please sign out before signing in again.');
         window.location.replace('/login?passwordReset=success');
         return;
       }
@@ -171,7 +141,7 @@ export default function AuthCallbackPage() {
             <div className="mb-6 grid h-12 w-12 place-items-center rounded-2xl bg-leaf-soft text-leaf">
               <LockKeyhole size={24} />
             </div>
-            <h1 className="font-display text-3xl font-extrabold">Choose a new password</h1>
+            <h1 className="font-display text-3xl font-extrabold">{isInvite ? 'Set your password' : 'Choose a new password'}</h1>
             <p className="mt-2 text-ink-soft">{state.message}</p>
             <form className="mt-7 space-y-4" onSubmit={(event) => void saveNewPassword(event)}>
               <label className="block text-sm font-bold text-ink" htmlFor="new-password">New password</label>

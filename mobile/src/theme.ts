@@ -10,23 +10,23 @@ export const colors = {
   line: '#E3EBE0',
   wood: '#B07A3E',
   woodDark: '#8A5A26',
-  bulk: '#009688',
-  bulkLight: '#E0F2F1',
-  megaBulk: '#5E35B1',
-  megaBulkLight: '#EDE7F6',
+  bulk: '#008C9E',
+  bulkLight: '#E0F5F7',
+  megaBulk: '#6F4E37',
+  megaBulkLight: '#F1E8E1',
 };
 
 export function volumeTheme(tier: 'retail' | 'wholesale' | 'bulk' | 'mega_bulk') {
   if (tier === 'mega_bulk') {
-    return { accent: colors.megaBulk, soft: colors.megaBulkLight, background: '#F6F1FC', surface: colors.white };
+    return { accent: colors.megaBulk, soft: colors.megaBulkLight, background: '#FAF6F2', surface: colors.white, button: colors.megaBulk, buttonText: colors.white };
   }
   if (tier === 'bulk') {
-    return { accent: colors.bulk, soft: colors.bulkLight, background: '#EFF9F8', surface: colors.white };
+    return { accent: colors.bulk, soft: colors.bulkLight, background: '#F1FAFB', surface: colors.white, button: colors.bulk, buttonText: colors.white };
   }
   if (tier === 'wholesale') {
-    return { accent: colors.woodDark, soft: '#FFF4DF', background: '#FFFBF2', surface: colors.white };
+    return { accent: '#805400', soft: '#FFF8E1', background: '#FFFBF2', surface: colors.white, button: colors.yellow, buttonText: colors.ink };
   }
-  return { accent: colors.green, soft: '#E8F5E9', background: colors.cream, surface: colors.white };
+  return { accent: colors.green, soft: '#E8F5E9', background: colors.cream, surface: colors.white, button: colors.green, buttonText: colors.white };
 }
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';

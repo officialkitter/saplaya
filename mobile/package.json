@@ -4,7 +4,7 @@
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "start:web": "expo start --web --port 8090",
+    "start:web": "expo start --web --port 8081",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"

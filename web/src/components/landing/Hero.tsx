@@ -17,7 +17,7 @@ function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: 
       <motion.span
         aria-hidden
         className="absolute bottom-1.5 left-1.5 top-1.5 w-[calc(50%-6px)] rounded-full"
-        animate={{ x: wholesale ? '100%' : '0%', backgroundColor: wholesale ? '#FFB300' : '#2E7D32' }}
+        animate={{ x: wholesale ? '100%' : '0%', backgroundColor: wholesale ? '#795548' : '#2E7D32' }}
         transition={{ type: 'spring', damping: 15, stiffness: 190 }}
       />
       {([false, true] as const).map((w) => (
@@ -25,7 +25,7 @@ function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: 
           key={String(w)}
           aria-pressed={wholesale === w}
           onClick={() => onChange(w)}
-          className={cn('relative z-10 flex-1 rounded-full text-lg font-extrabold transition-colors', wholesale === w ? (w ? 'text-ink' : 'text-white') : 'text-ink-mute')}
+          className={cn('relative z-10 flex-1 rounded-full text-base font-extrabold transition-colors sm:text-lg', wholesale === w ? 'text-white' : 'text-ink-mute')}
         >
           {w ? 'Wholesale' : 'Retail'}
         </button>
@@ -78,7 +78,7 @@ function Phone({
 
           <motion.div
             className="mt-3 rounded-2xl px-3 py-2 text-center text-sm font-extrabold"
-            animate={{ backgroundColor: wholesale ? '#FFF8E1' : '#E8F5E9', color: wholesale ? '#8A5A00' : '#1B5E20' }}
+            animate={{ backgroundColor: wholesale ? '#EFEBE9' : '#E8F5E9', color: wholesale ? '#5D4037' : '#1B5E20' }}
           >
             {wholesale ? 'Wholesale prices' : 'Fresh today'}
           </motion.div>
@@ -99,13 +99,13 @@ function Phone({
                 <div key={it.id} className="overflow-hidden rounded-2xl bg-white shadow-soft">
                   <SmartImage src={it.image_url ?? undefined} alt={it.name} className="aspect-square w-full text-3xl" />
                   <div className="p-2.5">
-                    <p className="overflow-x-auto whitespace-nowrap text-[13px] font-bold" tabIndex={0}>{it.name}</p>
-                    <div className="h-5 overflow-hidden">
+                    <p className="line-clamp-2 min-h-[2.4em] break-words text-[13px] font-bold leading-[1.2]" title={it.name}>{it.name}</p>
+                    <div className="min-h-5">
                       <AnimatePresence mode="popLayout" initial={false}>
                         <motion.p
                           key={wholesale ? 'w' : 'r'}
                           initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }}
-                          className="text-[14px] font-extrabold text-leaf"
+                          className="break-words text-[13px] font-extrabold text-leaf"
                         >
                           {formatPrice(wholesale ? it.wholesale_price : it.retail_price)}
                           <span className="text-[11px] font-medium text-ink-mute"> /{it.unit}</span>
@@ -117,7 +117,7 @@ function Phone({
                     )}
                     <AnimatePresence initial={false}>
                       {wholesale && (
-                        <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-sun-deep">
+                        <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-[#5D4037]">
                           Min {it.wholesale_min_qty} {it.unit}
                         </motion.p>
                       )}
@@ -154,7 +154,7 @@ export function Hero() {
             <p className="mb-3 text-lg font-bold">Try it. Slide to switch how you shop.</p>
             <ModeSlide wholesale={wholesale} onChange={setWholesale} />
             <p className="mt-3 min-h-6 text-ink-soft">
-              {wholesale ? 'Wholesale shows the price and minimum quantity for larger orders.' : 'Retail is for home cooks. Buy as little as one kilo.'}
+              {wholesale ? 'See wholesale prices and minimum quantities.' : 'Shop individual items at retail prices.'}
             </p>
           </div>
 

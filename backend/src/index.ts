@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
-import { createClient, type SupabaseClientOptions } from '@supabase/supabase-js';
+import { createClient, type SupabaseClientOptions, type User } from '@supabase/supabase-js';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -10,6 +10,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { deriveOrderMode, haversineKm, selectStorefrontProducts, type OrderMode } from './storefront.js';
+import { activateTeamInvitation, claimPendingTeamInvitation, teamInvitationRedirect } from './team-auth.js';
 import {
   calculateWeeklyCommission,
   supplierMatchesScopes,
@@ -114,6 +115,7 @@ type AuthedRequest = Request & {
   userId?: string;
   isAnonymous?: boolean;
   authProvider?: 'supabase' | 'firebase';
+  authUser?: User;
   member?: Member;
 };
 
@@ -290,6 +292,7 @@ async function requireUser(req: AuthedRequest, res: Response, next: NextFunction
     req.userId = data.user.id;
     req.isAnonymous = data.user.is_anonymous === true;
     req.authProvider = 'supabase';
+    req.authUser = data.user;
     return next();
   }
 
@@ -335,7 +338,7 @@ function requirePerm(perm?: Perm) {
       if (req.authProvider !== 'supabase') {
         return res.status(403).json({ error: 'Web team accounts must sign in with Supabase Auth.' });
       }
-      const { data, error: memberError } = await db
+      let { data, error: memberError } = await db
         .from('team_members')
         .select('id, user_id, supplier_id, full_name, email, role, status')
         .eq('user_id', req.userId!)
@@ -343,6 +346,14 @@ function requirePerm(perm?: Perm) {
       if (memberError) {
         console.error('Could not load team account:', memberError.message);
         return res.status(503).json({ error: 'Could not load your team access.' });
+      }
+      if (!data && req.authUser) {
+        try {
+          data = await claimPendingTeamInvitation(db, req.authUser);
+        } catch (error) {
+          console.error('Could not link team invitation:', error instanceof Error ? error.message : 'Unknown error');
+          return res.status(503).json({ error: 'Could not load your team access.' });
+        }
       }
       if (!data) return res.status(403).json({ error: 'No active team account' });
       const { data: role, error: roleError } = await db.from('team_roles')
@@ -391,14 +402,7 @@ function requirePerm(perm?: Perm) {
       };
       if (!m || m.status === 'suspended') return res.status(403).json({ error: 'No active team account' });
       if (m.status === 'invited') {
-        const { data: activated, error: activateError } = await db.from('team_members')
-          .update({ status: 'active' })
-          .eq('id', m.id)
-          .eq('user_id', req.userId!)
-          .eq('status', 'invited')
-          .select('id')
-          .maybeSingle();
-        if (activateError || !activated) {
+        if (!await activateTeamInvitation(db, m.id, req.userId!)) {
           return res.status(403).json({ error: 'Could not activate this team invitation.' });
         }
         m = { ...m, status: 'active' };
@@ -2679,6 +2683,8 @@ const supplierSchema = z.object({
 app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
   const parsed = supplierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const redirectTo = teamInvitationRedirect(process.env.TEAM_WEB_ORIGIN);
+  if (!redirectTo) return res.status(503).json({ error: 'Team invitation redirect is not configured.' });
   if (!memberCanAccessLocation(req.member!, parsed.data)) {
     return res.status(403).json({ error: 'You cannot add a farm outside your operation areas.' });
   }
@@ -2704,7 +2710,7 @@ app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: Authed
     return res.status(500).json({ error: 'Could not create the farm.' });
   }
 
-  const invited = await db.auth.admin.inviteUserByEmail(parsed.data.contact_email);
+  const invited = await db.auth.admin.inviteUserByEmail(parsed.data.contact_email, { redirectTo });
   if (invited.error || !invited.data.user) {
     await db.from('suppliers').delete().eq('id', supplier.id);
     return res.status(502).json({ error: invited.error?.message ?? 'Could not invite the farm owner.' });
@@ -2813,6 +2819,8 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
     return res.json({ ok: true });
   }
 
+  const redirectTo = teamInvitationRedirect(process.env.TEAM_WEB_ORIGIN);
+  if (!redirectTo) return res.status(503).json({ error: 'Team invitation redirect is not configured.' });
   const { data: s, error: se } = await db.from('suppliers').insert({
     name: a.farm_name, status: 'active', region: a.region ?? a.location,
     country_code: a.country_code,
@@ -2828,13 +2836,34 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
   }
   if (se) return res.status(500).json({ error: se.message });
 
-  const invited = await db.auth.admin.inviteUserByEmail(a.email);
-  if (invited.error) return res.status(500).json({ error: invited.error.message });
-  await db.from('team_members').insert({
+  const invited = await db.auth.admin.inviteUserByEmail(a.email, { redirectTo });
+  if (invited.error || !invited.data.user) {
+    const { error: cleanupError } = await db.from('suppliers').delete().eq('id', s.id);
+    if (cleanupError) {
+      console.error('Could not roll back farm after invitation failure:', cleanupError.message);
+      return res.status(500).json({ error: 'The invitation failed and the farm needs manual review.' });
+    }
+    return res.status(502).json({ error: 'Could not invite the farm owner.' });
+  }
+  const { error: memberError } = await db.from('team_members').insert({
     user_id: invited.data.user.id, supplier_id: s.id, full_name: a.contact_name,
-    email: a.email, role: 'supplier_owner', status: 'active',
+    email: a.email, role: 'supplier_owner', status: 'invited',
   });
-  await db.from('supplier_applications').update({ status: 'approved' }).eq('id', a.id);
+  if (memberError) {
+    console.error('Could not save farm owner invitation:', memberError.message);
+    const { error: cleanupError } = await db.from('suppliers').delete().eq('id', s.id);
+    if (cleanupError) console.error('Could not roll back farm after team invitation failure:', cleanupError.message);
+    // The invite may refer to a pre-existing Auth user; do not delete that account.
+    return res.status(500).json({ error: 'The farm owner invitation could not be saved and needs manual review.' });
+  }
+  const { data: approved, error: approvalError } = await db.from('supplier_applications')
+    .update({ status: 'approved' }).eq('id', a.id)
+    .in('status', ['pending', 'reviewing', 'new'])
+    .select('id').maybeSingle();
+  if (approvalError || !approved) {
+    console.error('Could not mark the farm application approved:', approvalError?.message ?? 'Application status changed.');
+    return res.status(500).json({ error: 'The farm and invitation were created, but the application needs manual review.' });
+  }
   res.json({ ok: true, supplier_id: s.id });
 });
 
@@ -3041,7 +3070,9 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
     return res.status(403).json({ error: 'Farm administrators can only invite farm-scoped roles.' });
   }
 
-  const invited = await db.auth.admin.inviteUserByEmail(parsed.data.email);
+  const redirectTo = teamInvitationRedirect(process.env.TEAM_WEB_ORIGIN);
+  if (!redirectTo) return res.status(503).json({ error: 'Team invitation redirect is not configured.' });
+  const invited = await db.auth.admin.inviteUserByEmail(parsed.data.email, { redirectTo });
   if (invited.error) return res.status(500).json({ error: invited.error.message });
   const { data, error } = await db.from('team_members').insert({
     user_id: invited.data.user.id, supplier_id,

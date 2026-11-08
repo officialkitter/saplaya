@@ -35,8 +35,8 @@ export type MemberStatus = 'invited' | 'active' | 'suspended';
 export type MovementKind = 'sale' | 'restock' | 'adjustment' | 'cancel_return';
 export type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 export const DELIVERY_ETAS: { value: DeliveryEta; title: string }[] = [
-  { value: 'morning', title: 'Morning delivery window' },
-  { value: 'evening', title: 'Evening delivery window' },
+  { value: 'morning', title: 'Morning' },
+  { value: 'evening', title: 'Evening' },
   { value: '12h', title: '12 hours' },
   { value: '24h', title: '24 hours' },
   { value: '48h', title: '48 hours' },

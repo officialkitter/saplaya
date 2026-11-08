@@ -547,21 +547,21 @@ export default function CheckoutScreen({ navigation }: any) {
           )}
 
           {pendingVerification ? (
-            <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.accent }]} onPress={retryVerification} disabled={busy}>
-              {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryText}>Retry payment verification</Text>}
+            <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.button }]} onPress={retryVerification} disabled={busy}>
+              {busy ? <ActivityIndicator color={tierTheme.buttonText} /> : <Text style={[styles.primaryText, { color: tierTheme.buttonText }]}>Retry payment verification</Text>}
             </Pressable>
           ) : (
             <Pressable
-              style={[styles.primaryButton, { backgroundColor: tierTheme.accent }, (busy || quoteLoading || !quote) && styles.disabled]}
+              style={[styles.primaryButton, { backgroundColor: tierTheme.button }, (busy || quoteLoading || !quote) && styles.disabled]}
               onPress={startCheckout}
               disabled={busy || quoteLoading || !quote}
             >
               {busy
-                ? <ActivityIndicator color={colors.white} />
-                : <Text style={styles.primaryText}>
+                ? <ActivityIndicator color={tierTheme.buttonText} />
+                : <Text style={[styles.primaryText, { color: tierTheme.buttonText }]}>
                   {checkoutPayment === 'cash_on_delivery'
-                    ? `Place order · ${formatPrice(estimate)}`
-                    : payment ? `Continue to payment · ${formatPrice(payment.amount)}` : 'Review secure payment'}
+                    ? 'Place order'
+                    : payment ? 'Continue to payment' : 'Review secure payment'}
                 </Text>}
             </Pressable>
           )}
@@ -627,18 +627,18 @@ const styles = StyleSheet.create({
   addressChipTextSelected: { color: colors.green },
   orderLine: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
   orderName: { flex: 1, color: colors.ink, fontSize: 14, fontWeight: '700' },
-  orderPrice: { color: colors.ink, fontSize: 14, fontWeight: '800' },
+  orderPrice: { flexShrink: 1, maxWidth: '48%', color: colors.ink, fontSize: 14, fontWeight: '800', textAlign: 'right' },
   totalCard: { marginTop: 14, padding: 16, borderRadius: radius.md, backgroundColor: colors.white },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
-  summaryLabel: { color: colors.muted, fontSize: 14 },
-  summaryValue: { color: colors.ink, fontSize: 14, fontWeight: '800' },
+  summaryRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, paddingVertical: 5 },
+  summaryLabel: { flex: 1, color: colors.muted, fontSize: 14 },
+  summaryValue: { flexShrink: 1, color: colors.ink, fontSize: 14, fontWeight: '800', textAlign: 'right' },
   summaryBold: { color: colors.ink, fontSize: 17, fontWeight: '900' },
   divider: { height: 1, marginVertical: 7, backgroundColor: colors.line },
   confirmText: { marginTop: 8, textAlign: 'right', color: colors.green, fontSize: 12, fontWeight: '800' },
   secureCard: { flexDirection: 'row', gap: 10, marginTop: 15, padding: 13, borderRadius: radius.md, backgroundColor: '#EFF7EC' },
   secureText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 18 },
-  primaryButton: { minHeight: 56, marginTop: 18, paddingHorizontal: 18, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: colors.white, fontSize: 16, fontWeight: '900', textAlign: 'center' },
+  primaryButton: { minHeight: 56, marginTop: 18, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
+  primaryText: { flexShrink: 1, color: colors.white, fontSize: 16, lineHeight: 21, fontWeight: '900', textAlign: 'center' },
   disabled: { opacity: 0.65 },
   disclaimer: { marginTop: 9, textAlign: 'center', color: colors.muted, fontSize: 12, lineHeight: 17 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 25 },

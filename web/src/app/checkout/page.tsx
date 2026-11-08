@@ -50,12 +50,12 @@ export default function CheckoutPage() {
       : option.value !== 'morning' && option.value !== 'evening',
   ), [deliveryOptions, isDailyDelivery]);
   const theme = mode === 'mega_bulk'
-    ? { accent: '#5E35B1', soft: '#EDE7F6', background: '#F6F1FC', label: 'Mega-bulk' }
+    ? { accent: '#5D4037', soft: '#EFEBE9', background: '#FAF7F5', label: 'Mega-bulk', button: '#5D4037', buttonText: '#FFFFFF' }
     : mode === 'bulk'
-      ? { accent: '#00897B', soft: '#E0F2F1', background: '#EFF9F8', label: 'Bulk' }
+      ? { accent: '#008C95', soft: '#E0F4F4', background: '#F3FAFA', label: 'Bulk', button: '#008C95', buttonText: '#FFFFFF' }
       : mode === 'wholesale'
-        ? { accent: '#8A5A26', soft: '#FFF4DF', background: '#FFFBF2', label: 'Wholesale' }
-        : { accent: '#2E7D32', soft: '#E8F5E9', background: '#F9FBF7', label: 'Retail' };
+        ? { accent: '#805400', soft: '#FFF8E1', background: '#FFFBF2', label: 'Wholesale', button: '#FFD54F', buttonText: '#15261A' }
+        : { accent: '#2E7D32', soft: '#E8F5E9', background: '#F9FBF7', label: 'Retail', button: '#2E7D32', buttonText: '#FFFFFF' };
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
     mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
@@ -168,7 +168,7 @@ export default function CheckoutPage() {
         <Link href="/" className="text-sm font-bold text-leaf-deep underline">Continue browsing</Link>
         <h1 className="mt-4 font-display text-3xl font-extrabold" style={{ color: theme.accent }}>{theme.label} basket</h1>
         <p role="status" className="mt-2 inline-flex rounded-full px-3 py-1 text-sm font-bold" style={{ color: theme.accent, backgroundColor: theme.soft }}>
-          {theme.label} mode · updates automatically when an item reaches its quantity tier
+          {theme.label}
         </p>
         {!lines.length ? (
           <div className="mt-6 rounded-3xl border border-line bg-white p-8 text-center">
@@ -178,9 +178,9 @@ export default function CheckoutPage() {
         ) : (
           <ul className="mt-6 space-y-3">
             {lines.map(({ product, qty }) => (
-              <li key={product.id} className="flex items-center gap-4 rounded-2xl border border-line bg-white p-4">
+              <li key={product.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 sm:flex-row sm:items-center sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate font-bold">{product.name}</h2>
+                  <h2 className="break-words font-bold">{product.name}</h2>
                   <p className="text-sm text-ink-mute">{product.category} · {formatTZS(volumePrice(product, qty, preferredMode) ?? product.retail_price)} per {product.unit}</p>
                   <p className="mt-1 text-xs font-extrabold" style={{ color: theme.accent }}>
                     {volumeTier(product, qty, preferredMode).replace('_', '-')} pricing
@@ -191,18 +191,20 @@ export default function CheckoutPage() {
                     </p>
                   )}
                 </div>
-                <label className="sr-only" htmlFor={`quantity-${product.id}`}>Quantity for {product.name}</label>
-                <input
-                  id={`quantity-${product.id}`}
-                  type="number"
-                  min="0.01"
-                  step="any"
-                  max={Math.min(10000, product.stock)}
-                  value={qty}
-                  onChange={(event) => setQuantity(product.id, Number(event.target.value))}
-                  className="w-24 rounded-xl border border-line px-3 py-2 text-center font-bold"
-                />
-                <button type="button" onClick={() => setQuantity(product.id, 0)} className="text-sm font-bold text-red-700 underline">Remove</button>
+                <div className="flex items-center justify-between gap-4 sm:justify-start">
+                  <label className="sr-only" htmlFor={`quantity-${product.id}`}>Quantity for {product.name}</label>
+                  <input
+                    id={`quantity-${product.id}`}
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    max={Math.min(10000, product.stock)}
+                    value={qty}
+                    onChange={(event) => setQuantity(product.id, Number(event.target.value))}
+                    className="w-24 rounded-xl border border-line px-3 py-2 text-center font-bold"
+                  />
+                  <button type="button" onClick={() => setQuantity(product.id, 0)} className="text-sm font-bold text-red-700 underline">Remove</button>
+                </div>
               </li>
             ))}
           </ul>
@@ -225,9 +227,14 @@ export default function CheckoutPage() {
               <option value="wholesale">Wholesale</option>
             </select>
           </label>
-          <label className="block text-sm font-bold">{isDailyDelivery ? 'Delivery window' : 'Bulk delivery timeframe'}
+          <label className="block text-sm font-bold">Delivery time
             <select value={deliveryWindow} onChange={(event) => setDeliveryWindow(event.target.value as DeliveryEta)} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
-              {availableDeliveryOptions.map((option) => <option key={option.value} value={option.value}>{option.title} · {formatTZS(option.fee)}</option>)}
+              {availableDeliveryOptions.map((option) => {
+                const title = option.value === 'morning' ? 'Morning'
+                  : option.value === 'evening' ? 'Evening'
+                    : option.title.replace(/\s+delivery window$/i, '');
+                return <option key={option.value} value={option.value}>{title} · {formatTZS(option.fee)}</option>;
+              })}
             </select>
           </label>
 
@@ -271,7 +278,7 @@ export default function CheckoutPage() {
             </div>
           )}
           {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-          <button type="button" onClick={() => { void submit(); }} disabled={busy || lines.length === 0} style={{ backgroundColor: theme.accent }} className="w-full rounded-xl px-4 py-3 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => { void submit(); }} disabled={busy || lines.length === 0} style={{ backgroundColor: theme.button, color: theme.buttonText }} className="w-full rounded-xl px-4 py-3 font-extrabold disabled:cursor-not-allowed disabled:opacity-50">
             {busy ? 'Placing order…' : paymentMethod === 'online' ? 'Continue to secure payment' : 'Place order'}
           </button>
         </div>

@@ -32,6 +32,10 @@ export function Providers({ children }: { children: ReactNode }) {
     const restore = async (hasSession: boolean) => {
       const version = ++requestVersion;
       try {
+        if (window.location.pathname === '/auth/callback') {
+          clearAdminData();
+          return;
+        }
         if (!hasSession) {
           clearAdminData();
           return;

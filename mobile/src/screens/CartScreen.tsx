@@ -96,7 +96,7 @@ export default function CartScreen({ navigation }: any) {
         }
       />
       <View style={styles.bar}>
-        <View>
+        <View style={styles.totalBlock}>
           <Text style={styles.totalLabel}>Estimate</Text>
           <Text style={styles.total}>{formatPrice(subtotal)}</Text>
         </View>
@@ -108,8 +108,8 @@ export default function CartScreen({ navigation }: any) {
           buttonLabel="Back to basket"
           onClose={() => setUnlocked(null)}
         />
-        <Pressable style={[styles.cta, { flex: 1, marginLeft: 16, backgroundColor: tierTheme.accent }]} onPress={openCheckout}>
-          <Text style={styles.ctaText}>Continue to checkout</Text>
+        <Pressable style={[styles.cta, { flex: 1, marginLeft: 12, backgroundColor: tierTheme.button }]} onPress={openCheckout} accessibilityRole="button">
+          <Text numberOfLines={2} style={[styles.ctaText, { color: tierTheme.buttonText }]}>Checkout</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -173,14 +173,15 @@ const styles = StyleSheet.create({
   remove: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, paddingVertical: 7 },
   removeText: { color: '#C62828', fontSize: 12, fontWeight: '800' },
   summary: { backgroundColor: colors.white, borderRadius: radius.md, padding: 16, marginTop: 4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  rowL: { color: colors.muted, fontSize: 15 },
-  rowV: { fontWeight: '800', color: colors.ink, fontSize: 15 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingVertical: 6 },
+  rowL: { flex: 1, color: colors.muted, fontSize: 15 },
+  rowV: { flexShrink: 1, fontWeight: '800', color: colors.ink, fontSize: 15, textAlign: 'right' },
   dist: { marginTop: 6, color: colors.muted, fontSize: 12 },
   bar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: colors.white, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, ...shadow },
+  totalBlock: { flexShrink: 1, minWidth: 0 },
   totalLabel: { color: colors.muted, fontSize: 13 },
-  total: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  total: { flexShrink: 1, fontSize: 20, fontWeight: '900', color: colors.ink },
   cta: { minHeight: 58, borderRadius: radius.lg, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   disabled: { opacity: 0.65 },
-  ctaText: { color: colors.white, fontSize: 16, fontWeight: '900', textAlign: 'center' },
+  ctaText: { flexShrink: 1, color: colors.white, fontSize: 15, fontWeight: '900', lineHeight: 19, textAlign: 'center' },
 });

@@ -48,6 +48,7 @@ export function Footer() {
           <a href="#how" className="hover:text-leaf">How it works</a>
           <a href="#farmers" className="hover:text-leaf">Sell on Saplaya</a>
           <a href="#faq" className="hover:text-leaf">Questions</a>
+          <Link href="/privacy" className="hover:text-leaf">Privacy policy</Link>
           <Link href="/login" className="hover:text-leaf">Member sign in</Link>
         </nav>
         <p className="text-sm text-ink-mute">&copy; 2026 Saplaya. Location access is optional and used to prioritize nearby farms.</p>
