@@ -10,7 +10,7 @@ export const colors = {
   line: '#E3EBE0',
   wood: '#B07A3E',
   woodDark: '#8A5A26',
-  bulk: '#008C9E',
+  bulk: '#007987',
   bulkLight: '#E0F5F7',
   megaBulk: '#6F4E37',
   megaBulkLight: '#F1E8E1',

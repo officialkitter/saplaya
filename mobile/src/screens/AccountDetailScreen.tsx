@@ -14,7 +14,8 @@ import {
 } from '../lib/api';
 import { Place, useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
-import { colors, radius, shadow } from '../theme';
+import { useStore } from '../store/StoreContext';
+import { colors, radius, shadow, volumeTheme } from '../theme';
 
 const TITLES: Record<string, string> = {
   profile: 'Personal details',
@@ -30,10 +31,12 @@ const TITLES: Record<string, string> = {
 };
 
 export default function AccountDetailScreen({ route, navigation }: any) {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const section: string = route.params?.section ?? 'profile';
   const title = TITLES[section] ?? 'Your account';
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       <ScreenHeader title={title} onBack={() => navigation.goBack()} />
       <MotiView style={{ flex: 1 }} from={{ opacity: 0, translateX: 12 }} animate={{ opacity: 1, translateX: 0 }} transition={{ type: 'timing', duration: 220 }}>
         {section === 'profile' && <ProfileDetails />}
@@ -52,6 +55,8 @@ export default function AccountDetailScreen({ route, navigation }: any) {
 }
 
 function ProfileDetails() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const { user, profile, saveProfile, uploadAvatar, requestEmailVerification } = useAccount();
   const [fullName, setFullName] = useState(profile.fullName);
   const [phone, setPhone] = useState(profile.phone);
@@ -130,18 +135,18 @@ function ProfileDetails() {
       <View style={styles.avatarBlock}>
         {profile.avatarUrl
           ? <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-          : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={40} color={colors.green} /></View>}
+          : <View style={[styles.avatarPlaceholder, { backgroundColor: theme.soft }]}><Ionicons name="person" size={40} color={theme.accent} /></View>}
         <Pressable onPress={choosePhoto} style={styles.photoButton} disabled={busy}>
-          <Ionicons name="camera-outline" size={17} color={colors.green} />
-          <Text style={styles.photoText}>{busy ? 'Saving…' : 'Change photo'}</Text>
+          <Ionicons name="camera-outline" size={17} color={theme.accent} />
+          <Text style={[styles.photoText, { color: theme.accent }]}>{busy ? 'Saving…' : 'Change photo'}</Text>
         </Pressable>
       </View>
       <Field label="Full name" value={fullName} onChangeText={setFullName} autoComplete="name" />
       <Field label="Email address" value={user?.email ?? ''} editable={false} />
       {user?.email && !user.is_anonymous && (
         <View style={styles.emailVerificationCard}>
-          <View style={styles.emailVerificationIcon}>
-            <Ionicons name={user.emailVerified ? 'checkmark-circle' : 'mail-unread-outline'} size={21} color={colors.green} />
+          <View style={[styles.emailVerificationIcon, { backgroundColor: theme.soft }]}>
+            <Ionicons name={user.emailVerified ? 'checkmark-circle' : 'mail-unread-outline'} size={21} color={theme.accent} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>{user.emailVerified ? 'Email verified' : 'Verify your email'}</Text>
@@ -153,7 +158,7 @@ function ProfileDetails() {
           </View>
           {!user.emailVerified && (
             <Pressable onPress={() => void sendVerification()} disabled={busy} hitSlop={8}>
-              <Text style={[styles.verificationAction, busy && styles.disabledAction]}>
+              <Text style={[styles.verificationAction, { color: theme.accent }, busy && styles.disabledAction]}>
                 {busy ? 'Sending…' : verificationSent ? 'Resend link' : 'Send link'}
               </Text>
             </Pressable>
@@ -168,6 +173,8 @@ function ProfileDetails() {
 }
 
 function AccountSecurity() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const { user, changePassword } = useAccount();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -201,7 +208,7 @@ function AccountSecurity() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {user?.phone && !user.email ? (
         <View style={styles.emailVerificationCard}>
-          <View style={styles.emailVerificationIcon}><Ionicons name="phone-portrait-outline" size={21} color={colors.green} /></View>
+          <View style={[styles.emailVerificationIcon, { backgroundColor: theme.soft }]}><Ionicons name="phone-portrait-outline" size={21} color={theme.accent} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>Sign-in by phone</Text>
             <Text style={styles.cardBody}>Your account uses one-time SMS codes instead of a password.</Text>
@@ -230,6 +237,8 @@ function AccountSecurity() {
 }
 
 function Addresses() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const { addresses, addAddress, selectAddress, removeAddress } = useAccount();
   const place = useDeliveryPlace();
   const { setPlace, useCurrentLocation } = useDeliveryActions();
@@ -296,9 +305,9 @@ function Addresses() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.intro}>Choose an address for delivery, or add a new one below.</Text>
       {addresses.map((saved) => (
-        <View key={saved.id} style={[styles.addressCard, saved.isDefault && styles.selectedAddress]}>
+        <View key={saved.id} style={[styles.addressCard, saved.isDefault && { borderColor: theme.accent, backgroundColor: theme.soft }]}>
           <Pressable style={styles.addressMain} onPress={() => choose(saved.id)}>
-            <Ionicons name={saved.isDefault ? 'checkmark-circle' : 'location-outline'} size={22} color={colors.green} />
+            <Ionicons name={saved.isDefault ? 'checkmark-circle' : 'location-outline'} size={22} color={theme.accent} />
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>{saved.label}{saved.isDefault ? ' · Selected' : ''}</Text>
               <Text style={styles.cardBody}>{saved.address}</Text>
@@ -314,9 +323,9 @@ function Addresses() {
         <Text style={styles.cardTitle}>Add a delivery address</Text>
         <Field label="Address label" value={label} onChangeText={setLabel} placeholder="Home, work…" />
         <Field label="Street, area or landmark" value={address} onChangeText={setAddress} placeholder="Add directions for your rider" />
-        <Pressable style={styles.locationButton} onPress={currentLocation} disabled={busy}>
-          <Ionicons name="locate-outline" size={19} color={colors.green} />
-          <Text style={styles.locationButtonText}>{busy ? 'Finding location…' : 'Use my current location'}</Text>
+        <Pressable style={[styles.locationButton, { backgroundColor: theme.soft }]} onPress={currentLocation} disabled={busy}>
+          <Ionicons name="locate-outline" size={19} color={theme.accent} />
+          <Text style={[styles.locationButtonText, { color: theme.accent }]}>{busy ? 'Finding location…' : 'Use my current location'}</Text>
         </Pressable>
         <Text style={styles.helper}>
           Map point: {coordinates.lat.toFixed(4)}, {coordinates.lng.toFixed(4)}{coordinates.approximate ? ' · approximate' : ''}
@@ -328,6 +337,8 @@ function Addresses() {
 }
 
 function PaymentMethods() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const { isSignedIn } = useAccount();
   const [methods, setMethods] = useState<SavedPaymentMethod[]>([]);
   const [phone, setPhone] = useState('');
@@ -403,12 +414,12 @@ function PaymentMethods() {
         <View style={styles.paymentLoading}><Text style={styles.helper}>Loading…</Text></View>
       ) : methods.length === 0 ? (
         <View style={styles.paymentEmpty}>
-          <Ionicons name="wallet-outline" size={30} color={colors.green} />
+          <Ionicons name="wallet-outline" size={30} color={theme.accent} />
           <Text style={styles.cardTitle}>Add your first mobile money number</Text>
         </View>
       ) : methods.map((method) => (
         <View key={method.id} style={[styles.paymentMethodRow, styles.addressCard]}>
-          <View style={styles.paymentIcon}><Ionicons name="phone-portrait-outline" size={22} color={colors.green} /></View>
+          <View style={[styles.paymentIcon, { backgroundColor: theme.soft }]}><Ionicons name="phone-portrait-outline" size={22} color={theme.accent} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>{method.label}{method.is_default ? ' · Preferred' : ''}</Text>
             <Text style={styles.cardBody}>{method.phone_e164}</Text>
@@ -427,7 +438,7 @@ function PaymentMethods() {
       </View>
 
       <View style={styles.paymentCardOption}>
-        <Ionicons name="card-outline" size={22} color={colors.green} />
+        <Ionicons name="card-outline" size={22} color={theme.accent} />
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>Cards</Text>
           <Text style={styles.cardBody}>Available in secure online checkout.</Text>
@@ -485,6 +496,8 @@ function Reviews() {
 }
 
 function SupplierRegistration({ navigation }: { navigation: any }) {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const { isSignedIn, user, profile } = useAccount();
   const [farmName, setFarmName] = useState('');
   const [contactName, setContactName] = useState(profile.fullName);
@@ -578,7 +591,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
   if (!isSignedIn) {
     return (
       <View style={styles.centerContent}>
-        <Ionicons name="storefront-outline" size={56} color={colors.green} />
+        <Ionicons name="storefront-outline" size={56} color={theme.accent} />
         <Text style={styles.cardTitle}>Apply to sell on Saplaya</Text>
         <Text style={styles.intro}>Sign in or create an account before registering your farm.</Text>
         <ActionButton title="Sign in or create account" onPress={() => navigation.navigate('Authentication')} />
@@ -608,6 +621,8 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
 }
 
 function HelpCenter() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const openSupport = async () => {
     try {
       await Linking.openURL('mailto:?subject=Saplaya%20customer%20support');
@@ -621,22 +636,24 @@ function HelpCenter() {
       <InfoCard icon="cube-outline" title="Where is my order?" body="Open My orders or Track in the bottom navigation to see delivery progress and order history." />
       <InfoCard icon="card-outline" title="When is payment confirmed?" body="Online orders are confirmed after the provider verifies payment. Payment-on-delivery orders are confirmed when you place them." />
       <InfoCard icon="location-outline" title="Can I change my delivery point?" body="Tap the delivery location at the top of the shop, or choose a saved address at checkout." />
-      <Pressable style={styles.locationButton} onPress={openSupport}>
-        <Ionicons name="mail-outline" size={20} color={colors.green} />
-        <Text style={styles.locationButtonText}>Email customer support</Text>
+      <Pressable style={[styles.locationButton, { backgroundColor: theme.soft }]} onPress={openSupport}>
+        <Ionicons name="mail-outline" size={20} color={theme.accent} />
+        <Text style={[styles.locationButtonText, { color: theme.accent }]}>Email customer support</Text>
       </Pressable>
     </ScrollView>
   );
 }
 
 function Legal() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.legalHero}>
-        <View style={styles.legalHeroIcon}><Ionicons name="shield-checkmark" size={23} color={colors.green} /></View>
-        <Text style={styles.legalTitle}>Your trust matters</Text>
-        <Text style={styles.legalIntro}>Here is how Saplaya orders work and how we use the information needed to serve you.</Text>
-        <Text style={styles.legalUpdated}>Saplaya customer terms and privacy</Text>
+      <View style={[styles.legalHero, { backgroundColor: theme.button }]}>
+        <View style={styles.legalHeroIcon}><Ionicons name="shield-checkmark" size={23} color={theme.accent} /></View>
+        <Text style={[styles.legalTitle, { color: theme.buttonText }]}>Your trust matters</Text>
+        <Text style={[styles.legalIntro, { color: theme.buttonText }]}>Here is how Saplaya orders work and how we use the information needed to serve you.</Text>
+        <Text style={[styles.legalUpdated, { color: theme.buttonText }]}>Saplaya customer terms and privacy</Text>
       </View>
       <LegalSection
         icon="document-text-outline"
@@ -676,10 +693,12 @@ function Legal() {
 }
 
 function About() {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.aboutMark}><BrandMark size={72} /></View>
-      <Text style={styles.aboutTitle}>Saplaya</Text>
+      <Text style={[styles.aboutTitle, { color: theme.accent }]}>Saplaya</Text>
       <Text style={styles.intro}>Fresh food from local farms, delivered with care.</Text>
       <InfoCard icon="storefront-outline" title="One easy shop" body="Shop seasonal produce from multiple local farms in one simple basket." />
       <InfoCard icon="people-outline" title="Supporting growers" body="We help independent farms reach nearby households and businesses." />
@@ -770,17 +789,21 @@ function LocationOptionPicker({
 }
 
 function ActionButton({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   return (
-    <Pressable style={[styles.actionButton, disabled && { opacity: 0.6 }]} onPress={onPress} disabled={disabled}>
-      <Text style={styles.actionText}>{title}</Text>
+    <Pressable style={[styles.actionButton, { backgroundColor: theme.button }, disabled && { opacity: 0.6 }]} onPress={onPress} disabled={disabled}>
+      <Text style={[styles.actionText, { color: theme.buttonText }]}>{title}</Text>
     </Pressable>
   );
 }
 
 function InfoCard({ icon, title, body }: { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; body: string }) {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   return (
     <View style={styles.infoCard}>
-      <View style={styles.infoIcon}><Ionicons name={icon} size={21} color={colors.green} /></View>
+      <View style={[styles.infoIcon, { backgroundColor: theme.soft }]}><Ionicons name={icon} size={21} color={theme.accent} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{title}</Text>
         <Text style={styles.cardBody}>{body}</Text>
@@ -790,9 +813,11 @@ function InfoCard({ icon, title, body }: { icon: React.ComponentProps<typeof Ion
 }
 
 function LegalSection({ icon, title, body }: { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; body: string }) {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   return (
     <View style={styles.legalSection}>
-      <View style={styles.infoIcon}><Ionicons name={icon} size={21} color={colors.green} /></View>
+      <View style={[styles.infoIcon, { backgroundColor: theme.soft }]}><Ionicons name={icon} size={21} color={theme.accent} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.legalSectionTitle}>{title}</Text>
         <Text style={styles.legalSectionBody}>{body}</Text>
@@ -830,7 +855,6 @@ const styles = StyleSheet.create({
   actionButton: { minHeight: 54, marginTop: 8, paddingHorizontal: 18, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
   actionText: { color: colors.white, fontWeight: '900', fontSize: 16 },
   addressCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, borderRadius: radius.md, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line },
-  selectedAddress: { borderColor: colors.green, backgroundColor: '#F4FAF1' },
   addressMain: { flex: 1, minHeight: 76, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   deleteAddress: { alignSelf: 'stretch', justifyContent: 'center', paddingHorizontal: 16 },
   cardTitle: { color: colors.ink, fontSize: 16, fontWeight: '900' },
