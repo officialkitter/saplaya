@@ -186,9 +186,9 @@ export default function HomeScreen({ navigation }: any) {
             from={{ translateX: -8 }}
             animate={{ translateX: 0 }}
             transition={{ type: 'timing', duration: 900, loop: true, repeatReverse: true }}
-            style={styles.van}
+            style={[styles.van, { backgroundColor: tierTheme.button }]}
           >
-            <MaterialCommunityIcons name="van-utility" size={24} color={colors.white} />
+            <MaterialCommunityIcons name="van-utility" size={24} color={tierTheme.buttonText} />
           </MotiView>
           <View style={{ flex: 1 }}>
             <Text style={styles.locSmall}>Delivering to · Tap to change</Text>
@@ -224,7 +224,7 @@ export default function HomeScreen({ navigation }: any) {
 
       <Text style={[styles.section, { color: tierTheme.accent }]}>Shop by category</Text>
       <View style={styles.searchPanel}>
-        <View style={[styles.searchBar, { borderColor: tierTheme.accent }]}>
+        <View style={[styles.searchBar, { borderColor: tierTheme.button, backgroundColor: mode === 'wholesale' ? tierTheme.soft : colors.white }]}>
           <Ionicons name="search" size={20} color={tierTheme.accent} />
           <TextInput value={query} onChangeText={setQuery} maxLength={100} placeholder="Search products" accessibilityLabel="Search products" style={styles.searchInput} returnKeyType="search" />
           {query ? <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search"><Ionicons name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
@@ -234,7 +234,7 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={[styles.chipText, fresh && { color: tierTheme.accent }]}>Harvested today</Text>
           </Pressable>
           {['', ...categories].map((value) => (
-            <Pressable key={value || 'all'} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityState={{ selected: category === value }} style={[styles.chip, category === value && { backgroundColor: tierTheme.soft, borderColor: tierTheme.accent }]}>
+            <Pressable key={value || 'all'} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityState={{ selected: category === value }} style={[styles.chip, category === value && { backgroundColor: tierTheme.soft, borderColor: tierTheme.button }]}>
               <Text style={[styles.chipText, category === value && { color: tierTheme.accent }]}>{value || 'All'}</Text>
             </Pressable>
           ))}
@@ -275,12 +275,12 @@ export default function HomeScreen({ navigation }: any) {
         ListHeaderComponent={header}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator color={colors.green} style={{ margin: 32 }} />
+            <ActivityIndicator color={tierTheme.accent} style={{ margin: 32 }} />
           ) : error ? (
             <Text style={styles.err} onPress={() => void refreshProducts()}>{error} — tap to retry</Text>
           ) : (
             <View style={styles.empty}>
-              <Ionicons name="basket-outline" size={40} color={colors.green} />
+              <Ionicons name="basket-outline" size={40} color={tierTheme.accent} />
               <Text style={styles.emptyTitle}>{searching ? 'No matching products' : 'No items in stock right now'}</Text>
               <Text style={styles.emptyText}>{searching ? 'Try another search or change your filters.' : 'New products will appear here as local farms add approved prices and available stock.'}</Text>
             </View>
@@ -288,11 +288,11 @@ export default function HomeScreen({ navigation }: any) {
         }
         ListFooterComponent={
           loading && items.length > 0 ? (
-            <ActivityIndicator color={colors.green} style={{ margin: 24 }} />
+            <ActivityIndicator color={tierTheme.accent} style={{ margin: 24 }} />
           ) : error && items.length > 0 ? (
             <Text style={styles.err} onPress={() => void refreshProducts()}>{error} — tap to retry</Text>
           ) : hasMore && items.length > 0 ? (
-            <Pressable onPress={() => void loadMore()} accessibilityRole="button"><Text style={styles.seeMoreFooter}>Load more products</Text></Pressable>
+            <Pressable onPress={() => void loadMore()} accessibilityRole="button"><Text style={[styles.seeMoreFooter, { color: tierTheme.accent }]}>Load more products</Text></Pressable>
           ) : null
         }
         onEndReachedThreshold={0.6}

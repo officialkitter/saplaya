@@ -11,6 +11,7 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
   const { mode, priceOf } = useStore();
   const tierTheme = volumeTheme(mode);
   const { formatPrice } = useCurrency();
+  const price = priceOf(product);
   return (
     <MotiView
       from={{ opacity: 0, translateY: 18 }}
@@ -29,7 +30,7 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
         <View style={styles.body}>
           <Text numberOfLines={1} style={styles.name}>{product.name}</Text>
           <Text style={[styles.price, { color: tierTheme.accent }]}>
-            {formatPrice(priceOf(product) ?? 0)}
+            {price === null ? 'Confirmed at checkout' : formatPrice(price)}
             <Text style={styles.unit}> / {product.unit}</Text>
           </Text>
           {mode === 'wholesale' && <Text style={[styles.min, { color: tierTheme.accent }]}>Min {product.wholesale_min_qty} {product.unit}</Text>}

@@ -66,23 +66,6 @@ export default function LoginPage() {
     }
   }
 
-  async function signInWithGoogle() {
-    setBusy(true);
-    setError('');
-    try {
-      const redirectTo = new URL('/auth/callback?returnTo=%2Flogin&flow=oauth', window.location.origin).toString();
-      const { error: oauthError } = await getSupabase().auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo, queryParams: { prompt: 'select_account' } },
-      });
-      if (oauthError) throw oauthError;
-    } catch (oauthError) {
-      console.error('Saplaya Google sign-in failed:', oauthError);
-      setError('Google sign-in isn’t available right now. Use your email and password.');
-      setBusy(false);
-    }
-  }
-
   async function sendPasswordReset() {
     if (!email.trim()) {
       setError('Enter your email address to receive a password reset link.');
@@ -171,16 +154,6 @@ export default function LoginPage() {
               {busy ? (resetMode ? 'Sending link…' : 'Signing in…') : (resetMode ? 'Send reset link' : 'Sign in')}
             </Button>
           </form>
-
-          {!resetMode && (
-            <>
-              <div className="my-5 flex items-center gap-3 text-sm font-semibold text-ink-mute"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
-              <button type="button" onClick={() => void signInWithGoogle()} disabled={busy} className="flex w-full items-center justify-center gap-3 rounded-2xl border border-line bg-white px-5 py-3.5 text-lg font-bold text-ink transition hover:bg-leaf-soft disabled:opacity-60">
-                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.3-2.1 3.5-5.2 3.5-8.9z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.5 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.900H1.400v3.100A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.400 14.400a7.200 7.200 0 0 1 0-4.800V6.500H1.400a12 12 0 0 0 0 10.900z"/><path fill="#EA4335" d="M12 4.800c1.800 0 3.300.6 4.600 1.800l3.400-3.400A12 12 0 0 0 1.400 6.500l4 3.100C6.300 6.900 8.900 4.800 12 4.800z"/></svg>
-                Continue with Google
-              </button>
-            </>
-          )}
 
           {resetMode &&  <p className="mt-5 text-center"><button type="button" onClick={() => { setResetMode(false); setError(''); setNotice(''); }} className="font-bold text-leaf underline underline-offset-4">Back to sign in</button></p>}
           {!resetMode && <p className="mt-8 text-center text-ink-soft">

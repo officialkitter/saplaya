@@ -9,7 +9,7 @@ import { City, Country, State } from 'country-state-city';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { deriveOrderMode, haversineKm, searchStorefrontProducts, selectStorefrontProducts, type OrderMode } from './storefront.js';
+import { deriveOrderMode, haversineKm, priceForQuantity, publicTierPrices, searchStorefrontProducts, selectStorefrontProducts, type OrderMode } from './storefront.js';
 import { customerOrders } from './customer-orders.js';
 import { activateTeamInvitation, claimPendingTeamInvitation, teamInvitationRedirect } from './team-auth.js';
 import {
@@ -23,6 +23,7 @@ import {
   getTransactionStatus,
   isPaymentCompleted,
   isPaymentFailed,
+  ipnAcknowledgement,
   registerIpn,
   submitOrder,
 } from './pesapal.js';
@@ -524,25 +525,6 @@ function matchesOrderMode(
   })), preferredMode) === mode;
 }
 
-function priceForQuantity(product: {
-  retail_price: number; wholesale_price: number; wholesale_min_qty: number;
-  bulk_price: number | null; mega_bulk_price: number | null;
-}, qty: number, mode: OrderMode): number | null {
-  const wholesaleMinimum = Math.max(1, Number(product.wholesale_min_qty));
-  if (qty >= wholesaleMinimum * 100) {
-    return typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)
-      ? Number(product.mega_bulk_price)
-      : null;
-  }
-  if (qty >= wholesaleMinimum * 10) {
-    return typeof product.bulk_price === 'number' && Number.isFinite(product.bulk_price)
-      ? Number(product.bulk_price)
-      : null;
-  }
-  if (mode === 'wholesale' || qty >= wholesaleMinimum) return Number(product.wholesale_price);
-  return Number(product.retail_price);
-}
-
 function distanceToSupplier(product: { suppliers?: unknown }, latitude: number, longitude: number): number | null {
   const relation = product.suppliers;
   const supplier = Array.isArray(relation) ? relation[0] : relation;
@@ -781,8 +763,7 @@ app.get('/products', async (req, res) => {
     retail_price: product.retail_price,
     wholesale_price: product.wholesale_price,
     wholesale_min_qty: product.wholesale_min_qty,
-    bulk_price: product.bulk_price ?? null,
-    mega_bulk_price: product.mega_bulk_price ?? null,
+    ...publicTierPrices(),
     stock: product.stock,
     image_url: product.image_url,
     harvested_at: product.harvested_at,
@@ -1703,6 +1684,8 @@ app.post('/admin/payments/pesapal/register-ipn', requirePerm('settings.manage'),
 app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
   const orderTrackingId = String(req.query.OrderTrackingId ?? req.query.orderTrackingId ?? '');
   const merchantReference = String(req.query.OrderMerchantReference ?? req.query.merchant_reference ?? '');
+  const notificationType = String(req.query.OrderNotificationType ?? req.query.orderNotificationType ?? 'IPNCHANGE');
+  const acknowledge = (status: 200 | 500) => ipnAcknowledgement(notificationType, orderTrackingId, merchantReference, status);
   if (!orderTrackingId) return res.status(400).json({ error: 'Missing Pesapal order tracking ID.' });
 
   const { data: payment, error: lookupError } = await db
@@ -1712,15 +1695,15 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
     .maybeSingle();
   if (lookupError) {
     console.error('Could not find checkout for Pesapal IPN:', lookupError.message);
-    return res.status(503).json({ error: 'Could not process payment notification.' });
+    return res.status(503).json(acknowledge(500));
   }
   if (!payment) {
-    console.warn('Acknowledging Pesapal IPN for an unknown tracking ID:', orderTrackingId);
-    return res.status(200).json({ status: 'acknowledged' });
+    console.warn('Could not find checkout for Pesapal IPN tracking ID:', orderTrackingId);
+    return res.status(503).json(acknowledge(500));
   }
   if (merchantReference && merchantReference !== payment.transaction_ref) {
     console.error('Pesapal IPN merchant reference did not match its tracking ID:', orderTrackingId);
-    return res.status(200).json({ status: 'acknowledged', processed: false });
+    return res.status(409).json(acknowledge(500));
   }
 
   try {
@@ -1730,7 +1713,7 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
       || (verified.merchant_reference && verified.merchant_reference !== payment.transaction_ref)
     ) {
       console.error('Pesapal status query returned a mismatched transaction:', orderTrackingId);
-      return res.status(200).json({ status: 'acknowledged', processed: false });
+      return res.status(409).json(acknowledge(500));
     }
     if (!isPaymentCompleted(verified)) {
       if (isPaymentFailed(verified)) {
@@ -1741,11 +1724,11 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
           .eq('status', 'pending');
         if (updateError) {
           console.error('Could not mark failed Pesapal payment from IPN:', updateError.message);
-          return res.status(503).json({ error: 'Could not update failed payment notification.' });
+          return res.status(503).json(acknowledge(500));
         }
-        return res.status(200).json({ status: 'acknowledged', processed: true });
+        return res.status(200).json(acknowledge(200));
       }
-      return res.status(200).json({ status: 'acknowledged', processed: false });
+      return res.status(200).json(acknowledge(200));
     }
 
     const { data: paymentDetails, error: paymentDetailsError } = await db
@@ -1755,14 +1738,14 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
       .maybeSingle();
     if (paymentDetailsError || !paymentDetails) {
       console.error('Could not load payment details for Pesapal IPN:', paymentDetailsError?.message);
-      return res.status(503).json({ error: 'Could not verify the notified payment.' });
+      return res.status(503).json(acknowledge(500));
     }
     if (
       Math.round(Number(verified.amount)) !== Number(paymentDetails.amount)
       || verified.currency !== paymentDetails.currency
     ) {
       console.error('Pesapal notified payment amount or currency did not match:', payment.transaction_ref);
-      return res.status(200).json({ status: 'acknowledged', processed: false });
+      return res.status(409).json(acknowledge(500));
     }
 
     const { error: fulfillmentError } = await db.rpc('complete_pesapal_payment', {
@@ -1771,12 +1754,12 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
     });
     if (fulfillmentError) {
       console.error('Verified Pesapal IPN could not fulfill its order:', fulfillmentError.message);
-      return res.status(503).json({ error: 'Could not fulfill verified payment notification.' });
+      return res.status(503).json(acknowledge(500));
     }
-    return res.status(200).json({ status: 'acknowledged', processed: true });
+    return res.status(200).json(acknowledge(200));
   } catch (error) {
     console.error('Pesapal IPN status verification failed:', error);
-    return res.status(503).json({ error: 'Could not verify payment notification; retry later.' });
+    return res.status(503).json(acknowledge(500));
   }
 });
 

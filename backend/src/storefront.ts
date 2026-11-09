@@ -8,6 +8,25 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
 
 export type OrderMode = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
 
+export function priceForQuantity(product: {
+  retail_price: number; wholesale_price: number; wholesale_min_qty: number;
+  bulk_price: number | null; mega_bulk_price: number | null;
+}, qty: number, mode: OrderMode): number | null {
+  const wholesaleMinimum = Math.max(1, Number(product.wholesale_min_qty));
+  if (qty >= wholesaleMinimum * 100) {
+    return typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)
+      ? Number(product.mega_bulk_price)
+      : null;
+  }
+  if (qty >= wholesaleMinimum * 10) {
+    return typeof product.bulk_price === 'number' && Number.isFinite(product.bulk_price)
+      ? Number(product.bulk_price)
+      : null;
+  }
+  if (mode === 'wholesale' || qty >= wholesaleMinimum) return Number(product.wholesale_price);
+  return Number(product.retail_price);
+}
+
 export type PricingPercentages = {
   wholesale: number;
   bulk: number;
@@ -110,6 +129,10 @@ export type CatalogSearch = {
   fresh?: boolean;
   sort?: 'default' | 'price_asc' | 'price_desc' | 'nearby';
 };
+
+export function publicTierPrices() {
+  return { bulk_price: null, mega_bulk_price: null } as const;
+}
 
 type SearchableListing = {
   name: string;

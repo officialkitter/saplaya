@@ -25,7 +25,7 @@ export function ModeToggle() {
       onLayout={(e) => setW(e.nativeEvent.layout.width)}
       accessibilityRole="switch"
       accessibilityLabel="Switch between retail and wholesale"
-      style={styles.track}
+      style={[styles.track, wholesale && { backgroundColor: '#FFF4C2', borderColor: colors.yellow }]}
     >
       <MotiView
         style={[styles.thumb, { width: Math.max(0, half - 6) }]}

@@ -232,6 +232,20 @@ export type PesapalTransactionStatus = {
   currency?: string;
 };
 
+export function ipnAcknowledgement(
+  notificationType: string,
+  orderTrackingId: string,
+  merchantReference: string,
+  status: 200 | 500,
+) {
+  return {
+    orderNotificationType: notificationType,
+    orderTrackingId,
+    orderMerchantReference: merchantReference,
+    status,
+  };
+}
+
 export async function getTransactionStatus(orderTrackingId: string): Promise<PesapalTransactionStatus> {
   const token = await getAccessToken();
   const response = await request<PesapalResponse>(

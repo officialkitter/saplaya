@@ -24,7 +24,7 @@ export function volumeTheme(tier: 'retail' | 'wholesale' | 'bulk' | 'mega_bulk')
     return { accent: colors.bulk, soft: colors.bulkLight, background: '#F1FAFB', surface: colors.white, button: colors.bulk, buttonText: colors.white };
   }
   if (tier === 'wholesale') {
-    return { accent: '#805400', soft: '#FFF8E1', background: '#FFFBF2', surface: colors.white, button: colors.yellow, buttonText: colors.ink };
+    return { accent: '#705000', soft: '#FFE47A', background: '#FFF4C2', surface: colors.white, button: colors.yellow, buttonText: colors.ink };
   }
   return { accent: colors.green, soft: '#E8F5E9', background: colors.cream, surface: colors.white, button: colors.green, buttonText: colors.white };
 }

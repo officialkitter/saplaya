@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from '@/components/Providers';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://www.saplaya.org'),
   title: 'Saplaya | Fresh from the farm to your door',
   description:
     'Saplaya brings vegetables and fruit from local farms to your door in hours. Shop retail or wholesale, and farms can join as suppliers.',

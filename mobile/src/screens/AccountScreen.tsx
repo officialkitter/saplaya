@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAccount } from '../store/AccountContext';
-import { colors, radius, shadow } from '../theme';
+import { useStore } from '../store/StoreContext';
+import { colors, radius, shadow, volumeTheme } from '../theme';
 
 const sections = [
   { key: 'profile', title: 'Personal details', subtitle: 'Your name, phone and profile photo', icon: 'person-outline' as const },
@@ -21,9 +22,11 @@ const sections = [
 
 export default function AccountScreen({ navigation }: any) {
   const { user, isSignedIn, profile } = useAccount();
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       <ScreenHeader title="Your account" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <MotiView from={{ opacity: 0, translateY: 12 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 260 }}>
@@ -31,7 +34,7 @@ export default function AccountScreen({ navigation }: any) {
             {profile.avatarUrl ? (
               <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
             ) : (
-              <View style={styles.avatarFallback}><Ionicons name="person" size={30} color={colors.green} /></View>
+              <View style={[styles.avatarFallback, { backgroundColor: theme.soft }]}><Ionicons name="person" size={30} color={theme.accent} /></View>
             )}
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{profile.fullName || (isSignedIn ? 'Welcome to Saplaya' : 'Welcome, shopper')}</Text>
@@ -40,8 +43,8 @@ export default function AccountScreen({ navigation }: any) {
           </View>
         </MotiView>
 
-        <Pressable style={styles.orderShortcut} onPress={() => navigation.navigate('Tabs', { screen: 'Tracking' })}>
-          <View style={styles.shortcutIcon}><Ionicons name="receipt-outline" size={22} color={colors.green} /></View>
+        <Pressable style={[styles.orderShortcut, { backgroundColor: theme.soft }]} onPress={() => navigation.navigate('Tabs', { screen: 'Tracking' })}>
+          <View style={styles.shortcutIcon}><Ionicons name="receipt-outline" size={22} color={theme.accent} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>My orders</Text>
             <Text style={styles.rowSubtitle}>{isSignedIn ? 'Track deliveries and view your order history' : 'Track a delivery in this session'}</Text>
@@ -64,7 +67,7 @@ export default function AccountScreen({ navigation }: any) {
                 onPress={() => navigation.navigate('AccountDetail', { section: section.key })}
                 accessibilityRole="button"
               >
-                <View style={styles.rowIcon}><Ionicons name={section.icon} size={21} color={colors.green} /></View>
+                <View style={[styles.rowIcon, { backgroundColor: theme.soft }]}><Ionicons name={section.icon} size={21} color={theme.accent} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{section.title}</Text>
                   <Text style={styles.rowSubtitle}>{section.subtitle}</Text>
@@ -76,13 +79,13 @@ export default function AccountScreen({ navigation }: any) {
         </View>
 
         <Pressable
-          style={[styles.authButton, isSignedIn && styles.signOutButton]}
+          style={[styles.authButton, { backgroundColor: theme.button }, isSignedIn && styles.signOutButton]}
           onPress={() => isSignedIn
             ? navigation.navigate('AccountDetail', { section: 'signout' })
             : navigation.navigate('Authentication')}
         >
-          <Ionicons name={isSignedIn ? 'log-out-outline' : 'log-in-outline'} size={20} color={isSignedIn ? '#C62828' : colors.white} />
-          <Text style={[styles.authText, isSignedIn && { color: '#C62828' }]}>
+          <Ionicons name={isSignedIn ? 'log-out-outline' : 'log-in-outline'} size={20} color={isSignedIn ? '#C62828' : theme.buttonText} />
+          <Text style={[styles.authText, { color: theme.buttonText }, isSignedIn && { color: '#C62828' }]}>
             {isSignedIn ? 'Sign out' : 'Sign in or create an account'}
           </Text>
         </Pressable>

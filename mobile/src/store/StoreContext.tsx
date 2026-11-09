@@ -13,7 +13,7 @@ type Ctx = {
   count: number;
   priceOf: (p: Product, qty?: number) => number | null;
   tierOf: (p: Product, qty: number) => ReturnType<typeof volumeTier>;
-  subtotal: number;
+  subtotal: number | null;
   lastOrderId: string | null;
   setLastOrderId: (id: string | null) => void;
 };
@@ -60,7 +60,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setLastOrderId,
       count: lines.reduce((n, l) => n + l.qty, 0),
       tierOf,
-      subtotal: lines.reduce((n, l) => n + (priceOf(l.product, l.qty) ?? l.product.wholesale_price) * l.qty, 0),
+      subtotal: lines.reduce<number | null>((total, line) => {
+        const price = priceOf(line.product, line.qty);
+        return total === null || price === null ? null : total + price * line.qty;
+      }, 0),
     }),
     [mode, baseMode, lines, add, setQty, clear, priceOf, tierOf, lastOrderId]
   );

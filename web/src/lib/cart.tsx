@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { isStorefrontProduct, type StorefrontProduct } from './storefront';
+import { isStorefrontProduct, withoutProtectedPrices, type StorefrontProduct } from './storefront';
 import { orderMode, type VolumeTier } from './volume';
 
 export type StorefrontCartLine = { product: StorefrontProduct; qty: number };
@@ -37,7 +37,7 @@ export function StorefrontCartProvider({ children }: { children: ReactNode }) {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed: unknown = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.every(isCartLine)) setLines(parsed);
+        if (Array.isArray(parsed) && parsed.every(isCartLine)) setLines(parsed.map((line) => ({ ...line, product: withoutProtectedPrices(line.product) })));
       }
     } catch (error) {
       console.error('Could not restore the web basket:', error);
@@ -56,6 +56,7 @@ export function StorefrontCartProvider({ children }: { children: ReactNode }) {
   }, [lines, ready]);
 
   const add = useCallback((product: StorefrontProduct) => {
+    product = withoutProtectedPrices(product);
     setLines((current) => {
       const existing = current.find((line) => line.product.id === product.id);
       if (!existing) return [...current, { product, qty: 1 }];

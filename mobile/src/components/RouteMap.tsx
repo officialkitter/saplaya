@@ -3,7 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import Animated, { useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors, OrderStatus, radius, statusColor } from '../theme';
+import { colors, OrderStatus, radius, statusColor, volumeTheme } from '../theme';
+import { useStore } from '../store/StoreContext';
 
 const W = 340;
 const H = 190;
@@ -26,6 +27,8 @@ const ACircle = Animated.createAnimatedComponent(Circle);
 
 /** Stylized route map (SVG). The marker glides along the route as the status advances. */
 export default function RouteMap({ status }: { status: OrderStatus }) {
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const p = useSharedValue(progressFor[status]);
   useEffect(() => {
     p.value = withTiming(progressFor[status], { duration: 1200 });
@@ -48,8 +51,8 @@ export default function RouteMap({ status }: { status: OrderStatus }) {
       <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`}>
         <Defs>
           <LinearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#EAF4E4" />
-            <Stop offset="1" stopColor="#F9FBF7" />
+            <Stop offset="0" stopColor={theme.soft} />
+            <Stop offset="1" stopColor={theme.background} />
           </LinearGradient>
         </Defs>
         <Rect width={W} height={H} fill="url(#g)" />
@@ -58,7 +61,7 @@ export default function RouteMap({ status }: { status: OrderStatus }) {
         {[70, 160, 250].map((x) => <Path key={x} d={`M${x} 0 V${H}`} stroke="#DDE8D8" strokeWidth={10} />)}
         <Path d={PATH} stroke="#C9D8C3" strokeWidth={8} fill="none" strokeLinecap="round" />
         <Path d={PATH} stroke={c} strokeWidth={4} strokeDasharray="2 10" fill="none" strokeLinecap="round" />
-        <Circle cx={start.x} cy={start.y} r={9} fill={colors.green} />
+        <Circle cx={start.x} cy={start.y} r={9} fill={theme.accent} />
         <Circle cx={end.x} cy={end.y} r={9} fill={colors.yellowDeep} stroke="#fff" strokeWidth={3} />
         <ACircle animatedProps={props} r={12} fill={c} stroke="#fff" strokeWidth={4} />
       </Svg>

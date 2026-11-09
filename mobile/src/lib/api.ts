@@ -1,6 +1,7 @@
 import { API_URL, supabase } from './supabase';
 import { getCustomerApiToken } from './customer-auth';
 import { Mode, Product, Promo } from '../types';
+import { confirmedOrder } from './payment-confirmation';
 
 const PAGE = 20;
 
@@ -193,11 +194,12 @@ export async function registerPushToken(token: string, platform: 'android' | 'io
   });
 }
 
-export function confirmPayment(txRef: string, orderTrackingId: string) {
-  return authenticatedRequest<{ order_id: string }>('/payments/confirm', {
+export async function confirmPayment(txRef: string, orderTrackingId: string) {
+  const result = await authenticatedRequest<unknown>('/payments/confirm', {
     method: 'POST',
     body: { tx_ref: txRef, order_tracking_id: orderTrackingId },
   });
+  return confirmedOrder(result);
 }
 
 export function fetchOrderHistory() {

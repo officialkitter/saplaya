@@ -3,7 +3,19 @@ import { test } from 'node:test';
 import {
   isPaymentCompleted,
   isPaymentFailed,
+  ipnAcknowledgement,
 } from '../src/pesapal.js';
+
+test('IPN acknowledgement includes the provider-required fields and status', () => {
+  for (const status of [200, 500] as const) {
+    assert.deepEqual(ipnAcknowledgement('IPNCHANGE', 'tracking-id', 'merchant-reference', status), {
+      orderNotificationType: 'IPNCHANGE',
+      orderTrackingId: 'tracking-id',
+      orderMerchantReference: 'merchant-reference',
+      status,
+    });
+  }
+});
 
 test('PesaPal API status_code 1 is verified as completed', () => {
   assert.equal(isPaymentCompleted({ status_code: 1 }), true);

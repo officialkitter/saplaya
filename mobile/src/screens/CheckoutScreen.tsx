@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
-import { CheckoutQuote, confirmPayment, DeliveryEta, DeliveryOption, deliveryWindowLabel, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
+import { CheckoutQuote, confirmPayment, CustomerOrder, DeliveryEta, DeliveryOption, deliveryWindowLabel, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
@@ -21,7 +21,7 @@ type PaymentSession = Awaited<ReturnType<typeof initializePayment>>;
 type CheckoutPayment = 'online' | 'cash_on_delivery';
 
 export default function CheckoutScreen({ navigation }: any) {
-  const { lines, mode, subtotal, priceOf, clear, setLastOrderId } = useStore();
+  const { lines, mode, priceOf, clear, setLastOrderId } = useStore();
   const { currency, formatPrice, ratesUpdatedAt, ratesUnavailable } = useCurrency();
   const { profile, user, addresses, isSignedIn, selectAddress } = useAccount();
   const place = useDeliveryPlace();
@@ -216,22 +216,26 @@ export default function CheckoutScreen({ navigation }: any) {
     setPendingVerification({ txRef, orderTrackingId });
     try {
       const result = await confirmPayment(txRef, orderTrackingId);
+      const orderItems = payment && quote ? buildOrderItems(payment.items, quote) : null;
+      if (!payment || !orderItems) {
+        clear();
+        setLastOrderId(result.order_id);
+        setPayment(null);
+        setPendingVerification(null);
+        navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, newlyPlaced: true } });
+        Alert.alert('Order confirmed', 'The checkout summary is unavailable. Check order tracking or contact Saplaya with your order ID.');
+        return;
+      }
       const order = {
         id: result.order_id,
         mode,
         status: 'pending' as const,
-        subtotal: payment?.subtotal ?? quote?.subtotal ?? subtotal,
-        delivery_fee: payment?.delivery_fee ?? quote?.delivery_fee ?? 0,
+        subtotal: payment.subtotal,
+        delivery_fee: payment.delivery_fee,
         created_at: new Date().toISOString(),
         delivery_window: deliveryWindow,
         payment_method: 'pesapal' as const,
-        order_items: lines.map((line) => ({
-          qty: line.qty,
-          unit_price: payment?.items.find((item) =>
-            item.product_id === quote?.items.find((quoted) => quoted.requested_product_id === line.product.id)?.product_id,
-          )?.unit_price ?? quote?.items.find((item) => item.requested_product_id === line.product.id)?.unit_price ?? priceOf(line.product, line.qty) ?? 0,
-          products: { name: line.product.name, unit: line.product.unit, image_url: line.product.image_url },
-        })),
+        order_items: orderItems,
       };
       clear();
       setLastOrderId(result.order_id);
@@ -244,6 +248,21 @@ export default function CheckoutScreen({ navigation }: any) {
         `${error instanceof Error ? error.message : 'The payment could not be verified right now.'} Your basket is still here. Retry verification before starting another payment.`,
       );
     }
+  };
+
+  const buildOrderItems = (pricedItems: { product_id: string; unit_price: number }[], currentQuote: CheckoutQuote): CustomerOrder['order_items'] | null => {
+    const items: CustomerOrder['order_items'] = [];
+    for (const line of lines) {
+      const quoted = currentQuote.items.find((item) => item.requested_product_id === line.product.id);
+      const priced = pricedItems.find((item) => item.product_id === quoted?.product_id);
+      if (!priced || !Number.isFinite(priced.unit_price)) return null;
+      items.push({
+        qty: line.qty,
+        unit_price: priced.unit_price,
+        products: { name: line.product.name, unit: line.product.unit, image_url: line.product.image_url },
+      });
+    }
+    return items;
   };
 
   const startCheckout = async () => {
@@ -264,7 +283,8 @@ export default function CheckoutScreen({ navigation }: any) {
           lng: place.lng,
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
         });
-        const order = {
+        const orderItems = quote ? buildOrderItems(result.items, quote) : null;
+        const order = orderItems ? {
           id: result.order_id,
           mode,
           status: 'pending' as const,
@@ -273,17 +293,12 @@ export default function CheckoutScreen({ navigation }: any) {
           created_at: result.created_at,
           delivery_window: result.delivery_window,
           payment_method: 'cash_on_delivery' as const,
-          order_items: lines.map((line) => ({
-            qty: line.qty,
-            unit_price: result.items.find((item) =>
-              item.product_id === quote?.items.find((quoted) => quoted.requested_product_id === line.product.id)?.product_id,
-            )?.unit_price ?? quote?.items.find((item) => item.requested_product_id === line.product.id)?.unit_price ?? priceOf(line.product, line.qty) ?? 0,
-            products: { name: line.product.name, unit: line.product.unit, image_url: line.product.image_url },
-          })),
-        };
+          order_items: orderItems,
+        } : undefined;
         clear();
         setLastOrderId(result.order_id);
         navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order, newlyPlaced: true } });
+        if (!order) Alert.alert('Order confirmed', 'The checkout summary is unavailable. Check order tracking or contact Saplaya with your order ID.');
         return;
       }
 
@@ -344,11 +359,11 @@ export default function CheckoutScreen({ navigation }: any) {
       <SafeAreaView style={[styles.root, { backgroundColor: tierTheme.background }]} edges={['top']}>
         <ScreenHeader title="Checkout" onBack={() => navigation.goBack()} />
         <View style={styles.empty}>
-          <Ionicons name="basket-outline" size={74} color={colors.greenLight} />
+          <Ionicons name="basket-outline" size={74} color={tierTheme.accent} />
           <Text style={styles.heading}>Your basket is empty</Text>
           <Text style={styles.subheading}>Add something fresh before checkout.</Text>
-          <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('Tabs', { screen: 'Home' })}>
-            <Text style={styles.primaryText}>Back to shop</Text>
+          <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.button }]} onPress={() => navigation.navigate('Tabs', { screen: 'Home' })}>
+            <Text style={[styles.primaryText, { color: tierTheme.buttonText }]}>Back to shop</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -368,7 +383,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
           <View style={styles.deliveryCard}>
             <View style={styles.deliveryTop}>
-              <View style={styles.pin}><Ionicons name="location" size={20} color={colors.green} /></View>
+              <View style={[styles.pin, { backgroundColor: tierTheme.soft }]}><Ionicons name="location" size={20} color={tierTheme.accent} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.label}>Delivering to</Text>
                 <Text style={styles.address}>{place.label}</Text>
@@ -380,7 +395,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 </Text>
               </View>
               <Pressable onPress={() => navigation.navigate('LocationPicker')} accessibilityLabel="Change delivery location">
-                <Text style={styles.change}>Change</Text>
+                <Text style={[styles.change, { color: tierTheme.accent }]}>Change</Text>
               </Pressable>
             </View>
             {addresses.length > 0 && (
@@ -388,10 +403,10 @@ export default function CheckoutScreen({ navigation }: any) {
                 {addresses.map((address) => (
                   <Pressable
                     key={address.id}
-                    style={[styles.addressChip, selectedAddressId === address.id && styles.addressChipSelected]}
+                    style={[styles.addressChip, selectedAddressId === address.id && [styles.addressChipSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
                     onPress={() => chooseAddress(address.id)}
                   >
-                    <Text style={[styles.addressChipText, selectedAddressId === address.id && styles.addressChipTextSelected]}>{address.label}</Text>
+                    <Text style={[styles.addressChipText, selectedAddressId === address.id && [styles.addressChipTextSelected, { color: tierTheme.accent }]]}>{address.label}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -406,7 +421,7 @@ export default function CheckoutScreen({ navigation }: any) {
             {availableDeliveryOptions.map((option) => (
               <Pressable
                 key={option.value}
-                style={[styles.choiceCard, deliveryWindow === option.value && styles.choiceSelected]}
+                style={[styles.choiceCard, deliveryWindow === option.value && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
                 onPress={() => {
                   setDeliveryWindow(option.value);
                   setPayment(null);
@@ -433,7 +448,7 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="checkbox"
               accessibilityState={{ checked: acceptedDeliveryFee }}
             >
-              <Ionicons name={acceptedDeliveryFee ? 'checkbox' : 'square-outline'} size={22} color={acceptedDeliveryFee ? colors.green : colors.muted} />
+              <Ionicons name={acceptedDeliveryFee ? 'checkbox' : 'square-outline'} size={22} color={acceptedDeliveryFee ? tierTheme.accent : colors.muted} />
               <Text style={styles.choiceHint}>I accept the delivery and selected-timeframe charges.</Text>
             </Pressable>
           )}
@@ -447,12 +462,12 @@ export default function CheckoutScreen({ navigation }: any) {
             return (
               <View key={line.product.id} style={styles.orderLine}>
                 <Text style={styles.orderName}>{line.qty} × {line.product.name}</Text>
-                <Text style={styles.orderPrice}>{unitPrice === null ? 'Price not set' : formatPrice(unitPrice * line.qty)}</Text>
+                <Text style={[styles.orderPrice, { color: tierTheme.accent }]}>{unitPrice === null ? 'Confirmed at checkout' : formatPrice(unitPrice * line.qty)}</Text>
               </View>
             );
           })}
           <View style={styles.totalCard}>
-            <SummaryRow label="Items" value={formatPrice(payment?.subtotal ?? quote?.subtotal ?? 0)} />
+            <SummaryRow label="Items" value={payment ? formatPrice(payment.subtotal) : quote ? formatPrice(quote.subtotal) : 'Awaiting quote'} />
             <SummaryRow
               label={`Distance-based delivery · ${km === undefined ? 'pending' : `${km.toFixed(1)} km`}`}
               value={quote ? quote.distance_fee === 0 ? 'FREE' : formatPrice(quote.distance_fee) : 'Unavailable'}
@@ -465,7 +480,7 @@ export default function CheckoutScreen({ navigation }: any) {
               value={payment ? formatPrice(payment.amount) : quote ? formatPrice(estimate) : quoteLoading ? 'Calculating…' : 'Unavailable'}
               bold
             />
-            <Text style={styles.confirmText}>
+            <Text style={[styles.confirmText, { color: tierTheme.accent }]}>
               {ratesUnavailable
                 ? 'Exchange rate unavailable · values shown in TZS.'
                 : currency === 'TZS'
@@ -473,13 +488,13 @@ export default function CheckoutScreen({ navigation }: any) {
                   : `Approximate ${currency} display · exchange rate dated ${ratesUpdatedAt}`}
               {' · '}Charged and settled in TZS.
             </Text>
-            {payment && <Text style={styles.confirmText}>Server-confirmed amount · {payment.currency}</Text>}
+            {payment && <Text style={[styles.confirmText, { color: tierTheme.accent }]}>Server-confirmed amount · {payment.currency}</Text>}
           </View>
 
           <Text style={styles.heading}>Payment method</Text>
           <View style={styles.choiceRow}>
             <Pressable
-              style={[styles.choiceCard, checkoutPayment === 'online' && styles.choiceSelected]}
+              style={[styles.choiceCard, checkoutPayment === 'online' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
               onPress={() => {
                 setCheckoutPayment('online');
                 setPayment(null);
@@ -487,12 +502,12 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="radio"
               accessibilityState={{ selected: checkoutPayment === 'online' }}
             >
-              <Ionicons name="phone-portrait-outline" size={21} color={checkoutPayment === 'online' ? colors.green : colors.muted} />
+              <Ionicons name="phone-portrait-outline" size={21} color={checkoutPayment === 'online' ? tierTheme.accent : colors.muted} />
               <Text style={styles.choiceTitle}>Pay online</Text>
               <Text style={styles.choiceHint}>Mobile money or card</Text>
             </Pressable>
             <Pressable
-              style={[styles.choiceCard, checkoutPayment === 'cash_on_delivery' && styles.choiceSelected]}
+              style={[styles.choiceCard, checkoutPayment === 'cash_on_delivery' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
               onPress={() => {
                 setCheckoutPayment('cash_on_delivery');
                 setPayment(null);
@@ -500,7 +515,7 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="radio"
               accessibilityState={{ selected: checkoutPayment === 'cash_on_delivery' }}
             >
-              <Ionicons name="cash-outline" size={21} color={checkoutPayment === 'cash_on_delivery' ? colors.green : colors.muted} />
+              <Ionicons name="cash-outline" size={21} color={checkoutPayment === 'cash_on_delivery' ? tierTheme.accent : colors.muted} />
               <Text style={styles.choiceTitle}>Payment on delivery</Text>
               <Text style={styles.choiceHint}>Pay when it arrives</Text>
             </Pressable>
@@ -514,17 +529,17 @@ export default function CheckoutScreen({ navigation }: any) {
                   {savedPaymentMethods.map((method) => (
                     <Pressable
                       key={method.id}
-                      style={[styles.savedMethod, paymentPhone === method.phone_e164 && styles.savedMethodSelected]}
+                      style={[styles.savedMethod, paymentPhone === method.phone_e164 && [styles.savedMethodSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
                       onPress={() => setPaymentPhone(method.phone_e164)}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: paymentPhone === method.phone_e164 }}
                     >
-                      <Ionicons name="phone-portrait-outline" size={20} color={colors.green} />
+                      <Ionicons name="phone-portrait-outline" size={20} color={tierTheme.accent} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.choiceTitle}>{method.label}</Text>
                         <Text style={styles.choiceHint}>{method.phone_e164}</Text>
                       </View>
-                      {paymentPhone === method.phone_e164 && <Ionicons name="checkmark-circle" size={21} color={colors.green} />}
+                      {paymentPhone === method.phone_e164 && <Ionicons name="checkmark-circle" size={21} color={tierTheme.accent} />}
                     </Pressable>
                   ))}
                 </View>
@@ -540,8 +555,8 @@ export default function CheckoutScreen({ navigation }: any) {
           )}
 
           {checkoutPayment === 'online' && (
-            <View style={styles.secureCard}>
-              <Ionicons name="shield-checkmark-outline" size={22} color={colors.green} />
+            <View style={[styles.secureCard, { backgroundColor: tierTheme.soft }]}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={tierTheme.accent} />
               <Text style={styles.secureText}>Complete payment securely using the available mobile money or card options.</Text>
             </View>
           )}

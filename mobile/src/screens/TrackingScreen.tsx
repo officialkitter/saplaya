@@ -22,7 +22,7 @@ import StatusPipeline from '../components/StatusPipeline';
 import { useAccount } from '../store/AccountContext';
 import { formatTanzaniaDate, formatTanzaniaDateTime } from '../lib/date-time';
 import { useStore } from '../store/StoreContext';
-import { colors, OrderStatus, radius, statusColor, statusLabel } from '../theme';
+import { colors, OrderStatus, radius, statusColor, statusLabel, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
 
@@ -38,7 +38,8 @@ export default function TrackingScreen({ route, navigation }: any) {
   const { width } = useWindowDimensions();
   const isFocused = useIsFocused();
   const { isSignedIn } = useAccount();
-  const { lastOrderId } = useStore();
+  const { lastOrderId, mode } = useStore();
+  const theme = volumeTheme(mode);
   const { formatPrice } = useCurrency();
   const routeOrder: CustomerOrder | undefined = route?.params?.order;
   const routeOrderId: string | null = route?.params?.orderId ?? routeOrder?.id ?? lastOrderId;
@@ -202,9 +203,9 @@ export default function TrackingScreen({ route, navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.h1}>Track order</Text>
+        <Text style={[styles.h1, { color: theme.accent }]}>Track order</Text>
 
         {selectedOrder ? (
           <>
@@ -238,7 +239,7 @@ export default function TrackingScreen({ route, navigation }: any) {
                 ))}
                 <View style={[styles.amountRow, styles.grandTotal]}>
                   <Text style={styles.grandTotalLabel}>Order total</Text>
-                  <Text style={styles.grandTotalValue}>
+                  <Text style={[styles.grandTotalValue, { color: theme.accent }]}>
                     {formatPrice(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
                   </Text>
                 </View>
@@ -248,8 +249,8 @@ export default function TrackingScreen({ route, navigation }: any) {
         ) : (
           <View style={styles.trackEmpty}>
             {loading
-              ? <ActivityIndicator size="large" color={colors.green} />
-              : <Ionicons name="receipt-outline" size={64} color={colors.greenLight} />}
+              ? <ActivityIndicator size="large" color={theme.accent} />
+              : <Ionicons name="receipt-outline" size={64} color={theme.accent} />}
             <Text style={styles.emptyTitle}>{loading ? 'Loading your orders…' : 'No active order'}</Text>
             {!loading && <Text style={styles.emptyText}>Your delivery progress will appear here after you place an order.</Text>}
           </View>
@@ -263,7 +264,7 @@ export default function TrackingScreen({ route, navigation }: any) {
                 <Text style={styles.sectionTitle}>My orders</Text>
                 <Text style={styles.sectionSubtitle}>Switch between active deliveries and past orders.</Text>
               </View>
-              {loading && <ActivityIndicator size="small" color={colors.green} />}
+              {loading && <ActivityIndicator size="small" color={theme.accent} />}
             </View>
 
             <OrderViewToggle
@@ -276,7 +277,7 @@ export default function TrackingScreen({ route, navigation }: any) {
             {historyError && <Text style={styles.error}>{historyError}</Text>}
             {visibleOrders.length === 0 ? (
               <View style={styles.ordersEmpty}>
-                <Ionicons name={orderView === 'ongoing' ? 'bicycle-outline' : 'time-outline'} size={40} color={colors.greenLight} />
+                <Ionicons name={orderView === 'ongoing' ? 'bicycle-outline' : 'time-outline'} size={40} color={theme.accent} />
                 <Text style={styles.emptyTitle}>
                   {orderView === 'ongoing' ? 'No ongoing orders' : 'Your order history is empty'}
                 </Text>
@@ -315,8 +316,8 @@ export default function TrackingScreen({ route, navigation }: any) {
                         <Text style={styles.detailsTitle}>Order details</Text>
                         <Text style={styles.detailsDate}>{formatTanzaniaDateTime(selectedOrder.created_at)}</Text>
                       </View>
-                      <View style={styles.modeBadge}>
-                        <Text style={styles.modeText}>{selectedOrder.mode}</Text>
+                      <View style={[styles.modeBadge, { backgroundColor: theme.soft }]}>
+                        <Text style={[styles.modeText, { color: theme.accent }]}>{selectedOrder.mode}</Text>
                       </View>
                     </View>
                     {selectedOrder.order_items?.length ? (
@@ -336,7 +337,7 @@ export default function TrackingScreen({ route, navigation }: any) {
                     </View>
                     <View style={[styles.amountRow, styles.grandTotal]}>
                       <Text style={styles.grandTotalLabel}>Order total</Text>
-                      <Text style={styles.grandTotalValue}>
+                      <Text style={[styles.grandTotalValue, { color: theme.accent }]}>
                         {formatPrice(Number(selectedOrder.subtotal) + Number(selectedOrder.delivery_fee))}
                       </Text>
                     </View>
@@ -380,21 +381,23 @@ function OrderCard({
   onPress: () => void;
 }>) {
   const { formatPrice } = useCurrency();
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const previewImage = order.order_items?.find((item) => item.products?.image_url)?.products?.image_url;
   const status = order.status;
 
   return (
     <Pressable
-      style={[styles.orderCard, { width }, selected && styles.orderCardSelected]}
+      style={[styles.orderCard, { width }, selected && [styles.orderCardSelected, { borderColor: theme.button }]]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Order ${order.id.slice(0, 8)}, ${statusLabel[status]}, ${order.order_items?.length ?? 0} items`}
       accessibilityState={{ selected }}
     >
-      <View style={styles.preview}>
+      <View style={[styles.preview, { backgroundColor: theme.soft }]}>
         {previewImage
           ? <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="cover" />
-          : <View style={styles.previewFallback}><Ionicons name="basket-outline" size={34} color={colors.green} /></View>}
+          : <View style={styles.previewFallback}><Ionicons name="basket-outline" size={34} color={theme.accent} /></View>}
         <View style={[styles.statusBadge, { backgroundColor: statusColor[status] }]}>
           <Text style={styles.statusBadgeText}>{statusLabel[status]}</Text>
         </View>
@@ -405,10 +408,10 @@ function OrderCard({
             <Text style={styles.orderCardTitle}>Order #{order.id.slice(0, 8)}</Text>
             <Text style={styles.orderCardDate}>{formatTanzaniaDate(order.created_at)}</Text>
           </View>
-          <Ionicons name={selected ? 'checkmark-circle' : 'chevron-forward-circle-outline'} size={24} color={colors.green} />
+          <Ionicons name={selected ? 'checkmark-circle' : 'chevron-forward-circle-outline'} size={24} color={theme.accent} />
         </View>
         <Text style={styles.orderCardMeta}>{order.order_items?.length ?? 0} items · {order.mode}</Text>
-        <Text style={styles.orderCardTotal}>{formatPrice(Number(order.subtotal) + Number(order.delivery_fee))}</Text>
+        <Text style={[styles.orderCardTotal, { color: theme.accent }]}>{formatPrice(Number(order.subtotal) + Number(order.delivery_fee))}</Text>
       </View>
     </Pressable>
   );
@@ -426,6 +429,8 @@ function OrderViewToggle({
   onChange: (view: 'ongoing' | 'history') => void;
 }>) {
   const [width, setWidth] = useState(0);
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const segmentWidth = width / 2;
 
   return (
@@ -435,7 +440,7 @@ function OrderViewToggle({
       accessibilityRole="tablist"
     >
       <MotiView
-        style={[styles.orderViewThumb, { width: Math.max(0, segmentWidth - 6) }]}
+        style={[styles.orderViewThumb, { width: Math.max(0, segmentWidth - 6), backgroundColor: theme.button }]}
         animate={{ translateX: value === 'history' ? segmentWidth : 0 }}
         transition={{ type: 'spring', damping: 14, stiffness: 160 }}
       />
@@ -445,10 +450,10 @@ function OrderViewToggle({
         accessibilityRole="tab"
         accessibilityState={{ selected: value === 'ongoing' }}
       >
-        <Text style={[styles.orderViewText, value === 'ongoing' && styles.orderViewTextSelected]}>
+        <Text style={[styles.orderViewText, value === 'ongoing' && styles.orderViewTextSelected, value === 'ongoing' && { color: theme.buttonText }]}>
           Ongoing
         </Text>
-        <Text style={[styles.orderViewCount, value === 'ongoing' && styles.orderViewCountSelected]}>
+        <Text style={[styles.orderViewCount, value === 'ongoing' && styles.orderViewCountSelected, value === 'ongoing' && { color: theme.buttonText }]}>
           {ongoingCount}
         </Text>
       </Pressable>
@@ -458,10 +463,10 @@ function OrderViewToggle({
         accessibilityRole="tab"
         accessibilityState={{ selected: value === 'history' }}
       >
-        <Text style={[styles.orderViewText, value === 'history' && styles.orderViewTextSelected]}>
+        <Text style={[styles.orderViewText, value === 'history' && styles.orderViewTextSelected, value === 'history' && { color: theme.buttonText }]}>
           Order history
         </Text>
-        <Text style={[styles.orderViewCount, value === 'history' && styles.orderViewCountSelected]}>
+        <Text style={[styles.orderViewCount, value === 'history' && styles.orderViewCountSelected, value === 'history' && { color: theme.buttonText }]}>
           {historyCount}
         </Text>
       </Pressable>
@@ -471,11 +476,13 @@ function OrderViewToggle({
 
 function OrderLine({ item }: Readonly<{ item: OrderItem }>) {
   const { formatPrice } = useCurrency();
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   return (
     <View style={styles.itemRow}>
       {item.products?.image_url
         ? <Image source={{ uri: item.products.image_url }} style={styles.itemImage} resizeMode="cover" />
-        : <View style={[styles.itemImage, styles.itemImageFallback]}><Ionicons name="basket-outline" size={20} color={colors.green} /></View>}
+        : <View style={[styles.itemImage, styles.itemImageFallback, { backgroundColor: theme.soft }]}><Ionicons name="basket-outline" size={20} color={theme.accent} /></View>}
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.products?.name ?? 'Fresh item'}</Text>
         <Text style={styles.itemMeta}>

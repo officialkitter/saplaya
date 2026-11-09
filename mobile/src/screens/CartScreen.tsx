@@ -41,12 +41,12 @@ export default function CartScreen({ navigation }: any) {
     return (
       <SafeAreaView style={[styles.root, styles.empty, { backgroundColor: tierTheme.background }]}>
         <MotiView from={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}>
-          <Ionicons name="basket-outline" size={96} color={colors.greenLight} />
+          <Ionicons name="basket-outline" size={96} color={tierTheme.accent} />
         </MotiView>
         <Text style={styles.emptyTitle}>Your basket is empty</Text>
         <Text style={styles.emptySub}>Pick something fresh from the shop.</Text>
-        <Pressable style={styles.cta} onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.ctaText}>Start shopping</Text>
+        <Pressable style={[styles.cta, { backgroundColor: tierTheme.button }]} onPress={() => navigation.navigate('Home')}>
+          <Text style={[styles.ctaText, { color: tierTheme.buttonText }]}>Start shopping</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -65,7 +65,7 @@ export default function CartScreen({ navigation }: any) {
               <Image source={{ uri: item.product.image_url }} style={styles.thumb} contentFit="cover" />
             ) : (
               <View style={[styles.thumb, styles.imageFallback]}>
-                <Ionicons name="leaf-outline" size={22} color={colors.green} />
+                <Ionicons name="leaf-outline" size={22} color={tierTheme.accent} />
               </View>
             )}
             <View style={{ flex: 1, marginLeft: 12 }}>
@@ -76,10 +76,10 @@ export default function CartScreen({ navigation }: any) {
               <Text style={[styles.tierLabel, { color: volumeTheme(tierOf(item.product, item.qty)).accent }]}>
                 {volumeTierLabel(tierOf(item.product, item.qty))}
               </Text>
-              <View style={styles.stepper}>
-                <Pressable onPress={() => updateQuantity(item, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={colors.green} /></Pressable>
+              <View style={[styles.stepper, { backgroundColor: tierTheme.soft }]}>
+                <Pressable onPress={() => updateQuantity(item, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={tierTheme.accent} /></Pressable>
                 <QuantityInput qty={item.qty} onChange={(qty) => updateQuantity(item, qty)} />
-                <Pressable onPress={() => updateQuantity(item, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={colors.green} /></Pressable>
+                <Pressable onPress={() => updateQuantity(item, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={tierTheme.accent} /></Pressable>
               </View>
               <Pressable style={styles.remove} onPress={() => setQty(item.product.id, 0)} accessibilityRole="button">
                 <Ionicons name="trash-outline" size={15} color="#C62828" />
@@ -90,7 +90,7 @@ export default function CartScreen({ navigation }: any) {
         )}
         ListFooterComponent={
           <View style={styles.summary}>
-            <Row label="Estimated items" value={formatPrice(subtotal)} />
+            <Row label="Estimated items" value={subtotal === null ? 'Confirmed at checkout' : formatPrice(subtotal)} />
             <Text style={styles.dist}>Farm availability, delivery distance and fees are confirmed at checkout.</Text>
           </View>
         }
@@ -98,7 +98,7 @@ export default function CartScreen({ navigation }: any) {
       <View style={styles.bar}>
         <View style={styles.totalBlock}>
           <Text style={styles.totalLabel}>Estimate</Text>
-          <Text style={styles.total}>{formatPrice(subtotal)}</Text>
+          <Text style={[styles.total, { color: tierTheme.accent }]}>{subtotal === null ? 'At checkout' : formatPrice(subtotal)}</Text>
         </View>
         <CelebrationModal
           visible={unlocked !== null}

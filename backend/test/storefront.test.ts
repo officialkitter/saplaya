@@ -3,9 +3,26 @@ import { test } from 'node:test';
 import {
   calculateTierPrices,
   deriveOrderMode,
+  priceForQuantity,
+  publicTierPrices,
   searchStorefrontProducts,
   selectStorefrontProducts,
 } from '../src/storefront.js';
+
+test('public catalog never discloses bulk tier amounts', () => {
+  assert.deepEqual(publicTierPrices(), { bulk_price: null, mega_bulk_price: null });
+});
+
+test('checkout prices only apply each volume tier at its threshold', () => {
+  const product = { retail_price: 100, wholesale_price: 80, bulk_price: 70, mega_bulk_price: 60, wholesale_min_qty: 10 };
+  assert.equal(priceForQuantity(product, 9, 'retail'), 100);
+  assert.equal(priceForQuantity(product, 10, 'retail'), 80);
+  assert.equal(priceForQuantity(product, 99, 'retail'), 80);
+  assert.equal(priceForQuantity(product, 100, 'retail'), 70);
+  assert.equal(priceForQuantity(product, 999, 'retail'), 70);
+  assert.equal(priceForQuantity(product, 1000, 'retail'), 60);
+  assert.equal(priceForQuantity({ ...product, bulk_price: null }, 100, 'retail'), null);
+});
 
 const products = [
   { id: '1', name: 'Beans', stock: 5, supplier_id: 'missing-location', catalog_product_id: 'approved' },

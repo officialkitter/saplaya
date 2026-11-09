@@ -115,7 +115,7 @@ export function FreshToday() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search products or categories"
               className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-base placeholder:text-ink-mute"
-              style={{ borderColor: theme.accent }}
+              style={{ borderColor: theme.button, backgroundColor: mode === 'wholesale' ? theme.soft : '#FFFFFF' }}
             />
           </label>
           <div className="mt-3 flex gap-2 overflow-x-auto pb-2" aria-label="Product filters">
@@ -184,7 +184,7 @@ export function FreshToday() {
                       <div className="p-3 sm:p-4">
                         <h4 className="line-clamp-2 min-h-[3rem] break-words font-display text-lg font-extrabold leading-6 text-ink sm:text-xl" title={product.name}>{product.name}</h4>
                         <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1 font-bold" style={{ color: theme.accent }}>
-                          <span>{price === null ? 'Price unavailable' : market.formatPrice(price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
+                          <span>{price === null ? 'Price confirmed at checkout' : market.formatPrice(price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
                         </p>
                         {typeof product.farm_distance_km === 'number' && (
                           <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>

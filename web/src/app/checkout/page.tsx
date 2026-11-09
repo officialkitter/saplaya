@@ -173,7 +173,7 @@ export default function CheckoutPage() {
               <li key={product.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 sm:flex-row sm:items-center sm:gap-4">
                 <div className="min-w-0 flex-1">
                   <h2 className="break-words font-bold">{product.name}</h2>
-                  <p className="text-sm text-ink-mute">{product.category} · {formatTZS(volumePrice(product, qty, preferredMode) ?? product.retail_price)} per {product.unit}</p>
+                  <p className="text-sm text-ink-mute">{product.category} · {volumePrice(product, qty, preferredMode) === null ? 'Price confirmed at checkout' : `${formatTZS(volumePrice(product, qty, preferredMode)!)} per ${product.unit}`}</p>
                   <p className="mt-1 text-xs font-extrabold" style={{ color: theme.accent }}>
                     {volumeTier(product, qty, preferredMode).replace('_', '-')} pricing
                   </p>

@@ -61,8 +61,8 @@ export default function ProductDetailScreen({ route, navigation }: any) {
         {product.image_url ? (
           <Image source={{ uri: product.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
         ) : (
-          <View style={[StyleSheet.absoluteFill, styles.imageFallback]}>
-            <MaterialCommunityIcons name="food-apple-outline" size={68} color={colors.green} />
+          <View style={[StyleSheet.absoluteFill, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
+            <MaterialCommunityIcons name="food-apple-outline" size={68} color={tierTheme.accent} />
           </View>
         )}
         <Pressable onPress={() => navigation.goBack()} style={[styles.back, { top: insets.top + 8 }]} accessibilityLabel="Back">
@@ -91,13 +91,13 @@ export default function ProductDetailScreen({ route, navigation }: any) {
         </Text>
 
         <View style={styles.actions}>
-          <View style={styles.stepper}>
+          <View style={[styles.stepper, { backgroundColor: tierTheme.soft }]}>
             <Pressable onPress={() => {
               const next = Math.max(minQty, qty - 1);
               updateQuantity(next);
               setQtyText(String(next));
             }} style={styles.stepBtn} accessibilityLabel="Less">
-              <Ionicons name="remove" size={26} color={colors.green} />
+              <Ionicons name="remove" size={26} color={tierTheme.accent} />
             </Pressable>
             <TextInput
               value={qtyText}
@@ -123,7 +123,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               updateQuantity(next);
               setQtyText(String(next));
             }} style={styles.stepBtn} accessibilityLabel="More" disabled={qty >= 10000}>
-              <Ionicons name="add" size={26} color={colors.green} />
+              <Ionicons name="add" size={26} color={tierTheme.accent} />
             </Pressable>
           </View>
 

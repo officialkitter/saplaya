@@ -54,6 +54,10 @@ export function isStorefrontProduct(value: unknown): value is StorefrontProduct 
     && typeof product.harvested_at === 'string';
 }
 
+export function withoutProtectedPrices(product: StorefrontProduct): StorefrontProduct {
+  return { ...product, bulk_price: null, mega_bulk_price: null };
+}
+
 async function fetchStorefrontProducts(limit: number, page: number, filters: StorefrontFilters, location?: { lat: number; lng: number }): Promise<StorefrontResponse> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '');
   if (!apiUrl) throw new Error('The storefront API is not configured.');
@@ -85,7 +89,8 @@ async function fetchStorefrontProducts(limit: number, page: number, filters: Sto
   ) {
     throw new Error('The storefront API returned an unexpected product response.');
   }
-  return result as StorefrontResponse;
+  const parsed = result as StorefrontResponse;
+  return { ...parsed, items: parsed.items.map(withoutProtectedPrices) };
 }
 
 export function useStorefrontProducts(limit: number, location?: { lat: number; lng: number } | null, filters: StorefrontFilters = {}) {
