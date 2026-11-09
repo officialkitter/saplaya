@@ -14,6 +14,15 @@ test('email link preserves only trusted callback destinations', () => {
   link.searchParams.set('redirect_to', 'https://saplaya-web.up.railway.app/auth/callback');
   link.searchParams.set('type', 'recovery');
   assert.deepEqual(parseEmailLink(link.href), { tokenHash: 'token', type: 'recovery', team: false });
+  link.searchParams.set('redirect_to', 'https://saplaya.org/auth/callback');
+  assert.deepEqual(parseEmailLink(link.href), { tokenHash: 'token', type: 'recovery', team: false });
+  link.searchParams.set('redirect_to', 'saplaya://auth/callback');
+  assert.deepEqual(parseEmailLink(link.href), { tokenHash: 'token', type: 'recovery', team: false });
+  link.searchParams.set('redirect_to', 'saplaya://auth/callback?returnTo=%2Flogin');
+  assert.throws(() => parseEmailLink(link.href), /invalid destination/);
+  link.searchParams.set('redirect_to', 'saplaya://auth/callback');
+  link.searchParams.set('type', 'invite');
+  assert.throws(() => parseEmailLink(link.href), /invalid destination/);
   link.searchParams.set('redirect_to', 'https://evil.example/auth/callback?returnTo=%2Flogin');
   assert.throws(() => parseEmailLink(link.href), /invalid destination/);
   link.searchParams.set('type', 'signup');

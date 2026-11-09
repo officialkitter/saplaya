@@ -4,6 +4,7 @@ type EmailLink = { tokenHash: string; type: 'invite' | 'recovery'; team: boolean
 
 const productionCallbackOrigins = new Set([
   'https://www.saplaya.org',
+  'https://saplaya.org',
   'https://saplaya-web.up.railway.app',
 ]);
 
@@ -26,14 +27,19 @@ export function parseEmailLink(href: string): EmailLink {
     } catch {
       throw new Error('This link has an invalid destination. Request a new email.');
     }
-    const trustedOrigin = target.origin === url.origin
-      || (productionCallbackOrigins.has(url.origin) && productionCallbackOrigins.has(target.origin));
-    if (!trustedOrigin || target.username || target.password || target.pathname !== '/auth/callback'
-      || target.hash || [...target.searchParams.keys()].some((key) => key !== 'returnTo')
-      || (target.searchParams.has('returnTo') && target.searchParams.get('returnTo') !== '/login')) {
-      throw new Error('This link has an invalid destination. Request a new email.');
+    const nativeRecovery = type === 'recovery'
+      && productionCallbackOrigins.has(url.origin)
+      && redirect === 'saplaya://auth/callback';
+    if (!nativeRecovery) {
+      const trustedOrigin = target.origin === url.origin
+        || (productionCallbackOrigins.has(url.origin) && productionCallbackOrigins.has(target.origin));
+      if (!trustedOrigin || target.username || target.password || target.pathname !== '/auth/callback'
+        || target.hash || [...target.searchParams.keys()].some((key) => key !== 'returnTo')
+        || (target.searchParams.has('returnTo') && target.searchParams.get('returnTo') !== '/login')) {
+        throw new Error('This link has an invalid destination. Request a new email.');
+      }
+      team = target.searchParams.get('returnTo') === '/login';
     }
-    team = target.searchParams.get('returnTo') === '/login';
   }
   if (type === 'invite' && !team) {
     throw new Error('This invitation has an invalid destination. Request a new email.');
