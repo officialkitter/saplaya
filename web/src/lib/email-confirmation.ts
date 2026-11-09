@@ -2,6 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 type EmailLink = { tokenHash: string; type: 'invite' | 'recovery'; team: boolean };
 
+const productionCallbackOrigins = new Set([
+  'https://www.saplaya.org',
+  'https://saplaya-web.up.railway.app',
+]);
+
 export function parseEmailLink(href: string): EmailLink {
   const url = new URL(href);
   const tokenHash = url.searchParams.get('token_hash');
@@ -21,7 +26,9 @@ export function parseEmailLink(href: string): EmailLink {
     } catch {
       throw new Error('This link has an invalid destination. Request a new email.');
     }
-    if (target.origin !== url.origin || target.pathname !== '/auth/callback'
+    const trustedOrigin = target.origin === url.origin
+      || (productionCallbackOrigins.has(url.origin) && productionCallbackOrigins.has(target.origin));
+    if (!trustedOrigin || target.username || target.password || target.pathname !== '/auth/callback'
       || target.hash || [...target.searchParams.keys()].some((key) => key !== 'returnTo')
       || (target.searchParams.has('returnTo') && target.searchParams.get('returnTo') !== '/login')) {
       throw new Error('This link has an invalid destination. Request a new email.');
