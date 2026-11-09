@@ -14,7 +14,8 @@ import LocationPickerScreen from '../screens/LocationPickerScreen';
 import CheckoutScreen from '../screens/CheckoutScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import CartTabIcon from '../components/CartTabIcon';
-import { colors } from '../theme';
+import { colors, volumeTheme } from '../theme';
+import { useStore } from '../store/StoreContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -31,8 +32,6 @@ export type RootStackParamList = {
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
-const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: colors.cream, primary: colors.green } };
-
 /**
  * Product detail lives INSIDE the tab navigator as a hidden tab so the tab bar
  * (and therefore the cart icon the particle flies to) stays visible.
@@ -44,9 +43,12 @@ export default function Navigation({
   initialRouteName?: 'Tabs' | 'Onboarding';
   onReady?: () => void;
 }) {
+  const { mode } = useStore();
+  const tierTheme = volumeTheme(mode);
+  const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: tierTheme.background, primary: tierTheme.accent } };
   return (
     <NavigationContainer ref={navigationRef} theme={theme} onReady={onReady}>
-      <Stack.Navigator id="RootStack" initialRouteName={initialRouteName} screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors.cream } }}>
+      <Stack.Navigator id="RootStack" initialRouteName={initialRouteName} screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: tierTheme.background } }}>
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Tabs" component={Tabs} />
         <Stack.Screen name="Account" component={AccountScreen} />
@@ -60,11 +62,13 @@ export default function Navigation({
 }
 
 function Tabs() {
+  const { mode } = useStore();
+  const tierTheme = volumeTheme(mode);
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.green,
+        tabBarActiveTintColor: tierTheme.accent,
         tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontWeight: '700', fontSize: 12 },
         tabBarStyle: { height: 66, paddingTop: 6, backgroundColor: colors.white, borderTopColor: colors.line },

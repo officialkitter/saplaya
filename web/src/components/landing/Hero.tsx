@@ -2,13 +2,14 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { Sprout, Truck } from 'lucide-react';
-import { useState } from 'react';
 import { LinkButton } from '@/components/ui/Button';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { cn } from '@/lib/format';
 import { useStorefrontProducts, type StorefrontProduct } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
+import { useStorefrontCart } from '@/lib/cart';
+import { volumeTheme } from '@/lib/volume';
 
 /** The big slide toggle: same control the customer app uses. */
 function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: boolean) => void }) {
@@ -17,7 +18,7 @@ function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: 
       <motion.span
         aria-hidden
         className="absolute bottom-1.5 left-1.5 top-1.5 w-[calc(50%-6px)] rounded-full"
-        animate={{ x: wholesale ? '100%' : '0%', backgroundColor: wholesale ? '#795548' : '#2E7D32' }}
+        animate={{ x: wholesale ? '100%' : '0%', backgroundColor: wholesale ? '#FFD54F' : '#2E7D32' }}
         transition={{ type: 'spring', damping: 15, stiffness: 190 }}
       />
       {([false, true] as const).map((w) => (
@@ -25,7 +26,7 @@ function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: 
           key={String(w)}
           aria-pressed={wholesale === w}
           onClick={() => onChange(w)}
-          className={cn('relative z-10 flex-1 rounded-full text-base font-extrabold transition-colors sm:text-lg', wholesale === w ? 'text-white' : 'text-ink-mute')}
+          className={cn('relative z-10 flex-1 rounded-full text-base font-extrabold transition-colors sm:text-lg', wholesale === w ? (w ? 'text-ink' : 'text-white') : 'text-ink-mute')}
         >
           {w ? 'Wholesale' : 'Retail'}
         </button>
@@ -78,7 +79,7 @@ function Phone({
 
           <motion.div
             className="mt-3 rounded-2xl px-3 py-2 text-center text-sm font-extrabold"
-            animate={{ backgroundColor: wholesale ? '#EFEBE9' : '#E8F5E9', color: wholesale ? '#5D4037' : '#1B5E20' }}
+            animate={{ backgroundColor: wholesale ? '#FFF8E1' : '#E8F5E9', color: wholesale ? '#805400' : '#1B5E20' }}
           >
             {wholesale ? 'Wholesale prices' : 'Fresh today'}
           </motion.div>
@@ -117,7 +118,7 @@ function Phone({
                     )}
                     <AnimatePresence initial={false}>
                       {wholesale && (
-                        <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-[#5D4037]">
+                        <motion.p initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden text-[11px] font-bold text-[#805400]">
                           Min {it.wholesale_min_qty} {it.unit}
                         </motion.p>
                       )}
@@ -134,7 +135,9 @@ function Phone({
 }
 
 export function Hero() {
-  const [wholesale, setWholesale] = useState(false);
+  const { preferredMode, setPreferredMode, mode } = useStorefrontCart();
+  const wholesale = preferredMode === 'wholesale';
+  const theme = volumeTheme(mode);
   const market = useGlobalMarket();
   const { products, loading, error } = useStorefrontProducts(4, market.location);
   return (
@@ -152,7 +155,8 @@ export function Hero() {
 
           <div className="mt-9">
             <p className="mb-3 text-lg font-bold">Try it. Slide to switch how you shop.</p>
-            <ModeSlide wholesale={wholesale} onChange={setWholesale} />
+            <ModeSlide wholesale={wholesale} onChange={(value) => setPreferredMode(value ? 'wholesale' : 'retail')} />
+            {mode !== preferredMode && <p className="mt-2 text-sm font-bold" style={{ color: theme.accent }}>{theme.label} unlocked by basket quantity</p>}
             <p className="mt-3 min-h-6 text-ink-soft">
               {wholesale ? 'See wholesale prices and minimum quantities.' : 'Shop individual items at retail prices.'}
             </p>
@@ -165,7 +169,7 @@ export function Hero() {
         </div>
 
         <div className="relative">
-          <div className="absolute inset-x-0 top-6 mx-auto h-[540px] w-[88%] rounded-[3rem] bg-leaf field-lines" aria-hidden />
+          <div className="absolute inset-x-0 top-6 mx-auto h-[540px] w-[88%] rounded-[3rem] field-lines" style={{ backgroundColor: theme.button }} aria-hidden />
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 18, stiffness: 90, delay: 0.15 }} className="relative">
             <Phone wholesale={wholesale} products={products} loading={loading} error={error} formatPrice={market.formatPrice} />
           </motion.div>

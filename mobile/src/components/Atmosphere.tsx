@@ -5,6 +5,7 @@ import { View as MotiView } from 'moti/build/components/view';
 
 type Props = {
   variant?: 'light' | 'photo';
+  accent?: string;
 };
 
 type Cloud = {
@@ -26,7 +27,7 @@ const mist: Cloud[] = [
   { width: 220, height: 170, bottom: '8%', left: '12%', dx: 24, dy: -24, duration: 10400, delay: 1700 },
 ] as const;
 
-export default function Atmosphere({ variant = 'light' }: Props) {
+export default function Atmosphere({ variant = 'light', accent }: Props) {
   const photo = variant === 'photo';
   return (
     <View pointerEvents="none" style={styles.layer}>
@@ -54,7 +55,7 @@ export default function Atmosphere({ variant = 'light' }: Props) {
               left: 'left' in cloud ? cloud.left : undefined,
               backgroundColor: photo
                 ? index === 1 ? 'rgba(255,255,255,0.78)' : 'rgba(221,246,212,0.76)'
-                : index === 1 ? 'rgba(255,213,79,0.52)' : 'rgba(76,175,80,0.46)',
+                : accent ?? (index === 1 ? 'rgba(255,213,79,0.52)' : 'rgba(76,175,80,0.46)'),
             },
           ]}
         />

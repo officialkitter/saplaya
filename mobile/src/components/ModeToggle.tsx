@@ -4,7 +4,7 @@ import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/StoreContext';
-import { colors, radius } from '../theme';
+import { colors, radius, volumeTheme } from '../theme';
 import Atmosphere from './Atmosphere';
 
 const H = 64;
@@ -46,8 +46,9 @@ export function ModeToggle() {
 
 /** Slow, low-contrast color movement keeps the shop background calm behind product cards. */
 export function ModeBackdrop() {
+  const { mode } = useStore();
   return (
-    <View style={styles.backdrop} pointerEvents="none"><Atmosphere /></View>
+    <View style={styles.backdrop} pointerEvents="none"><Atmosphere accent={volumeTheme(mode).button} /></View>
   );
 }
 

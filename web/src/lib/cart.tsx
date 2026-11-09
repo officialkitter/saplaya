@@ -2,12 +2,16 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isStorefrontProduct, type StorefrontProduct } from './storefront';
+import { orderMode, type VolumeTier } from './volume';
 
 export type StorefrontCartLine = { product: StorefrontProduct; qty: number };
 
 type StorefrontCartValue = {
   lines: StorefrontCartLine[];
   count: number;
+  mode: VolumeTier;
+  preferredMode: 'retail' | 'wholesale';
+  setPreferredMode: (mode: 'retail' | 'wholesale') => void;
   add: (product: StorefrontProduct) => void;
   setQuantity: (productId: string, qty: number) => void;
   clear: () => void;
@@ -25,6 +29,7 @@ function isCartLine(value: unknown): value is StorefrontCartLine {
 
 export function StorefrontCartProvider({ children }: { children: ReactNode }) {
   const [lines, setLines] = useState<StorefrontCartLine[]>([]);
+  const [preferredMode, setPreferredMode] = useState<'retail' | 'wholesale'>('retail');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -73,10 +78,13 @@ export function StorefrontCartProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({
     lines,
     count: lines.reduce((total, line) => total + line.qty, 0),
+    mode: orderMode(lines, preferredMode),
+    preferredMode,
+    setPreferredMode,
     add,
     setQuantity,
     clear,
-  }), [lines, add, setQuantity, clear]);
+  }), [lines, preferredMode, add, setQuantity, clear]);
 
   return <StorefrontCartContext.Provider value={value}>{children}</StorefrontCartContext.Provider>;
 }

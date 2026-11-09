@@ -8,6 +8,7 @@ import { Logo } from '@/components/ui/Logo';
 import { LinkButton } from '@/components/ui/Button';
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
+import { volumeTheme } from '@/lib/volume';
 
 const LINKS = [
   { href: '#how', label: 'How it works' },
@@ -19,7 +20,8 @@ const LINKS = [
 export function Nav() {
   const [open, setOpen] = useState(false);
   const requested = useRef(false);
-  const { count } = useStorefrontCart();
+  const { count, mode } = useStorefrontCart();
+  const theme = volumeTheme(mode);
   const { location, placeName, placeNameStatus, locationError, requestLocation, clearLocation, currency, setCurrency, currencies } = useGlobalMarket();
   useEffect(() => {
     if (requested.current) return;
@@ -71,9 +73,10 @@ export function Nav() {
         </nav>
         <div className="hidden shrink-0 items-center gap-2 xl:flex">
           {marketControls('market-currency-desktop')}
-          <Link href="/checkout" className="inline-flex items-center gap-2 rounded-full bg-leaf-soft px-4 py-2.5 text-sm font-extrabold text-leaf-deep transition hover:bg-leaf hover:text-white">
+          <Link href="/checkout" style={{ backgroundColor: theme.soft, color: theme.accent }} className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-extrabold">
             <ShoppingBasket size={17} /> Basket{count ? ` · ${count}` : ''}
           </Link>
+          <Link href="/orders" className="whitespace-nowrap rounded-full px-3 py-2 text-sm font-bold text-ink-soft">Track orders</Link>
           <LinkButton href="/login" variant="ghost">Member sign in</LinkButton>
           <LinkButton href="#download" variant="sun">Get the app</LinkButton>
         </div>
@@ -99,9 +102,10 @@ export function Nav() {
                 <LinkButton href="/login" variant="soft">Member sign in</LinkButton>
                 <LinkButton href="#download" variant="sun">Get the app</LinkButton>
               </div>
-              <Link href="/checkout" onClick={() => setOpen(false)} className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-leaf-soft px-4 py-3 font-extrabold text-leaf-deep">
+              <Link href="/checkout" onClick={() => setOpen(false)} style={{ backgroundColor: theme.soft, color: theme.accent }} className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-extrabold">
                 <ShoppingBasket size={18} /> Basket{count ? ` · ${count}` : ''}
               </Link>
+              <Link href="/orders" onClick={() => setOpen(false)} className="mt-2 rounded-xl px-3 py-3 text-center font-bold">Track orders</Link>
             </div>
           </motion.div>
         )}

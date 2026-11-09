@@ -4,8 +4,23 @@ import { Mode, Product, Promo } from '../types';
 
 const PAGE = 20;
 
-export async function fetchProducts(page: number, location?: { lat: number; lng: number }): Promise<{ items: Product[]; hasMore: boolean }> {
+export type ProductFilters = {
+  query?: string;
+  category?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  fresh?: boolean;
+  sort?: 'default' | 'price_asc' | 'price_desc' | 'nearby';
+};
+
+export async function fetchProducts(page: number, location?: { lat: number; lng: number }, filters: ProductFilters = {}): Promise<{ items: Product[]; hasMore: boolean; categories?: string[] }> {
   const query = new URLSearchParams({ page: String(page), size: String(PAGE) });
+  if (filters.query?.trim()) query.set('q', filters.query.trim());
+  if (filters.category) query.set('category', filters.category);
+  if (filters.minPrice) query.set('minPrice', filters.minPrice);
+  if (filters.maxPrice) query.set('maxPrice', filters.maxPrice);
+  if (filters.fresh) query.set('fresh', 'true');
+  if (filters.sort && filters.sort !== 'default') query.set('sort', filters.sort);
   if (location) {
     query.set('lat', String(location.lat));
     query.set('lng', String(location.lng));
@@ -61,6 +76,11 @@ export type CheckoutInput = {
 };
 
 export type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
+export function deliveryWindowLabel(value: string): string {
+  if (value === 'morning') return 'Morning (07:00–10:00)';
+  if (value === 'evening') return 'Evening (15:00–18:00)';
+  return `Within ${value}`;
+}
 export type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
 export type CheckoutQuote = {
   items: {

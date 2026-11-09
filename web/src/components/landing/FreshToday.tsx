@@ -1,35 +1,46 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Sprout, X } from 'lucide-react';
+import { Search, Sprout } from 'lucide-react';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { localDayPeriod, type LocalDayPeriod } from '@/lib/format';
-import { useStorefrontProducts } from '@/lib/storefront';
+import { useStorefrontProducts, type StorefrontFilters } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
+import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
 
 export function FreshToday() {
   const market = useGlobalMarket();
-  const { add } = useStorefrontCart();
-  const { products, loading, error, retry } = useStorefrontProducts(40, market.location);
+  const { add, lines, mode, preferredMode } = useStorefrontCart();
+  const theme = volumeTheme(mode);
   const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(0);
   const [query, setQuery] = useState('');
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleProducts = products.filter((product) =>
-    !normalizedQuery
-    || product.name.toLocaleLowerCase().includes(normalizedQuery)
-    || product.category.toLocaleLowerCase().includes(normalizedQuery),
-  );
+  const [category, setCategory] = useState('');
+  const [fresh, setFresh] = useState(false);
+  const [filters, setFilters] = useState<StorefrontFilters>({});
+  const { products, loading, error, retry, hasMore, categories, loadMore } = useStorefrontProducts(40, market.location, filters);
+  const searching = Boolean(filters.query?.trim() || filters.category || filters.fresh);
 
-  const sections = [
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setExpandedSections({});
+      setFilters({ query, category, fresh });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, category, fresh]);
+
+  const sections = searching ? [{
+    key: 'results', title: 'Search results', description: 'Products matching your selected filters.',
+    products, total: products.length,
+  }] : [
     { key: 'fresh', title: 'Fresh today', description: 'Harvested within the last 24 hours.' },
     { key: 'holisticare', title: 'Holisticare', description: 'Vegetables, fruits, herbs and other garden produce.' },
     { key: 'grains', title: 'Grains & pulses', description: 'Everyday grains, cereals, beans and pulses.' },
     { key: 'essentials', title: 'Cooking essentials', description: 'Pantry staples including oils, sauces, spices and more.' },
   ].map((section) => {
-    const matches = visibleProducts.filter((product) => {
+    const matches = products.filter((product) => {
       const category = product.category.toLocaleLowerCase();
       const harvested = Date.parse(product.harvested_at);
       if (section.key === 'fresh') {
@@ -62,7 +73,7 @@ export function FreshToday() {
   }, []);
 
   return (
-    <section id="fresh" className="py-20 lg:py-28">
+    <section id="fresh" className="py-20 lg:py-28" style={{ backgroundColor: theme.background }}>
       <div className="mx-auto max-w-7xl px-5">
         <h2 className="max-w-xl font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
           On the shelf {localPeriod ? `this ${localPeriod}` : 'today'}.
@@ -93,29 +104,27 @@ export function FreshToday() {
           </p>
         ) : null}
 
-        {!loading && !error && products.length > 0 && (
-          <label className="relative mt-6 block max-w-xl">
+        <div className="mt-6 max-w-3xl">
+          <label className="relative block">
             <span className="sr-only">Search products</span>
             <Search size={19} aria-hidden className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-mute" />
             <input
               type="search"
+              maxLength={100}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search products or categories"
-              className="w-full rounded-2xl border border-line bg-white py-3 pl-11 pr-11 text-base shadow-soft placeholder:text-ink-mute"
+              className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-base placeholder:text-ink-mute"
+              style={{ borderColor: theme.accent }}
             />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-ink-mute hover:bg-leaf-soft"
-                aria-label="Clear product search"
-              >
-                <X size={17} />
-              </button>
-            )}
           </label>
-        )}
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-2" aria-label="Product filters">
+            <button type="button" aria-pressed={fresh} onClick={() => setFresh(!fresh)} className="shrink-0 rounded-full border px-3 py-2 text-sm font-bold" style={fresh ? { color: theme.accent, backgroundColor: theme.soft, borderColor: theme.accent } : undefined}>Harvested today</button>
+            {['', ...categories].map((value) => (
+              <button key={value || 'all'} type="button" aria-pressed={category === value} onClick={() => setCategory(value)} className="shrink-0 rounded-full border px-3 py-2 text-sm font-bold" style={category === value ? { color: theme.accent, backgroundColor: theme.soft, borderColor: theme.accent } : undefined}>{value || 'All'}</button>
+            ))}
+          </div>
+        </div>
 
         {loading ? (
           <div className="mt-12 grid grid-cols-2 gap-3 sm:gap-4" aria-label="Loading available products">
@@ -125,20 +134,13 @@ export function FreshToday() {
           </div>
         ) : error ? (
           <div className="mt-12 rounded-3xl border border-line bg-white p-8 text-center">
-            <p className="font-bold text-ink">Products are temporarily unavailable.</p>
+            <p className="font-bold text-ink">{filters.sort === 'nearby' && !market.location ? 'Allow location access to sort by nearby farms, or choose another sort.' : 'Products are temporarily unavailable.'}</p>
             <button type="button" onClick={retry} className="mt-4 font-bold text-leaf-deep underline">Try again</button>
           </div>
         ) : products.length === 0 ? (
           <div className="mt-12 rounded-3xl border border-line bg-white p-8 text-center text-ink-soft">
-            <p className="font-bold text-ink">No items are in stock right now.</p>
-            <p className="mt-2">New listings will appear here as farms add approved prices and available stock.</p>
-          </div>
-        ) : visibleProducts.length === 0 ? (
-          <div className="mt-8 rounded-3xl border border-line bg-white p-8 text-center text-ink-soft">
-            <p className="font-bold text-ink">No products match “{query}”.</p>
-            <button type="button" onClick={() => setQuery('')} className="mt-3 font-bold text-leaf-deep underline">
-              Clear search
-            </button>
+            <p className="font-bold text-ink">{searching ? 'No matching products.' : 'No items are in stock right now.'}</p>
+            <p className="mt-2">{searching ? 'Try another search or change your filters.' : 'New listings will appear here as farms add approved prices and available stock.'}</p>
           </div>
         ) : (
           <div className="mt-12 space-y-12">
@@ -149,7 +151,7 @@ export function FreshToday() {
                     <h3 className="font-display text-xl font-extrabold sm:text-2xl">{section.title}</h3>
                     <p className="mt-1 text-sm text-ink-soft">{section.description}</p>
                   </div>
-                  {section.total > 6 && (
+                  {!searching && section.total > 6 && (
                     <button
                       type="button"
                       onClick={() => setExpandedSections((current) => ({ ...current, [section.key]: !current[section.key] }))}
@@ -160,7 +162,11 @@ export function FreshToday() {
                   )}
                 </div>
                 <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                  {section.products.map((product) => (
+                  {section.products.map((product) => {
+                    const qty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
+                    const tier = volumeTier(product, qty || 1, preferredMode);
+                    const price = volumePrice(product, qty || 1, preferredMode);
+                    return (
                     <article key={product.id} className="group overflow-hidden rounded-[1.75rem] bg-white shadow-soft">
                       <div className="relative aspect-[4/3] overflow-hidden bg-line">
                         <SmartImage
@@ -177,37 +183,25 @@ export function FreshToday() {
                       </div>
                       <div className="p-3 sm:p-4">
                         <h4 className="line-clamp-2 min-h-[3rem] break-words font-display text-lg font-extrabold leading-6 text-ink sm:text-xl" title={product.name}>{product.name}</h4>
-                        <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1 font-bold text-leaf-deep">
-                          <span>{market.formatPrice(product.retail_price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
+                        <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1 font-bold" style={{ color: theme.accent }}>
+                          <span>{price === null ? 'Price unavailable' : market.formatPrice(price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
                         </p>
                         {typeof product.farm_distance_km === 'number' && (
                           <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>
                         )}
-                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Available volume price tiers">
-                          <span className="rounded-full bg-[#EFEBE9] px-2 py-1 text-[10px] font-bold text-[#5D4037]">
-                            Wholesale · {market.formatPrice(product.wholesale_price)} from {product.wholesale_min_qty}
-                          </span>
-                          {product.bulk_price !== null && (
-                            <span className="rounded-full bg-[#E0F2F1] px-2 py-1 text-[10px] font-bold text-[#00695C]">
-                              Bulk · {market.formatPrice(product.bulk_price)}
-                            </span>
-                          )}
-                          {product.mega_bulk_price !== null && (
-                            <span className="rounded-full bg-[#EFEBE9] px-2 py-1 text-[10px] font-bold text-[#4E342E]">
-                              Mega-bulk · {market.formatPrice(product.mega_bulk_price)}
-                            </span>
-                          )}
-                        </div>
+                        {tier !== 'retail' && <p className="mt-2 text-xs font-bold" style={{ color: theme.accent }}>{tier === 'mega_bulk' ? 'Mega-bulk' : tier === 'bulk' ? 'Bulk' : 'Wholesale'} price</p>}
                         <button
                           type="button"
                           onClick={() => add(product)}
-                          className="mt-3 w-full rounded-xl bg-leaf px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-leaf-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf"
+                          className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm font-extrabold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                          style={{ backgroundColor: theme.button, color: theme.buttonText }}
                         >
                           Add to basket
                         </button>
                       </div>
                     </article>
-                  ))}
+                  ); })}
+                  {hasMore && <button type="button" onClick={() => void loadMore()} className="font-bold text-leaf-deep underline">Load more products</button>}
                 </div>
               </div>
             ))}

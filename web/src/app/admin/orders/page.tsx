@@ -236,8 +236,8 @@ function Orders() {
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery area</p><p className="font-bold">{open.area}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Phone</p><p className={cn('font-bold', isFarmRole(me.role, me.roleScope) && 'text-ink-mute')}>{customerPhone(open, me.role, me.roleScope)}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Shopping mode</p><p className="font-bold">{open.mode === 'wholesale' ? 'Wholesale' : 'Retail'}</p></div>
-              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery timeframe</p><p className="font-bold">{open.deliveryWindow ? `Within ${open.deliveryWindow}` : 'Within 24h'}</p></div>
-              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Payment</p><p className="font-bold">{open.paymentMethod === 'cash_on_delivery' ? 'Cash on delivery' : 'Paid online'}</p></div>
+              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery timeframe</p><p className="font-bold">{open.deliveryWindow === 'morning' ? 'Morning (07:00–10:00)' : open.deliveryWindow === 'evening' ? 'Evening (15:00–18:00)' : `Within ${open.deliveryWindow ?? '24h'}`}</p></div>
+              <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Payment</p><p className="font-bold">{open.paymentMethod === 'cash_on_delivery' ? 'Payment on delivery' : 'Paid online'}</p></div>
             </div>
 
             {isFarmRole(me.role, me.roleScope) && (

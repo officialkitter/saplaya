@@ -58,3 +58,23 @@ test('team Google sign-in returns to the portal and ignores unmarked PKCE codes'
   assert.deepEqual(await processAuthCallback(client().supabase, `${callback}?flow=oauth&code=abc`),
     { kind: 'mobile', session, type: 'magiclink' });
 });
+
+test('untrusted return destinations do not become redirects', async () => {
+  for (const destination of ['https://evil.example', '//evil.example', '/login/other', '/login?next=https://evil.example']) {
+    const url = new URL(callback);
+    url.searchParams.set('returnTo', destination);
+    url.searchParams.set('code', 'abc');
+    assert.deepEqual(await processAuthCallback(client().supabase, url.toString()),
+      { kind: 'mobile', session, type: 'magiclink' });
+  }
+});
+
+test('a failed PKCE code exchange never falls back to a fragment session', async () => {
+  let sessions = 0;
+  const supabase = { auth: {
+    async exchangeCodeForSession() { return { data: { session: null }, error: new Error('PKCE verification failed') }; },
+    async setSession() { sessions++; return { data: { session }, error: null }; },
+  } } as unknown as SupabaseClient;
+  await assert.rejects(processAuthCallback(supabase, `${callback}?code=tampered#type=invite&access_token=a&refresh_token=b`), /PKCE verification failed/);
+  assert.equal(sessions, 0);
+});

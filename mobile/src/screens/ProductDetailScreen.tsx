@@ -144,6 +144,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
             </MotiView>
             <CelebrationModal
               visible={unlocked !== null}
+              volumeTier={unlocked?.tier}
               title={`Congratulations! ${unlocked?.tier === 'mega_bulk' ? 'Mega-bulk' : 'Bulk'} unlocked`}
               message={`${product.name} now qualifies for ${unlocked?.tier === 'mega_bulk' ? 'mega-bulk' : 'bulk'} pricing${unlocked?.inBasket ? ' in your basket' : ''}.`}
               detail={unlocked?.inBasket ? 'Your combined basket quantity qualifies for this price.' : 'The price shown is per unit for this product and quantity.'}

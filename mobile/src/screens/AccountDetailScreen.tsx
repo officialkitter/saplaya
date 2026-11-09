@@ -619,7 +619,7 @@ function HelpCenter() {
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.intro}>Quick answers for your Saplaya shopping experience.</Text>
       <InfoCard icon="cube-outline" title="Where is my order?" body="Open My orders or Track in the bottom navigation to see delivery progress and order history." />
-      <InfoCard icon="card-outline" title="When is payment confirmed?" body="Online orders are confirmed after the provider verifies payment. Cash-on-delivery orders are confirmed when you place them." />
+      <InfoCard icon="card-outline" title="When is payment confirmed?" body="Online orders are confirmed after the provider verifies payment. Payment-on-delivery orders are confirmed when you place them." />
       <InfoCard icon="location-outline" title="Can I change my delivery point?" body="Tap the delivery location at the top of the shop, or choose a saved address at checkout." />
       <Pressable style={styles.locationButton} onPress={openSupport}>
         <Ionicons name="mail-outline" size={20} color={colors.green} />
@@ -646,7 +646,7 @@ function Legal() {
       <LegalSection
         icon="bag-handle-outline"
         title="Orders, prices and availability"
-        body="Product availability and stock can change. The price, quantity tier, delivery charge and total are confirmed at checkout. A submitted online order is fulfilled after payment is verified; a cash-on-delivery order is submitted when you confirm it. Supplier applications are reviewed before a farm can sell through Saplaya."
+        body="Product availability and stock can change. The price, quantity tier, delivery charge and total are confirmed at checkout. A submitted online order is fulfilled after payment is verified; a payment-on-delivery order is submitted when you confirm it. Supplier applications are reviewed before a farm can sell through Saplaya."
       />
       <LegalSection
         icon="time-outline"

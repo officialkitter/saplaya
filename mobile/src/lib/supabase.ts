@@ -6,6 +6,7 @@ import { authStorage } from './auth-storage';
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
+const storageKey = process.env.EXPO_PUBLIC_SUPABASE_AUTH_STORAGE_KEY;
 
 if (!url || !publishableKey || !API_URL) {
   throw new Error(
@@ -15,6 +16,7 @@ if (!url || !publishableKey || !API_URL) {
 
 export const supabase = createClient(url, publishableKey, {
   auth: {
+    ...(storageKey ? { storageKey } : {}),
     storage: authStorage,
     autoRefreshToken: true,
     persistSession: true,
@@ -24,6 +26,7 @@ export const supabase = createClient(url, publishableKey, {
 
 export const supabaseOAuth = createClient(url, publishableKey, {
   auth: {
+    ...(storageKey ? { storageKey } : {}),
     storage: authStorage,
     autoRefreshToken: false,
     persistSession: true,

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   calculateTierPrices,
   deriveOrderMode,
+  searchStorefrontProducts,
   selectStorefrontProducts,
 } from '../src/storefront.js';
 
@@ -23,6 +24,35 @@ test('location prioritizes nearby farms without hiding stock at farms without co
   assert.deepEqual(result.map((entry) => entry.product.id), ['2', '1']);
   assert.equal(result[0].distance, 0);
   assert.equal(result[1].distance, null);
+});
+
+test('catalog search filters all listings before pagination and sorts by retail price or distance', () => {
+  const now = Date.parse('2026-01-03T12:00:00Z');
+  const listings = [
+    { product: { name: 'Beans', category: 'Grains', retail_price: 2000, harvested_at: '2026-01-03T10:00:00Z' }, distance: 5 },
+    { product: { name: 'Red beans', category: 'Grains', retail_price: 1000, harvested_at: '2026-01-01T10:00:00Z' }, distance: null },
+    { product: { name: 'Carrots', category: 'Vegetables', retail_price: 1500, harvested_at: '2026-01-03T11:00:00Z' }, distance: 1 },
+  ];
+  assert.deepEqual(searchStorefrontProducts(listings, { query: 'BEANS', category: 'grains', sort: 'price_asc' }, now)
+    .map(({ product }) => product.name), ['Red beans', 'Beans']);
+  assert.deepEqual(searchStorefrontProducts(listings, { minPrice: 1200, maxPrice: 2000, fresh: true, sort: 'nearby' }, now)
+    .map(({ product }) => product.name), ['Carrots', 'Beans']);
+  assert.deepEqual(searchStorefrontProducts(listings, { query: 'vegetables' }, now)
+    .map(({ product }) => product.name), ['Carrots']);
+  assert.deepEqual(searchStorefrontProducts(listings, { sort: 'price_desc' }, now)
+    .map(({ product }) => product.name), ['Beans', 'Carrots', 'Red beans']);
+});
+
+test('catalog price sorting places missing and malformed prices last in both directions', () => {
+  const listings = [
+    { product: { name: 'Missing', retail_price: null }, distance: null },
+    { product: { name: 'Invalid', retail_price: 'bad' }, distance: null },
+    { product: { name: 'High', retail_price: 50 }, distance: null },
+    { product: { name: 'Low', retail_price: 10 }, distance: null },
+  ];
+  assert.deepEqual(searchStorefrontProducts(listings, { sort: 'price_asc' }).map(({ product }) => product.name), ['Low', 'High', 'Invalid', 'Missing']);
+  assert.deepEqual(searchStorefrontProducts(listings, { sort: 'price_desc' }).map(({ product }) => product.name), ['High', 'Low', 'Invalid', 'Missing']);
+  assert.deepEqual(searchStorefrontProducts(listings, { minPrice: 0 }).map(({ product }) => product.name), ['High', 'Low']);
 });
 
 test('approval and active farm checks apply with and without a customer location', () => {

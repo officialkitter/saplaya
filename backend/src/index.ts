@@ -9,7 +9,8 @@ import { City, Country, State } from 'country-state-city';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { deriveOrderMode, haversineKm, selectStorefrontProducts, type OrderMode } from './storefront.js';
+import { deriveOrderMode, haversineKm, searchStorefrontProducts, selectStorefrontProducts, type OrderMode } from './storefront.js';
+import { customerOrders } from './customer-orders.js';
 import { activateTeamInvitation, claimPendingTeamInvitation, teamInvitationRedirect } from './team-auth.js';
 import {
   calculateWeeklyCommission,
@@ -488,8 +489,8 @@ const DELIVERY_ETAS = [
   { value: '14d', title: 'Within 14 days' },
 ] as const;
 const DELIVERY_WINDOWS = [
-  { value: 'morning', title: 'Morning delivery window', fee: 0 },
-  { value: 'evening', title: 'Evening delivery window', fee: 0 },
+  { value: 'morning', title: 'Morning (07:00–10:00)', fee: 0 },
+  { value: 'evening', title: 'Evening (15:00–18:00)', fee: 0 },
 ] as const;
 const DELIVERY_WINDOW_VALUES = ['morning', 'evening', ...DELIVERY_ETAS.map((option) => option.value)] as const;
 
@@ -682,6 +683,20 @@ app.post('/location/reverse-geocode', async (req, res) => {
 });
 
 app.get('/products', async (req, res) => {
+  const filtersSchema = z.object({
+    q: z.string().trim().max(100).optional(),
+    category: z.string().trim().max(100).optional(),
+    minPrice: z.coerce.number().finite().nonnegative().optional(),
+    maxPrice: z.coerce.number().finite().nonnegative().optional(),
+    fresh: z.enum(['true', 'false']).optional(),
+    sort: z.enum(['default', 'price_asc', 'price_desc', 'nearby']).optional(),
+  });
+  const parsedFilters = filtersSchema.safeParse(req.query);
+  if (!parsedFilters.success) return res.status(400).json({ error: 'Invalid product search filters.' });
+  const filters = parsedFilters.data;
+  if (filters.minPrice !== undefined && filters.maxPrice !== undefined && filters.minPrice > filters.maxPrice) {
+    return res.status(400).json({ error: 'Minimum price cannot exceed maximum price.' });
+  }
   const requestedPage = Number(req.query.page ?? 0);
   const requestedSize = Number(req.query.size ?? 20);
   const page = Number.isFinite(requestedPage) ? Math.max(0, Math.floor(requestedPage)) : 0;
@@ -697,6 +712,9 @@ app.get('/products', async (req, res) => {
     return res.status(400).json({ error: 'Provide a valid latitude and longitude pair.' });
   }
   const hasCustomerLocation = hasLatitude && hasLongitude;
+  if (filters.sort === 'nearby' && !hasCustomerLocation) {
+    return res.status(400).json({ error: 'A location is required to sort by nearby farms.' });
+  }
   const queryBatchSize = 500;
   const products: Array<Record<string, unknown> & {
     id: string; name: string; stock: number; supplier_id: string; catalog_product_id: string | null;
@@ -719,24 +737,43 @@ app.get('/products', async (req, res) => {
 
   const supplierIds = [...new Set(products.map((product) => product.supplier_id))];
   const catalogIds = [...new Set(products.map((product) => product.catalog_product_id).filter((id): id is string => !!id))];
-  const [{ data: suppliers, error: supplierError }, { data: catalog, error: catalogError }] = await Promise.all([
-    supplierIds.length
-      ? db.from('suppliers').select('id, latitude, longitude, status').in('id', supplierIds)
-      : Promise.resolve({ data: [], error: null }),
-    catalogIds.length
-      ? db.from('catalog_products').select('id, price_approved').in('id', catalogIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (supplierError || catalogError) {
-    console.error('Could not load supplier locations for the storefront:', supplierError?.message ?? catalogError?.message);
-    return res.status(500).json({ error: 'Could not load available products.' });
+  const suppliers: { id: string; latitude: number | null; longitude: number | null; status: string }[] = [];
+  const approvedCatalogIds = new Set<string>();
+  const lookupBatchSize = 100;
+  for (let offset = 0; offset < Math.max(supplierIds.length, catalogIds.length); offset += lookupBatchSize) {
+    const supplierBatch = supplierIds.slice(offset, offset + lookupBatchSize);
+    const catalogBatch = catalogIds.slice(offset, offset + lookupBatchSize);
+    const [{ data: supplierData, error: supplierError }, { data: catalogData, error: catalogError }] = await Promise.all([
+      supplierBatch.length
+        ? db.from('suppliers').select('id, latitude, longitude, status').in('id', supplierBatch)
+        : Promise.resolve({ data: [], error: null }),
+      catalogBatch.length
+        ? db.from('catalog_products').select('id, price_approved').in('id', catalogBatch)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (supplierError || catalogError) {
+      console.error('Could not load storefront suppliers or catalog approvals:', supplierError?.message ?? catalogError?.message);
+      return res.status(500).json({ error: 'Could not load available products.' });
+    }
+    suppliers.push(...(supplierData ?? []));
+    for (const item of catalogData ?? []) if (item.price_approved) approvedCatalogIds.add(item.id);
   }
-  const approvedCatalogIds = new Set((catalog ?? []).filter((item) => item.price_approved).map((item) => item.id));
   const selectedProducts = selectStorefrontProducts(
-    products, suppliers ?? [], approvedCatalogIds,
+    products, suppliers, approvedCatalogIds,
     hasCustomerLocation ? { lat: latitude, lng: longitude } : null,
   );
-  const items = selectedProducts.slice(page * size, (page + 1) * size).map(({ product, distance }) => ({
+  const categories = [...new Set(selectedProducts.map(({ product }) => product.category)
+    .filter((category): category is string => typeof category === 'string' && category.trim().length > 0))]
+    .sort((a, b) => a.localeCompare(b));
+  const results = searchStorefrontProducts(selectedProducts, {
+    query: filters.q,
+    category: filters.category,
+    minPrice: filters.minPrice,
+    maxPrice: filters.maxPrice,
+    fresh: filters.fresh === 'true',
+    sort: filters.sort,
+  });
+  const items = results.slice(page * size, (page + 1) * size).map(({ product, distance }) => ({
     id: product.id,
     name: product.name,
     category: product.category ?? '',
@@ -751,7 +788,7 @@ app.get('/products', async (req, res) => {
     harvested_at: product.harvested_at,
     farm_distance_km: distance === null ? null : Number(distance.toFixed(2)),
   }));
-  res.json({ items, hasMore: selectedProducts.length > (page + 1) * size });
+  res.json({ items, hasMore: results.length > (page + 1) * size, categories });
 });
 
 app.get('/promos', async (_req, res) => {
@@ -1094,13 +1131,8 @@ function normalizedTanzanianPhone(phone: string): string | null {
 }
 
 app.get('/orders', requireUser, async (req: AuthedRequest, res) => {
-  if (req.isAnonymous) return res.status(403).json({ error: 'Sign in to view past orders.' });
-  const { data, error } = await db
-    .from('orders')
-    .select('id, mode, status, subtotal, delivery_fee, created_at, delivery_window, payment_method, order_items(qty, unit_price, products(name, unit, image_url))')
-    .eq('customer_id', req.userId!)
-    .order('created_at', { ascending: false })
-    .limit(50);
+  if (!req.userId) return res.status(401).json({ error: 'A verified customer identity is required.' });
+  const { data, error } = await customerOrders(db, req.userId);
   if (error) return res.status(500).json({ error: 'Could not load order history.' });
   res.json(data);
 });

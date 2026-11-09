@@ -15,7 +15,7 @@ import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CustomerOrder, fetchOrderHistory, OrderItem } from '../lib/api';
+import { CustomerOrder, deliveryWindowLabel, fetchOrderHistory, OrderItem } from '../lib/api';
 import { getCustomerDataContext } from '../lib/customer-auth';
 import RouteMap from '../components/RouteMap';
 import StatusPipeline from '../components/StatusPipeline';
@@ -226,11 +226,11 @@ export default function TrackingScreen({ route, navigation }: any) {
               <View style={styles.detailsCard}>
                 <Text style={styles.detailsTitle}>This delivery</Text>
                 <Text style={styles.detailsDate}>
-                  Within {selectedOrder.delivery_window ?? '24h'}
+                  {deliveryWindowLabel(selectedOrder.delivery_window ?? '24h')}
                 </Text>
                 <Text style={styles.emptyText}>
                   {selectedOrder.payment_method === 'cash_on_delivery'
-                    ? 'Cash on delivery · pay when your order arrives'
+                    ? 'Payment on delivery · pay when your order arrives'
                     : 'Payment completed securely'}
                 </Text>
                 {selectedOrder.order_items?.map((item, index) => (
@@ -349,6 +349,7 @@ export default function TrackingScreen({ route, navigation }: any) {
       </ScrollView>
       <CelebrationModal
         visible={placedOrderId !== null}
+        orderMode={routeOrder?.mode ?? selectedOrder?.mode}
         title="Congratulations! Order placed"
         message="Your order has been received. We’ll keep you updated as it makes its way to you."
         detail={placedOrderId ? `Order #${placedOrderId.slice(0, 8)}` : undefined}

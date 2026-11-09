@@ -101,3 +101,63 @@ export function selectStorefrontProducts<T extends StorefrontListing>(
     return a.product.name.localeCompare(b.product.name);
   });
 }
+
+export type CatalogSearch = {
+  query?: string;
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  fresh?: boolean;
+  sort?: 'default' | 'price_asc' | 'price_desc' | 'nearby';
+};
+
+type SearchableListing = {
+  name: string;
+  category?: unknown;
+  retail_price?: unknown;
+  harvested_at?: unknown;
+};
+
+export function searchStorefrontProducts<T extends SearchableListing>(
+  listings: { product: T; distance: number | null }[],
+  filters: CatalogSearch,
+  now: number = Date.now(),
+): { product: T; distance: number | null }[] {
+  const normalize = (value: string) => value.normalize('NFKC').trim().toLocaleLowerCase('en');
+  const priceOf = (value: unknown) => {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+    const price = Number(value);
+    return Number.isFinite(price) && price >= 0 ? price : null;
+  };
+  const query = normalize(filters.query ?? '');
+  const category = normalize(filters.category ?? '');
+  const matches = listings.filter(({ product }) => {
+    const productCategory = typeof product.category === 'string' ? product.category : '';
+    const price = priceOf(product.retail_price);
+    if (query && !normalize(product.name).includes(query) && !normalize(productCategory).includes(query)) return false;
+    if (category && normalize(productCategory) !== category) return false;
+    if (filters.minPrice !== undefined && (price === null || price < filters.minPrice)) return false;
+    if (filters.maxPrice !== undefined && (price === null || price > filters.maxPrice)) return false;
+    if (filters.fresh) {
+      const harvested = typeof product.harvested_at === 'string' ? Date.parse(product.harvested_at) : NaN;
+      const age = now - harvested;
+      if (!Number.isFinite(age) || age < 0 || age >= 24 * 60 * 60 * 1000) return false;
+    }
+    return true;
+  });
+  if (filters.sort === 'price_asc' || filters.sort === 'price_desc') {
+    const direction = filters.sort === 'price_asc' ? 1 : -1;
+    matches.sort((a, b) => {
+      const aPrice = priceOf(a.product.retail_price);
+      const bPrice = priceOf(b.product.retail_price);
+      if (aPrice === null && bPrice !== null) return 1;
+      if (aPrice !== null && bPrice === null) return -1;
+      return (aPrice !== null && bPrice !== null ? direction * (aPrice - bPrice) : 0)
+        || a.product.name.localeCompare(b.product.name);
+    });
+  } else if (filters.sort === 'nearby') {
+    matches.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity)
+      || a.product.name.localeCompare(b.product.name));
+  }
+  return matches;
+}

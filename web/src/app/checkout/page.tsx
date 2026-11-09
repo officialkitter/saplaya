@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStorefrontCart } from '@/lib/cart';
 import { useGlobalMarket } from '@/lib/global-market';
 import { storefrontRequest } from '@/lib/storefront-auth';
-import { orderMode, volumePrice, volumeTier } from '@/lib/volume';
+import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
 
 type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
@@ -26,12 +26,11 @@ function formatTZS(amount: number) {
 }
 
 export default function CheckoutPage() {
-  const { lines, setQuantity, clear } = useStorefrontCart();
+  const { lines, setQuantity, clear, mode, preferredMode, setPreferredMode } = useStorefrontCart();
   const market = useGlobalMarket();
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [options, setOptions] = useState<CheckoutOptions | null>(null);
   const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
-  const [preferredMode, setPreferredMode] = useState<'retail' | 'wholesale'>('retail');
   const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'online'>('cash_on_delivery');
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [quoteError, setQuoteError] = useState('');
@@ -43,19 +42,12 @@ export default function CheckoutPage() {
   const [setupError, setSetupError] = useState('');
   const cashRequestKey = useRef<string | null>(null);
 
-  const mode = useMemo(() => orderMode(lines, preferredMode), [lines, preferredMode]);
   const isDailyDelivery = mode === 'retail' || mode === 'wholesale';
   const availableDeliveryOptions = useMemo(() => deliveryOptions.filter((option) =>
     isDailyDelivery ? option.value === 'morning' || option.value === 'evening'
       : option.value !== 'morning' && option.value !== 'evening',
   ), [deliveryOptions, isDailyDelivery]);
-  const theme = mode === 'mega_bulk'
-    ? { accent: '#5D4037', soft: '#EFEBE9', background: '#FAF7F5', label: 'Mega-bulk', button: '#5D4037', buttonText: '#FFFFFF' }
-    : mode === 'bulk'
-      ? { accent: '#008C95', soft: '#E0F4F4', background: '#F3FAFA', label: 'Bulk', button: '#008C95', buttonText: '#FFFFFF' }
-      : mode === 'wholesale'
-        ? { accent: '#805400', soft: '#FFF8E1', background: '#FFFBF2', label: 'Wholesale', button: '#FFD54F', buttonText: '#15261A' }
-        : { accent: '#2E7D32', soft: '#E8F5E9', background: '#F9FBF7', label: 'Retail', button: '#2E7D32', buttonText: '#FFFFFF' };
+  const theme = volumeTheme(mode);
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
     mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
@@ -230,13 +222,14 @@ export default function CheckoutPage() {
           <label className="block text-sm font-bold">Delivery time
             <select value={deliveryWindow} onChange={(event) => setDeliveryWindow(event.target.value as DeliveryEta)} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
               {availableDeliveryOptions.map((option) => {
-                const title = option.value === 'morning' ? 'Morning'
-                  : option.value === 'evening' ? 'Evening'
+                const title = option.value === 'morning' ? 'Morning (07:00–10:00)'
+                  : option.value === 'evening' ? 'Evening (15:00–18:00)'
                     : option.title.replace(/\s+delivery window$/i, '');
                 return <option key={option.value} value={option.value}>{title} · {formatTZS(option.fee)}</option>;
               })}
             </select>
           </label>
+          {isDailyDelivery && <p className="text-xs text-ink-mute">Delivery windows are shown in local time.</p>}
 
           {(['name', 'email', 'phone'] as const).map((field) => (
             <label key={field} className="block text-sm font-bold capitalize">{field === 'phone' ? 'Phone number' : field}
@@ -259,7 +252,7 @@ export default function CheckoutPage() {
           {options?.cash_on_delivery && (
             <label className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm font-bold">
               <input type="radio" name="payment" checked={paymentMethod === 'cash_on_delivery'} onChange={() => setPaymentMethod('cash_on_delivery')} />
-              Cash on delivery
+              Payment on delivery
             </label>
           )}
 

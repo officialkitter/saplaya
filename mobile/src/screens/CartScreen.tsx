@@ -102,6 +102,7 @@ export default function CartScreen({ navigation }: any) {
         </View>
         <CelebrationModal
           visible={unlocked !== null}
+          volumeTier={unlocked?.tier}
           title={`Congratulations! ${unlocked?.tier === 'mega_bulk' ? 'Mega-bulk' : 'Bulk'} unlocked`}
           message={`${unlocked?.name ?? 'Your item'} now qualifies for ${unlocked?.tier === 'mega_bulk' ? 'mega-bulk' : 'bulk'} pricing.`}
           detail="The price applies to this product and quantity in your basket."

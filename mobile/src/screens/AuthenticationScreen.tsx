@@ -347,9 +347,11 @@ export default function AuthenticationScreen({ navigation }: any) {
               <Pressable style={styles.socialButton} onPress={() => void submitSocial('google')} disabled={busy}>
                 <GoogleMark size={20} /><Text style={styles.socialText}>Google</Text>
               </Pressable>
-              <Pressable style={styles.socialButton} onPress={() => void submitSocial('apple')} disabled={busy}>
-                <Ionicons name="logo-apple" size={20} color={colors.ink} /><Text style={styles.socialText}>Apple</Text>
-              </Pressable>
+              {Platform.OS !== 'android' && (
+                <Pressable style={styles.socialButton} onPress={() => void submitSocial('apple')} disabled={busy}>
+                  <Ionicons name="logo-apple" size={20} color={colors.ink} /><Text style={styles.socialText}>Apple</Text>
+                </Pressable>
+              )}
             </View>
             <Text style={styles.socialHint}>Use your Google account to sign in, or create a Saplaya account automatically if you’re new.</Text>
             <Pressable style={styles.guestButton} onPress={() => void guest()} disabled={busy}>

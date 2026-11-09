@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
-import { CheckoutQuote, confirmPayment, DeliveryEta, DeliveryOption, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
+import { CheckoutQuote, confirmPayment, DeliveryEta, DeliveryOption, deliveryWindowLabel, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
@@ -400,7 +400,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
           <Text style={[styles.heading, { color: tierTheme.accent }]}>{dailyDelivery ? 'Choose a delivery window' : 'Choose a bulk delivery timeframe'}</Text>
           <Text style={styles.subheading}>{dailyDelivery
-            ? 'Everyday orders are delivered in the morning or evening.'
+            ? 'Choose morning 07:00–10:00 or evening 15:00–18:00 local time.'
             : 'Bulk orders use a scheduled delivery timeframe configured by the owner.'}</Text>
           <View style={styles.choiceRow}>
             {availableDeliveryOptions.map((option) => (
@@ -416,7 +416,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 accessibilityState={{ selected: deliveryWindow === option.value }}
               >
                 <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? tierTheme.accent : colors.muted} />
-                <Text style={styles.choiceTitle}>{option.title}</Text>
+                <Text style={styles.choiceTitle}>{option.value === 'morning' || option.value === 'evening' ? deliveryWindowLabel(option.value) : option.title}</Text>
                 <Text style={styles.choiceHint}>{option.fee === 0 ? 'No timeframe surcharge' : `+${formatPrice(option.fee)}`}</Text>
               </Pressable>
             ))}
@@ -501,7 +501,7 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityState={{ selected: checkoutPayment === 'cash_on_delivery' }}
             >
               <Ionicons name="cash-outline" size={21} color={checkoutPayment === 'cash_on_delivery' ? colors.green : colors.muted} />
-              <Text style={styles.choiceTitle}>Cash on delivery</Text>
+              <Text style={styles.choiceTitle}>Payment on delivery</Text>
               <Text style={styles.choiceHint}>Pay when it arrives</Text>
             </Pressable>
           </View>

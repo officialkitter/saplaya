@@ -1,11 +1,24 @@
 import { sha256 } from '@noble/hashes/sha2.js';
+import { getRandomValues as getNativeRandomValues } from 'expo-crypto';
+import { Platform } from 'react-native';
 
 const runtimeCrypto = globalThis.crypto;
 const runtimeSubtle = runtimeCrypto?.subtle;
 const secureRandomValues: Crypto['getRandomValues'] = runtimeCrypto?.getRandomValues
   ? runtimeCrypto.getRandomValues.bind(runtimeCrypto)
   : (array) => {
-      throw new Error('Secure random number generation is unavailable. Update Saplaya to sign in securely.');
+      if (Platform.OS === 'web') {
+        throw new Error('Secure random number generation is unavailable. Update Saplaya to sign in securely.');
+      }
+      if (!ArrayBuffer.isView(array) || array instanceof DataView ||
+          array instanceof Float32Array || array instanceof Float64Array) {
+        throw new TypeError('Expected an integer typed array.');
+      }
+      if (array.byteLength > 65536) {
+        throw new Error('Random values cannot exceed 65536 bytes.');
+      }
+      getNativeRandomValues(new Uint8Array(array.buffer, array.byteOffset, array.byteLength));
+      return array;
     };
 
 const subtle = Object.create(runtimeSubtle ?? null) as SubtleCrypto;
