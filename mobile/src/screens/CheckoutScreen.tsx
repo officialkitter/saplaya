@@ -541,7 +541,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 : currency === 'TZS'
                   ? 'Order and payment currency · TZS'
                   : `Approximate ${currency} display · exchange rate dated ${ratesUpdatedAt}`}
-              {' · '}Charged and settled in TZS.
+              {' · '}Charged in TZS.
             </Text>
             {payment && <Text style={[styles.confirmText, { color: tierTheme.accent }]}>Server-confirmed amount · {payment.currency}</Text>}
           </View>
@@ -603,20 +603,21 @@ export default function CheckoutScreen({ navigation }: any) {
                 </View>
               )}
               <Field
-                label="Mobile money number for this payment"
+                label="Mobile money number (optional)"
                 value={paymentPhone}
                 onChangeText={setPaymentPhone}
                 keyboardType="phone-pad"
                 placeholder={phone || '+255 7XX XXX XXX'}
                 editable={!pendingVerification}
               />
+              <Text style={styles.helper}>Use a Tanzanian number, or leave this blank to use your contact number. Choose an available payment method on Pesapal and follow its instructions. Enter your PIN only on your phone or the provider's trusted prompt.</Text>
             </>
           )}
 
           {checkoutPayment === 'online' && (
             <View style={[styles.secureCard, { backgroundColor: tierTheme.soft }]}>
               <Ionicons name="shield-checkmark-outline" size={22} color={tierTheme.accent} />
-              <Text style={styles.secureText}>Complete payment securely using the available mobile money or card options.</Text>
+              <Text style={styles.secureText}>Choose from the mobile money or card options available on Pesapal. Online payments are currently charged in TZS.</Text>
             </View>
           )}
 

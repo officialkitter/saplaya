@@ -1,8 +1,25 @@
 import dynamic from 'next/dynamic';
+import type { Metadata } from 'next';
 import { Nav } from '@/components/landing/Nav';
 import { Hero } from '@/components/landing/Hero';
 
-export const metadata = { alternates: { canonical: '/' } };
+const title = 'Saplaya | Farm produce supplies and delivery';
+const description = 'Shop fresh farm produce and pantry essentials for delivery. Explore retail and wholesale options and connect with Saplaya as a supplier.';
+
+export const metadata: Metadata = {
+  title,
+  description,
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    url: 'https://www.saplaya.org/',
+    siteName: 'Saplaya',
+    title,
+    description,
+    images: [{ url: '/saplaya-icon.png', alt: 'Saplaya' }],
+  },
+  twitter: { card: 'summary', title, description, images: ['/saplaya-icon.png'] },
+};
 
 const Pipeline = dynamic(() => import('@/components/landing/Pipeline').then((module) => module.Pipeline));
 const FreshToday = dynamic(() => import('@/components/landing/FreshToday').then((module) => module.FreshToday));

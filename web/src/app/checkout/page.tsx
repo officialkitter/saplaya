@@ -35,6 +35,7 @@ export default function CheckoutPage() {
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [quoteError, setQuoteError] = useState('');
   const [contact, setContact] = useState({ name: '', email: '', phone: '' });
+  const [paymentPhone, setPaymentPhone] = useState('');
   const [acceptedFee, setAcceptedFee] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -123,7 +124,10 @@ export default function CheckoutPage() {
         customer: { name: contact.name.trim(), email: contact.email.trim(), phone: contact.phone.trim() },
       };
       if (paymentMethod === 'online') {
-        const payment = await storefrontRequest<PaymentSession>('/payments/initialize', input);
+        const payment = await storefrontRequest<PaymentSession>('/payments/initialize', {
+          ...input,
+          ...(paymentPhone.trim() ? { payment_phone: paymentPhone.trim() } : {}),
+        });
         window.location.assign(payment.payment_url);
         return;
       }
@@ -138,7 +142,7 @@ export default function CheckoutPage() {
     } finally {
       setBusy(false);
     }
-  }, [lines, market.location, quote, quoteError, contact, acceptedFee, paymentMethod, options, mode, deliveryWindow, items, clear]);
+  }, [lines, market.location, quote, quoteError, contact, paymentPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, items, clear]);
 
   if (orderId) {
     return (
@@ -254,6 +258,23 @@ export default function CheckoutPage() {
               <input type="radio" name="payment" checked={paymentMethod === 'cash_on_delivery'} onChange={() => setPaymentMethod('cash_on_delivery')} />
               Payment on delivery
             </label>
+          )}
+
+          {paymentMethod === 'online' && options?.online_payment && (
+            <div className="space-y-2 rounded-xl border border-line p-3">
+              <label className="block text-sm font-bold">Mobile money number (optional)
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  value={paymentPhone}
+                  onChange={(event) => setPaymentPhone(event.target.value)}
+                  placeholder="Use your contact number"
+                  className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
+                />
+              </label>
+              <p className="text-xs text-ink-mute">Use a Tanzanian number. If left blank, your contact number is used. Select an available payment method on Pesapal; follow its instructions on your phone. Enter your PIN only on your phone or the provider&apos;s trusted prompt.</p>
+              <p className="text-xs font-bold text-ink-mute">Online checkout is currently charged in TZS, including card payments.</p>
+            </div>
           )}
 
           {quoteError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{quoteError}</p>}

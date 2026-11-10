@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Search, Sprout } from 'lucide-react';
+import Link from 'next/link';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { localDayPeriod, type LocalDayPeriod } from '@/lib/format';
 import { useStorefrontProducts, type StorefrontFilters } from '@/lib/storefront';
@@ -20,6 +21,7 @@ export function FreshToday() {
   const [category, setCategory] = useState('');
   const [fresh, setFresh] = useState(false);
   const [filters, setFilters] = useState<StorefrontFilters>({});
+  const [basketNotice, setBasketNotice] = useState<{ id: string; name: string; unit: string } | null>(null);
   const { products, loading, error, retry, hasMore, categories, loadMore } = useStorefrontProducts(40, market.location, filters);
   const searching = Boolean(filters.query?.trim() || filters.category || filters.fresh);
 
@@ -190,13 +192,18 @@ export function FreshToday() {
                           <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>
                         )}
                         {tier !== 'retail' && <p className="mt-2 text-xs font-bold" style={{ color: theme.accent }}>{tier === 'mega_bulk' ? 'Mega-bulk' : tier === 'bulk' ? 'Bulk' : 'Wholesale'} price</p>}
+                        {qty > 0 && <p className="mt-2 text-sm font-semibold text-ink-soft">{qty} {product.unit} in your basket</p>}
                         <button
                           type="button"
-                          onClick={() => add(product)}
-                          className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm font-extrabold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                          disabled={product.stock < 1 || qty >= Math.min(product.stock, 10000)}
+                          onClick={() => {
+                            add(product);
+                            setBasketNotice({ id: product.id, name: product.name, unit: product.unit });
+                          }}
+                          className="mt-3 min-h-11 w-full rounded-xl px-4 py-2.5 text-sm font-extrabold transition-transform active:scale-[0.98] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                           style={{ backgroundColor: theme.button, color: theme.buttonText }}
                         >
-                          Add to basket
+                          {product.stock < 1 ? 'Currently unavailable' : qty >= Math.min(product.stock, 10000) ? 'Maximum available in basket' : qty ? 'Add another' : 'Add to basket'}
                         </button>
                       </div>
                     </article>
@@ -208,6 +215,22 @@ export function FreshToday() {
           </div>
         )}
       </div>
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {basketNotice && `${basketNotice.name} added. ${lines.find((line) => line.product.id === basketNotice.id)?.qty ?? 0} ${basketNotice.unit} in your basket.`}
+      </span>
+      {basketNotice && (
+        <div className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-line bg-white p-4 shadow-lift">
+          <p aria-hidden="true" className="min-w-0 flex-1 break-words text-sm font-bold text-ink">
+            {basketNotice.name} added. {lines.find((line) => line.product.id === basketNotice.id)?.qty ?? 0} {basketNotice.unit} in your basket.
+          </p>
+          <Link href="/checkout" className="shrink-0 rounded-xl px-3 py-2 text-sm font-extrabold" style={{ backgroundColor: theme.button, color: theme.buttonText }}>
+            View basket
+          </Link>
+          <button type="button" onClick={() => setBasketNotice(null)} aria-label="Dismiss basket notification" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl text-ink-soft">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      )}
     </section>
   );
 }
