@@ -62,7 +62,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
           <Image source={{ uri: product.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
-            <MaterialCommunityIcons name="food-apple-outline" size={68} color={tierTheme.accent} />
+            <MaterialCommunityIcons name="food-apple-outline" size={68} color={tierTheme.icon} />
           </View>
         )}
         <Pressable onPress={() => navigation.goBack()} style={[styles.back, { top: insets.top + 8 }]} accessibilityLabel="Back">
@@ -78,7 +78,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
         style={[styles.sheet, { backgroundColor: tierTheme.surface, borderTopColor: tierTheme.accent, borderTopWidth: tier === 'retail' || tier === 'wholesale' ? 0 : 4, paddingBottom: Math.max(insets.bottom, 18) }]}
       >
         <View style={[styles.badge, { backgroundColor: tierTheme.soft }]}>
-          <MaterialCommunityIcons name="barley" size={18} color={tierTheme.accent} />
+          <MaterialCommunityIcons name="barley" size={18} color={tierTheme.icon} />
           <Text numberOfLines={1} style={[styles.badgeText, { color: tierTheme.accent }]}>Open-field farm · {harvestedText(product.harvested_at)}</Text>
         </View>
 
@@ -97,7 +97,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               updateQuantity(next);
               setQtyText(String(next));
             }} style={styles.stepBtn} accessibilityLabel="Less">
-              <Ionicons name="remove" size={26} color={tierTheme.accent} />
+              <Ionicons name="remove" size={26} color={tierTheme.icon} />
             </Pressable>
             <TextInput
               value={qtyText}
@@ -123,7 +123,7 @@ export default function ProductDetailScreen({ route, navigation }: any) {
               updateQuantity(next);
               setQtyText(String(next));
             }} style={styles.stepBtn} accessibilityLabel="More" disabled={qty >= 10000}>
-              <Ionicons name="add" size={26} color={tierTheme.accent} />
+              <Ionicons name="add" size={26} color={tierTheme.icon} />
             </Pressable>
           </View>
 

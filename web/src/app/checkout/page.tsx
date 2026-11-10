@@ -272,8 +272,8 @@ export default function CheckoutPage() {
                   className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
                 />
               </label>
-              <p className="text-xs text-ink-mute">Use a Tanzanian number. If left blank, your contact number is used. Select an available payment method on Pesapal; follow its instructions on your phone. Enter your PIN only on your phone or the provider&apos;s trusted prompt.</p>
-              <p className="text-xs font-bold text-ink-mute">Online checkout is currently charged in TZS, including card payments.</p>
+              <p className="text-xs text-ink-mute">Enter the mobile-money number linked to your account, or leave this blank to use your contact number. You’ll see the available payment options before confirming. Enter your PIN only on your phone or the payment provider&apos;s trusted prompt.</p>
+              <p className="text-xs font-bold text-ink-mute">Review your total and available payment options before confirming.</p>
             </div>
           )}
 

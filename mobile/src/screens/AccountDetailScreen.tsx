@@ -135,9 +135,9 @@ function ProfileDetails() {
       <View style={styles.avatarBlock}>
         {profile.avatarUrl
           ? <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-          : <View style={[styles.avatarPlaceholder, { backgroundColor: theme.soft }]}><Ionicons name="person" size={40} color={theme.accent} /></View>}
+          : <View style={[styles.avatarPlaceholder, { backgroundColor: theme.soft }]}><Ionicons name="person" size={40} color={theme.icon} /></View>}
         <Pressable onPress={choosePhoto} style={styles.photoButton} disabled={busy}>
-          <Ionicons name="camera-outline" size={17} color={theme.accent} />
+          <Ionicons name="camera-outline" size={17} color={theme.icon} />
           <Text style={[styles.photoText, { color: theme.accent }]}>{busy ? 'Saving…' : 'Change photo'}</Text>
         </Pressable>
       </View>
@@ -146,7 +146,7 @@ function ProfileDetails() {
       {user?.email && !user.is_anonymous && (
         <View style={styles.emailVerificationCard}>
           <View style={[styles.emailVerificationIcon, { backgroundColor: theme.soft }]}>
-            <Ionicons name={user.emailVerified ? 'checkmark-circle' : 'mail-unread-outline'} size={21} color={theme.accent} />
+            <Ionicons name={user.emailVerified ? 'checkmark-circle' : 'mail-unread-outline'} size={21} color={theme.icon} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>{user.emailVerified ? 'Email verified' : 'Verify your email'}</Text>
@@ -208,7 +208,7 @@ function AccountSecurity() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {user?.phone && !user.email ? (
         <View style={styles.emailVerificationCard}>
-          <View style={[styles.emailVerificationIcon, { backgroundColor: theme.soft }]}><Ionicons name="phone-portrait-outline" size={21} color={theme.accent} /></View>
+          <View style={[styles.emailVerificationIcon, { backgroundColor: theme.soft }]}><Ionicons name="phone-portrait-outline" size={21} color={theme.icon} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>Sign-in by phone</Text>
             <Text style={styles.cardBody}>Your account uses one-time SMS codes instead of a password.</Text>
@@ -307,7 +307,7 @@ function Addresses() {
       {addresses.map((saved) => (
         <View key={saved.id} style={[styles.addressCard, saved.isDefault && { borderColor: theme.accent, backgroundColor: theme.soft }]}>
           <Pressable style={styles.addressMain} onPress={() => choose(saved.id)}>
-            <Ionicons name={saved.isDefault ? 'checkmark-circle' : 'location-outline'} size={22} color={theme.accent} />
+            <Ionicons name={saved.isDefault ? 'checkmark-circle' : 'location-outline'} size={22} color={theme.icon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>{saved.label}{saved.isDefault ? ' · Selected' : ''}</Text>
               <Text style={styles.cardBody}>{saved.address}</Text>
@@ -324,7 +324,7 @@ function Addresses() {
         <Field label="Address label" value={label} onChangeText={setLabel} placeholder="Home, work…" />
         <Field label="Street, area or landmark" value={address} onChangeText={setAddress} placeholder="Add directions for your rider" />
         <Pressable style={[styles.locationButton, { backgroundColor: theme.soft }]} onPress={currentLocation} disabled={busy}>
-          <Ionicons name="locate-outline" size={19} color={theme.accent} />
+          <Ionicons name="locate-outline" size={19} color={theme.icon} />
           <Text style={[styles.locationButtonText, { color: theme.accent }]}>{busy ? 'Finding location…' : 'Use my current location'}</Text>
         </Pressable>
         <Text style={styles.helper}>
@@ -414,12 +414,12 @@ function PaymentMethods() {
         <View style={styles.paymentLoading}><Text style={styles.helper}>Loading…</Text></View>
       ) : methods.length === 0 ? (
         <View style={styles.paymentEmpty}>
-          <Ionicons name="wallet-outline" size={30} color={theme.accent} />
+          <Ionicons name="wallet-outline" size={30} color={theme.icon} />
           <Text style={styles.cardTitle}>Add your first mobile money number</Text>
         </View>
       ) : methods.map((method) => (
         <View key={method.id} style={[styles.paymentMethodRow, styles.addressCard]}>
-          <View style={[styles.paymentIcon, { backgroundColor: theme.soft }]}><Ionicons name="phone-portrait-outline" size={22} color={theme.accent} /></View>
+          <View style={[styles.paymentIcon, { backgroundColor: theme.soft }]}><Ionicons name="phone-portrait-outline" size={22} color={theme.icon} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>{method.label}{method.is_default ? ' · Preferred' : ''}</Text>
             <Text style={styles.cardBody}>{method.phone_e164}</Text>
@@ -438,7 +438,7 @@ function PaymentMethods() {
       </View>
 
       <View style={styles.paymentCardOption}>
-        <Ionicons name="card-outline" size={22} color={theme.accent} />
+        <Ionicons name="card-outline" size={22} color={theme.icon} />
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>Cards</Text>
           <Text style={styles.cardBody}>Available in secure online checkout.</Text>
@@ -591,7 +591,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
   if (!isSignedIn) {
     return (
       <View style={styles.centerContent}>
-        <Ionicons name="storefront-outline" size={56} color={theme.accent} />
+        <Ionicons name="storefront-outline" size={56} color={theme.icon} />
         <Text style={styles.cardTitle}>Apply to sell on Saplaya</Text>
         <Text style={styles.intro}>Sign in or create an account before registering your farm.</Text>
         <ActionButton title="Sign in or create account" onPress={() => navigation.navigate('Authentication')} />
@@ -637,7 +637,7 @@ function HelpCenter() {
       <InfoCard icon="card-outline" title="When is payment confirmed?" body="Online orders are confirmed after the provider verifies payment. Payment-on-delivery orders are confirmed when you place them." />
       <InfoCard icon="location-outline" title="Can I change my delivery point?" body="Tap the delivery location at the top of the shop, or choose a saved address at checkout." />
       <Pressable style={[styles.locationButton, { backgroundColor: theme.soft }]} onPress={openSupport}>
-        <Ionicons name="mail-outline" size={20} color={theme.accent} />
+        <Ionicons name="mail-outline" size={20} color={theme.icon} />
         <Text style={[styles.locationButtonText, { color: theme.accent }]}>Email customer support</Text>
       </Pressable>
     </ScrollView>
@@ -650,7 +650,7 @@ function Legal() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <View style={[styles.legalHero, { backgroundColor: theme.button }]}>
-        <View style={styles.legalHeroIcon}><Ionicons name="shield-checkmark" size={23} color={theme.accent} /></View>
+        <View style={styles.legalHeroIcon}><Ionicons name="shield-checkmark" size={23} color={theme.icon} /></View>
         <Text style={[styles.legalTitle, { color: theme.buttonText }]}>Your trust matters</Text>
         <Text style={[styles.legalIntro, { color: theme.buttonText }]}>Here is how Saplaya orders work and how we use the information needed to serve you.</Text>
         <Text style={[styles.legalUpdated, { color: theme.buttonText }]}>Saplaya customer terms and privacy</Text>
@@ -803,7 +803,7 @@ function InfoCard({ icon, title, body }: { icon: React.ComponentProps<typeof Ion
   const theme = volumeTheme(mode);
   return (
     <View style={styles.infoCard}>
-      <View style={[styles.infoIcon, { backgroundColor: theme.soft }]}><Ionicons name={icon} size={21} color={theme.accent} /></View>
+      <View style={[styles.infoIcon, { backgroundColor: theme.soft }]}><Ionicons name={icon} size={21} color={theme.icon} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{title}</Text>
         <Text style={styles.cardBody}>{body}</Text>
@@ -817,7 +817,7 @@ function LegalSection({ icon, title, body }: { icon: React.ComponentProps<typeof
   const theme = volumeTheme(mode);
   return (
     <View style={styles.legalSection}>
-      <View style={[styles.infoIcon, { backgroundColor: theme.soft }]}><Ionicons name={icon} size={21} color={theme.accent} /></View>
+      <View style={[styles.infoIcon, { backgroundColor: theme.soft }]}><Ionicons name={icon} size={21} color={theme.icon} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.legalSectionTitle}>{title}</Text>
         <Text style={styles.legalSectionBody}>{body}</Text>

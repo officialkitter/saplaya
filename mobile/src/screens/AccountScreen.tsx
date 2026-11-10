@@ -34,7 +34,7 @@ export default function AccountScreen({ navigation }: any) {
             {profile.avatarUrl ? (
               <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: theme.soft }]}><Ionicons name="person" size={30} color={theme.accent} /></View>
+              <View style={[styles.avatarFallback, { backgroundColor: theme.soft }]}><Ionicons name="person" size={30} color={theme.icon} /></View>
             )}
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{profile.fullName || (isSignedIn ? 'Welcome to Saplaya' : 'Welcome, shopper')}</Text>
@@ -44,7 +44,7 @@ export default function AccountScreen({ navigation }: any) {
         </MotiView>
 
         <Pressable style={[styles.orderShortcut, { backgroundColor: theme.soft }]} onPress={() => navigation.navigate('Tabs', { screen: 'Tracking' })}>
-          <View style={styles.shortcutIcon}><Ionicons name="receipt-outline" size={22} color={theme.accent} /></View>
+          <View style={styles.shortcutIcon}><Ionicons name="receipt-outline" size={22} color={theme.icon} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>My orders</Text>
             <Text style={styles.rowSubtitle}>{isSignedIn ? 'Track deliveries and view your order history' : 'Track a delivery in this session'}</Text>
@@ -67,7 +67,7 @@ export default function AccountScreen({ navigation }: any) {
                 onPress={() => navigation.navigate('AccountDetail', { section: section.key })}
                 accessibilityRole="button"
               >
-                <View style={[styles.rowIcon, { backgroundColor: theme.soft }]}><Ionicons name={section.icon} size={21} color={theme.accent} /></View>
+                <View style={[styles.rowIcon, { backgroundColor: theme.soft }]}><Ionicons name={section.icon} size={21} color={theme.icon} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{section.title}</Text>
                   <Text style={styles.rowSubtitle}>{section.subtitle}</Text>

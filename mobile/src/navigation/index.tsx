@@ -77,17 +77,17 @@ function Tabs() {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="storefront" size={size} color={color} />, tabBarLabel: 'Shop' }}
+        options={{ tabBarIcon: ({ color, size, focused }) => <Ionicons name="storefront" size={size} color={focused ? tierTheme.icon : color} />, tabBarLabel: 'Shop' }}
       />
       <Tab.Screen
         name="Cart"
         component={CartScreen}
-        options={{ tabBarIcon: ({ color, size }) => <CartTabIcon color={color} size={size} />, tabBarLabel: 'Basket' }}
+        options={{ tabBarIcon: ({ color, size, focused }) => <CartTabIcon color={focused ? tierTheme.icon : color} size={size} />, tabBarLabel: 'Basket' }}
       />
       <Tab.Screen
         name="Tracking"
         component={TrackingScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="navigate-circle" size={size} color={color} />, tabBarLabel: 'Track' }}
+        options={{ tabBarIcon: ({ color, size, focused }) => <Ionicons name="navigate-circle" size={size} color={focused ? tierTheme.icon : color} />, tabBarLabel: 'Track' }}
       />
       <Tab.Screen
         name="Product"

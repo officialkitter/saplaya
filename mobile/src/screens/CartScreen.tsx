@@ -41,7 +41,7 @@ export default function CartScreen({ navigation }: any) {
     return (
       <SafeAreaView style={[styles.root, styles.empty, { backgroundColor: tierTheme.background }]}>
         <MotiView from={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring' }}>
-          <Ionicons name="basket-outline" size={96} color={tierTheme.accent} />
+          <Ionicons name="basket-outline" size={96} color={tierTheme.icon} />
         </MotiView>
         <Text style={styles.emptyTitle}>Your basket is empty</Text>
         <Text style={styles.emptySub}>Pick something fresh from the shop.</Text>
@@ -65,7 +65,7 @@ export default function CartScreen({ navigation }: any) {
               <Image source={{ uri: item.product.image_url }} style={styles.thumb} contentFit="cover" />
             ) : (
               <View style={[styles.thumb, styles.imageFallback]}>
-                <Ionicons name="leaf-outline" size={22} color={tierTheme.accent} />
+                <Ionicons name="leaf-outline" size={22} color={tierTheme.icon} />
               </View>
             )}
             <View style={{ flex: 1, marginLeft: 12 }}>
@@ -77,9 +77,9 @@ export default function CartScreen({ navigation }: any) {
                 {volumeTierLabel(tierOf(item.product, item.qty))}
               </Text>
               <View style={[styles.stepper, { backgroundColor: tierTheme.soft }]}>
-                <Pressable onPress={() => updateQuantity(item, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={tierTheme.accent} /></Pressable>
+                <Pressable onPress={() => updateQuantity(item, item.qty - 1)} style={styles.sBtn} accessibilityLabel={`Decrease ${item.product.name} quantity`}><Ionicons name="remove" size={20} color={tierTheme.icon} /></Pressable>
                 <QuantityInput qty={item.qty} onChange={(qty) => updateQuantity(item, qty)} />
-                <Pressable onPress={() => updateQuantity(item, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={tierTheme.accent} /></Pressable>
+                <Pressable onPress={() => updateQuantity(item, item.qty + 1)} style={styles.sBtn} accessibilityLabel={`Increase ${item.product.name} quantity`}><Ionicons name="add" size={20} color={tierTheme.icon} /></Pressable>
               </View>
               <Pressable style={styles.remove} onPress={() => setQty(item.product.id, 0)} accessibilityRole="button">
                 <Ionicons name="trash-outline" size={15} color="#C62828" />

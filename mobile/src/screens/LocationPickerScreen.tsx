@@ -6,12 +6,15 @@ import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
-import { colors, radius } from '../theme';
+import { useStore } from '../store/StoreContext';
+import { colors, radius, volumeTheme } from '../theme';
 
 export default function LocationPickerScreen({ navigation }: any) {
   const current = useDeliveryPlace();
   const { setPlace, useCurrentLocation } = useDeliveryActions();
   const { addresses } = useAccount();
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const [label, setLabel] = useState(current.label);
   const [busy, setBusy] = useState(false);
 
@@ -52,13 +55,13 @@ export default function LocationPickerScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       <ScreenHeader title="Delivery location" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <MotiView from={{ opacity: 0, translateY: 8 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 220 }}>
           <Text style={styles.intro}>Choose where you’d like your fresh order delivered.</Text>
-          <Pressable style={styles.gps} onPress={locate} disabled={busy}>
-            <View style={styles.gpsIcon}><Ionicons name="locate" size={22} color={colors.green} /></View>
+          <Pressable style={[styles.gps, { backgroundColor: theme.soft }]} onPress={locate} disabled={busy}>
+            <View style={styles.gpsIcon}><Ionicons name="locate" size={22} color={theme.icon} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.itemTitle}>{busy ? 'Finding your location…' : 'Use my current location'}</Text>
               <Text style={styles.subtitle}>Allow location access for a more accurate delivery fee</Text>
@@ -75,7 +78,7 @@ export default function LocationPickerScreen({ navigation }: any) {
                   style={styles.savedRow}
                   onPress={() => choose({ lat: address.lat, lng: address.lng, label: address.address, approximate: false })}
                 >
-                  <Ionicons name={address.isDefault ? 'checkmark-circle' : 'location-outline'} size={21} color={colors.green} />
+                  <Ionicons name={address.isDefault ? 'checkmark-circle' : 'location-outline'} size={21} color={theme.icon} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itemTitle}>{address.label}</Text>
                     <Text style={styles.subtitle}>{address.address}</Text>
@@ -99,8 +102,8 @@ export default function LocationPickerScreen({ navigation }: any) {
           <Text style={styles.note}>
             This updates your delivery label. GPS coordinates stay at the current map point until you choose a saved address or use GPS.
           </Text>
-          <Pressable style={styles.button} onPress={saveLabel}>
-            <Text style={styles.buttonText}>Use this location</Text>
+          <Pressable style={[styles.button, { backgroundColor: theme.button }]} onPress={saveLabel}>
+            <Text style={[styles.buttonText, { color: theme.buttonText }]}>Use this location</Text>
           </Pressable>
         </MotiView>
       </ScrollView>

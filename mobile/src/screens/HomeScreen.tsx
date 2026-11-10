@@ -193,12 +193,12 @@ export default function HomeScreen({ navigation }: any) {
           <View style={{ flex: 1 }}>
             <Text style={styles.locSmall}>Delivering to · Tap to change</Text>
             <Text style={styles.locBig} numberOfLines={1}>
-              {place.label} <Ionicons name="chevron-down" size={14} color={tierTheme.accent} />
+              {place.label} <Ionicons name="chevron-down" size={14} color={tierTheme.icon} />
             </Text>
           </View>
         </Pressable>
         <Pressable style={styles.accountButton} onPress={() => navigateToRoot('Account')} accessibilityRole="button" accessibilityLabel="Open your account">
-          <Ionicons name="person-outline" size={23} color={tierTheme.accent} />
+          <Ionicons name="person-outline" size={23} color={tierTheme.icon} />
         </Pressable>
         <Pressable
           style={styles.currencyButton}
@@ -224,8 +224,8 @@ export default function HomeScreen({ navigation }: any) {
 
       <Text style={[styles.section, { color: tierTheme.accent }]}>Shop by category</Text>
       <View style={styles.searchPanel}>
-        <View style={[styles.searchBar, { borderColor: tierTheme.button, backgroundColor: mode === 'wholesale' ? tierTheme.soft : colors.white }]}>
-          <Ionicons name="search" size={20} color={tierTheme.accent} />
+        <View style={[styles.searchBar, { borderColor: tierTheme.button, backgroundColor: tierTheme.surface }]}>
+          <Ionicons name="search" size={20} color={tierTheme.icon} />
           <TextInput value={query} onChangeText={setQuery} maxLength={100} placeholder="Search products" accessibilityLabel="Search products" style={styles.searchInput} returnKeyType="search" />
           {query ? <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search"><Ionicons name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
         </View>
@@ -275,12 +275,12 @@ export default function HomeScreen({ navigation }: any) {
         ListHeaderComponent={header}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator color={tierTheme.accent} style={{ margin: 32 }} />
+            <ActivityIndicator color={tierTheme.icon} style={{ margin: 32 }} />
           ) : error ? (
             <Text style={styles.err} onPress={() => void refreshProducts()}>{error} — tap to retry</Text>
           ) : (
             <View style={styles.empty}>
-              <Ionicons name="basket-outline" size={40} color={tierTheme.accent} />
+              <Ionicons name="basket-outline" size={40} color={tierTheme.icon} />
               <Text style={styles.emptyTitle}>{searching ? 'No matching products' : 'No items in stock right now'}</Text>
               <Text style={styles.emptyText}>{searching ? 'Try another search or change your filters.' : 'New products will appear here as local farms add approved prices and available stock.'}</Text>
             </View>
@@ -288,7 +288,7 @@ export default function HomeScreen({ navigation }: any) {
         }
         ListFooterComponent={
           loading && items.length > 0 ? (
-            <ActivityIndicator color={tierTheme.accent} style={{ margin: 24 }} />
+            <ActivityIndicator color={tierTheme.icon} style={{ margin: 24 }} />
           ) : error && items.length > 0 ? (
             <Text style={styles.err} onPress={() => void refreshProducts()}>{error} — tap to retry</Text>
           ) : hasMore && items.length > 0 ? (

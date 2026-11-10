@@ -11,7 +11,8 @@ import GoogleMark from '../components/GoogleMark';
 import BrandMark from '../components/BrandMark';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAccount } from '../store/AccountContext';
-import { colors, radius } from '../theme';
+import { useStore } from '../store/StoreContext';
+import { colors, radius, volumeTheme } from '../theme';
 
 const authSlides = [
   { image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1100&q=85', title: 'Fresh finds, every day' },
@@ -23,6 +24,8 @@ const RESEND_SECONDS = 45;
 export default function AuthenticationScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
   const { signIn, register, signInWithProvider, continueAsGuest, sendPhoneOtp, verifyPhoneOtp, requestPasswordReset } = useAccount();
+  const { mode } = useStore();
+  const theme = volumeTheme(mode);
   const heroRef = useRef<FlatList<(typeof authSlides)[number]>>(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -228,7 +231,7 @@ export default function AuthenticationScreen({ navigation }: any) {
   const openLegal = () => navigation.navigate('AccountDetail', { section: 'legal' });
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       <ScreenHeader title={creating ? 'Create account' : 'Welcome'} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -265,7 +268,7 @@ export default function AuthenticationScreen({ navigation }: any) {
             <Text style={styles.heading}>{creating ? 'Join Saplaya' : 'Welcome back'}</Text>
             <Text style={styles.subheading}>{creating ? 'Create an account to keep your details and orders together.' : 'Sign in to see your saved details and orders.'}</Text>
 
-            <View style={styles.methods}>
+            <View style={[styles.methods, { backgroundColor: theme.soft }]}>
               {(['email', 'phone'] as const).map((value) => (
                 <Pressable
                   key={value}
@@ -274,7 +277,7 @@ export default function AuthenticationScreen({ navigation }: any) {
                   accessibilityRole="tab"
                   accessibilityState={{ selected: method === value }}
                 >
-                  <Text style={[styles.methodText, method === value && styles.methodTextActive]}>{value === 'email' ? 'Email' : 'Phone'}</Text>
+                  <Text style={[styles.methodText, method === value && [styles.methodTextActive, { color: theme.accent }]]}>{value === 'email' ? 'Email' : 'Phone'}</Text>
                 </Pressable>
               ))}
             </View>
@@ -286,7 +289,7 @@ export default function AuthenticationScreen({ navigation }: any) {
                 <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete={creating ? 'new-password' : 'current-password'} />
                 {!creating && (
                   <Pressable style={styles.forgotPassword} onPress={() => void resetPassword()} disabled={busy}>
-                    <Text style={styles.resendText}>Forgot password?</Text>
+                    <Text style={[styles.resendText, { color: theme.accent }]}>Forgot password?</Text>
                   </Pressable>
                 )}
               </>
@@ -300,7 +303,7 @@ export default function AuthenticationScreen({ navigation }: any) {
                     <View style={styles.resendRow}>
                       <Text style={styles.resendHint}>Didn't receive your OTP?</Text>
                       <Pressable onPress={() => void requestAnotherCode()} disabled={busy || resendIn > 0}>
-                        <Text style={[styles.resendText, (busy || resendIn > 0) && styles.disabledText]}>
+                        <Text style={[styles.resendText, { color: theme.accent }, (busy || resendIn > 0) && styles.disabledText]}>
                           {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend OTP'}
                         </Text>
                       </Pressable>
@@ -319,25 +322,25 @@ export default function AuthenticationScreen({ navigation }: any) {
                 hitSlop={8}
                 style={styles.termsToggle}
               >
-                <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                  {acceptedTerms && <Ionicons name="checkmark" size={16} color={colors.white} />}
+                <View style={[styles.checkbox, { borderColor: theme.icon }, acceptedTerms && [styles.checkboxChecked, { backgroundColor: theme.button, borderColor: theme.button }]]}>
+                  {acceptedTerms && <Ionicons name="checkmark" size={16} color={theme.buttonText} />}
                 </View>
                 <Text style={styles.termsText}>I agree to Saplaya's</Text>
               </Pressable>
               <Pressable onPress={openLegal} hitSlop={8} accessibilityRole="link">
-                <Text style={styles.termsLink}>Terms & Privacy Policy</Text>
+                <Text style={[styles.termsLink, { color: theme.accent }]}>Terms & Privacy Policy</Text>
               </Pressable>
             </View>
 
-            <Pressable style={[styles.button, busy && styles.buttonDisabled]} onPress={submit} disabled={busy}>
-              <Text style={styles.buttonText}>
+            <Pressable style={[styles.button, { backgroundColor: theme.button }, busy && styles.buttonDisabled]} onPress={submit} disabled={busy}>
+              <Text style={[styles.buttonText, { color: theme.buttonText }]}>
                 {busy ? 'Please wait…' : method === 'phone' ? codeSent ? 'Verify OTP' : 'Send OTP' : creating ? 'Create account' : 'Sign in'}
               </Text>
-              {!busy && <Ionicons name="arrow-forward" size={18} color={colors.white} />}
+              {!busy && <Ionicons name="arrow-forward" size={18} color={theme.buttonText} />}
             </Pressable>
 
             <Pressable style={styles.switch} onPress={() => { setCreating((value) => !value); setCodeSent(false); setCode(''); }}>
-              <Text style={styles.switchText}>
+              <Text style={[styles.switchText, { color: theme.accent }]}>
                 {creating ? 'Already with us? Sign in' : 'New to Saplaya? Create an account'}
               </Text>
             </Pressable>
@@ -354,9 +357,9 @@ export default function AuthenticationScreen({ navigation }: any) {
               )}
             </View>
             <Text style={styles.socialHint}>Use your Google account to sign in, or create a Saplaya account automatically if you’re new.</Text>
-            <Pressable style={styles.guestButton} onPress={() => void guest()} disabled={busy}>
-              <Ionicons name="person-outline" size={18} color={colors.green} />
-              <Text style={styles.guestText}>Continue as guest</Text>
+            <Pressable style={[styles.guestButton, { backgroundColor: theme.soft }]} onPress={() => void guest()} disabled={busy}>
+              <Ionicons name="person-outline" size={18} color={theme.icon} />
+              <Text style={[styles.guestText, { color: theme.accent }]}>Continue as guest</Text>
             </Pressable>
             <Text style={styles.guestNote}>You can shop and order without an account. Order history is saved when you create an account.</Text>
           </View>

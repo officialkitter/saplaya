@@ -31,3 +31,11 @@ test('public products do not retain protected prices in browser cart data', () =
   assert.equal(publicProduct.bulk_price, null);
   assert.equal(publicProduct.mega_bulk_price, null);
 });
+
+test('wholesale uses a yellow accent while keeping the retail background', () => {
+  const wholesale = volumeTheme('wholesale');
+  const retail = volumeTheme('retail');
+  assert.equal(wholesale.button, '#FFD54F');
+  assert.equal(wholesale.background, retail.background);
+  assert.equal(wholesale.accent, '#8F6B00');
+});

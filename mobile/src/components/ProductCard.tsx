@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
+import { Ionicons } from '@expo/vector-icons';
 import { Product } from '../types';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, shadow, volumeTheme } from '../theme';
@@ -23,8 +24,8 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
         {product.image_url ? (
           <Image source={{ uri: product.image_url }} style={styles.img} contentFit="cover" transition={250} />
         ) : (
-          <View style={[styles.img, styles.imageFallback]}>
-            <Text style={styles.imageFallbackIcon}>🥬</Text>
+          <View style={[styles.img, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
+            <Ionicons name="leaf-outline" size={42} color={tierTheme.icon} />
           </View>
         )}
         <View style={styles.body}>
@@ -48,7 +49,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden' },
   img: { width: '100%', aspectRatio: 1, backgroundColor: colors.line },
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
-  imageFallbackIcon: { fontSize: 42 },
   body: { padding: 12 },
   name: { fontSize: 16, fontWeight: '700', color: colors.ink },
   price: { fontSize: 17, fontWeight: '800', color: colors.green, marginTop: 4 },

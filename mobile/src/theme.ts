@@ -18,15 +18,15 @@ export const colors = {
 
 export function volumeTheme(tier: 'retail' | 'wholesale' | 'bulk' | 'mega_bulk') {
   if (tier === 'mega_bulk') {
-    return { accent: colors.megaBulk, soft: colors.megaBulkLight, background: '#FAF6F2', surface: colors.white, button: colors.megaBulk, buttonText: colors.white };
+    return { accent: colors.megaBulk, icon: colors.megaBulk, soft: colors.megaBulkLight, background: '#FAF6F2', surface: colors.white, button: colors.megaBulk, buttonText: colors.white };
   }
   if (tier === 'bulk') {
-    return { accent: colors.bulk, soft: colors.bulkLight, background: '#F1FAFB', surface: colors.white, button: colors.bulk, buttonText: colors.white };
+    return { accent: colors.bulk, icon: colors.bulk, soft: colors.bulkLight, background: '#F1FAFB', surface: colors.white, button: colors.bulk, buttonText: colors.white };
   }
   if (tier === 'wholesale') {
-    return { accent: '#705000', soft: '#FFE47A', background: '#FFF4C2', surface: colors.white, button: colors.yellow, buttonText: colors.ink };
+    return { accent: '#8F6B00', icon: '#A87600', soft: '#FFF8D6', background: colors.cream, surface: colors.white, button: colors.yellow, buttonText: colors.ink };
   }
-  return { accent: colors.green, soft: '#E8F5E9', background: colors.cream, surface: colors.white, button: colors.green, buttonText: colors.white };
+  return { accent: colors.green, icon: colors.green, soft: '#E8F5E9', background: colors.cream, surface: colors.white, button: colors.green, buttonText: colors.white };
 }
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';

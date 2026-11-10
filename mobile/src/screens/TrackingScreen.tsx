@@ -249,8 +249,8 @@ export default function TrackingScreen({ route, navigation }: any) {
         ) : (
           <View style={styles.trackEmpty}>
             {loading
-              ? <ActivityIndicator size="large" color={theme.accent} />
-              : <Ionicons name="receipt-outline" size={64} color={theme.accent} />}
+              ? <ActivityIndicator size="large" color={theme.icon} />
+              : <Ionicons name="receipt-outline" size={64} color={theme.icon} />}
             <Text style={styles.emptyTitle}>{loading ? 'Loading your orders…' : 'No active order'}</Text>
             {!loading && <Text style={styles.emptyText}>Your delivery progress will appear here after you place an order.</Text>}
           </View>
@@ -264,7 +264,7 @@ export default function TrackingScreen({ route, navigation }: any) {
                 <Text style={styles.sectionTitle}>My orders</Text>
                 <Text style={styles.sectionSubtitle}>Switch between active deliveries and past orders.</Text>
               </View>
-              {loading && <ActivityIndicator size="small" color={theme.accent} />}
+              {loading && <ActivityIndicator size="small" color={theme.icon} />}
             </View>
 
             <OrderViewToggle
@@ -277,7 +277,7 @@ export default function TrackingScreen({ route, navigation }: any) {
             {historyError && <Text style={styles.error}>{historyError}</Text>}
             {visibleOrders.length === 0 ? (
               <View style={styles.ordersEmpty}>
-                <Ionicons name={orderView === 'ongoing' ? 'bicycle-outline' : 'time-outline'} size={40} color={theme.accent} />
+                <Ionicons name={orderView === 'ongoing' ? 'bicycle-outline' : 'time-outline'} size={40} color={theme.icon} />
                 <Text style={styles.emptyTitle}>
                   {orderView === 'ongoing' ? 'No ongoing orders' : 'Your order history is empty'}
                 </Text>
@@ -397,7 +397,7 @@ function OrderCard({
       <View style={[styles.preview, { backgroundColor: theme.soft }]}>
         {previewImage
           ? <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="cover" />
-          : <View style={styles.previewFallback}><Ionicons name="basket-outline" size={34} color={theme.accent} /></View>}
+          : <View style={styles.previewFallback}><Ionicons name="basket-outline" size={34} color={theme.icon} /></View>}
         <View style={[styles.statusBadge, { backgroundColor: statusColor[status] }]}>
           <Text style={styles.statusBadgeText}>{statusLabel[status]}</Text>
         </View>
@@ -408,7 +408,7 @@ function OrderCard({
             <Text style={styles.orderCardTitle}>Order #{order.id.slice(0, 8)}</Text>
             <Text style={styles.orderCardDate}>{formatTanzaniaDate(order.created_at)}</Text>
           </View>
-          <Ionicons name={selected ? 'checkmark-circle' : 'chevron-forward-circle-outline'} size={24} color={theme.accent} />
+          <Ionicons name={selected ? 'checkmark-circle' : 'chevron-forward-circle-outline'} size={24} color={theme.icon} />
         </View>
         <Text style={styles.orderCardMeta}>{order.order_items?.length ?? 0} items · {order.mode}</Text>
         <Text style={[styles.orderCardTotal, { color: theme.accent }]}>{formatPrice(Number(order.subtotal) + Number(order.delivery_fee))}</Text>
@@ -482,7 +482,7 @@ function OrderLine({ item }: Readonly<{ item: OrderItem }>) {
     <View style={styles.itemRow}>
       {item.products?.image_url
         ? <Image source={{ uri: item.products.image_url }} style={styles.itemImage} resizeMode="cover" />
-        : <View style={[styles.itemImage, styles.itemImageFallback, { backgroundColor: theme.soft }]}><Ionicons name="basket-outline" size={20} color={theme.accent} /></View>}
+        : <View style={[styles.itemImage, styles.itemImageFallback, { backgroundColor: theme.soft }]}><Ionicons name="basket-outline" size={20} color={theme.icon} /></View>}
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.products?.name ?? 'Fresh item'}</Text>
         <Text style={styles.itemMeta}>

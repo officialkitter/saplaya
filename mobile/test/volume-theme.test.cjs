@@ -38,5 +38,10 @@ test('shopping modes retain their colors, white surfaces and readable text', () 
     assert.ok(contrast(theme.button, theme.buttonText) >= 4.5, `${mode} button contrast`);
     assert.ok(contrast(theme.accent, theme.soft) >= 4.5, `${mode} accent contrast`);
     assert.ok(contrast(theme.accent, theme.surface) >= 4.5, `${mode} accent on white`);
+    assert.ok(contrast(theme.icon, theme.surface) >= 3, `${mode} icon on white`);
+    assert.ok(contrast(theme.icon, theme.soft) >= 3, `${mode} icon on soft background`);
   }
+  assert.equal(volumeTheme('wholesale').background, volumeTheme('retail').background);
+  assert.equal(volumeTheme('wholesale').surface, volumeTheme('retail').surface);
+  assert.notEqual(volumeTheme('wholesale').icon, colors.green);
 });

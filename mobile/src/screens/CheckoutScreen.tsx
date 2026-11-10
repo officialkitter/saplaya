@@ -13,8 +13,7 @@ import { ApiRequestError, CheckoutQuote, confirmPayment, CustomerOrder, Delivery
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow, volumeTheme } from '../theme';
-import { useCurrency } from '../lib/currency';
+import { colors, formatTZS, radius, shadow, volumeTheme } from '../theme';
 import { verifyAfterPaymentBrowser } from '../lib/payment-confirmation';
 import { API_URL } from '../lib/supabase';
 
@@ -25,7 +24,6 @@ type CheckoutPayment = 'online' | 'cash_on_delivery';
 
 export default function CheckoutScreen({ navigation }: any) {
   const { lines, mode, priceOf, clear, setLastOrderId } = useStore();
-  const { currency, formatPrice, ratesUpdatedAt, ratesUnavailable } = useCurrency();
   const { profile, user, addresses, isSignedIn, selectAddress } = useAccount();
   const place = useDeliveryPlace();
   const { setPlace } = useDeliveryActions();
@@ -411,7 +409,7 @@ export default function CheckoutScreen({ navigation }: any) {
       <SafeAreaView style={[styles.root, { backgroundColor: tierTheme.background }]} edges={['top']}>
         <ScreenHeader title="Checkout" onBack={() => navigation.goBack()} />
         <View style={styles.empty}>
-          <Ionicons name="basket-outline" size={74} color={tierTheme.accent} />
+          <Ionicons name="basket-outline" size={74} color={tierTheme.icon} />
           <Text style={styles.heading}>Your basket is empty</Text>
           <Text style={styles.subheading}>Add something fresh before checkout.</Text>
           <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.button }]} onPress={() => navigation.navigate('Tabs', { screen: 'Home' })}>
@@ -435,7 +433,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
           <View style={styles.deliveryCard}>
             <View style={styles.deliveryTop}>
-              <View style={[styles.pin, { backgroundColor: tierTheme.soft }]}><Ionicons name="location" size={20} color={tierTheme.accent} /></View>
+              <View style={[styles.pin, { backgroundColor: tierTheme.soft }]}><Ionicons name="location" size={20} color={tierTheme.icon} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.label}>Delivering to</Text>
                 <Text style={styles.address}>{place.label}</Text>
@@ -484,9 +482,9 @@ export default function CheckoutScreen({ navigation }: any) {
                 accessibilityRole="radio"
                 accessibilityState={{ selected: deliveryWindow === option.value }}
               >
-                <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? tierTheme.accent : colors.muted} />
+                <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? tierTheme.icon : colors.muted} />
                 <Text style={styles.choiceTitle}>{option.value === 'morning' || option.value === 'evening' ? deliveryWindowLabel(option.value) : option.title}</Text>
-                <Text style={styles.choiceHint}>{option.fee === 0 ? 'No timeframe surcharge' : `+${formatPrice(option.fee)}`}</Text>
+                <Text style={styles.choiceHint}>{option.fee === 0 ? 'No timeframe surcharge' : `+${formatTZS(option.fee)}`}</Text>
               </Pressable>
             ))}
           </View>
@@ -503,7 +501,7 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="checkbox"
               accessibilityState={{ checked: acceptedDeliveryFee }}
             >
-              <Ionicons name={acceptedDeliveryFee ? 'checkbox' : 'square-outline'} size={22} color={acceptedDeliveryFee ? tierTheme.accent : colors.muted} />
+              <Ionicons name={acceptedDeliveryFee ? 'checkbox' : 'square-outline'} size={22} color={acceptedDeliveryFee ? tierTheme.icon : colors.muted} />
               <Text style={styles.choiceHint}>I accept the delivery and selected-timeframe charges.</Text>
             </Pressable>
           )}
@@ -517,33 +515,24 @@ export default function CheckoutScreen({ navigation }: any) {
             return (
               <View key={line.product.id} style={styles.orderLine}>
                 <Text style={styles.orderName}>{line.qty} × {line.product.name}</Text>
-                <Text style={[styles.orderPrice, { color: tierTheme.accent }]}>{unitPrice === null ? 'Confirmed at checkout' : formatPrice(unitPrice * line.qty)}</Text>
+                <Text style={[styles.orderPrice, { color: tierTheme.accent }]}>{unitPrice === null ? 'Confirmed at checkout' : formatTZS(unitPrice * line.qty)}</Text>
               </View>
             );
           })}
           <View style={styles.totalCard}>
-            <SummaryRow label="Items" value={payment ? formatPrice(payment.subtotal) : quote ? formatPrice(quote.subtotal) : 'Awaiting quote'} />
+            <SummaryRow label="Items" value={payment ? formatTZS(payment.subtotal) : quote ? formatTZS(quote.subtotal) : 'Awaiting quote'} />
             <SummaryRow
               label={`Distance-based delivery · ${km === undefined ? 'pending' : `${km.toFixed(1)} km`}`}
-              value={quote ? quote.distance_fee === 0 ? 'FREE' : formatPrice(quote.distance_fee) : 'Unavailable'}
+              value={quote ? quote.distance_fee === 0 ? 'FREE' : formatTZS(quote.distance_fee) : 'Unavailable'}
             />
-            <SummaryRow label={`${deliveryWindow} delivery surcharge`} value={speedFee === undefined ? 'Unavailable' : speedFee === 0 ? 'FREE' : formatPrice(speedFee)} />
-            {payment && <SummaryRow label="Confirmed delivery fee" value={payment.delivery_fee === 0 ? 'FREE' : formatPrice(payment.delivery_fee)} />}
+            <SummaryRow label={`${deliveryWindow} delivery surcharge`} value={speedFee === undefined ? 'Unavailable' : speedFee === 0 ? 'FREE' : formatTZS(speedFee)} />
+            {payment && <SummaryRow label="Confirmed delivery fee" value={payment.delivery_fee === 0 ? 'FREE' : formatTZS(payment.delivery_fee)} />}
             <View style={styles.divider} />
             <SummaryRow
-              label="Estimated total"
-              value={payment ? formatPrice(payment.amount) : quote ? formatPrice(estimate) : quoteLoading ? 'Calculating…' : 'Unavailable'}
+              label={payment ? 'Total due' : 'Estimated total'}
+              value={payment ? formatTZS(payment.amount) : quote ? formatTZS(estimate) : quoteLoading ? 'Calculating…' : 'Unavailable'}
               bold
             />
-            <Text style={[styles.confirmText, { color: tierTheme.accent }]}>
-              {ratesUnavailable
-                ? 'Exchange rate unavailable · values shown in TZS.'
-                : currency === 'TZS'
-                  ? 'Order and payment currency · TZS'
-                  : `Approximate ${currency} display · exchange rate dated ${ratesUpdatedAt}`}
-              {' · '}Charged in TZS.
-            </Text>
-            {payment && <Text style={[styles.confirmText, { color: tierTheme.accent }]}>Server-confirmed amount · {payment.currency}</Text>}
           </View>
 
           <Text style={styles.heading}>Payment method</Text>
@@ -558,7 +547,7 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="radio"
               accessibilityState={{ selected: checkoutPayment === 'online' }}
             >
-              <Ionicons name="phone-portrait-outline" size={21} color={checkoutPayment === 'online' ? tierTheme.accent : colors.muted} />
+              <Ionicons name="phone-portrait-outline" size={21} color={checkoutPayment === 'online' ? tierTheme.icon : colors.muted} />
               <Text style={styles.choiceTitle}>Pay online</Text>
               <Text style={styles.choiceHint}>Mobile money or card</Text>
             </Pressable>
@@ -572,7 +561,7 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="radio"
               accessibilityState={{ selected: checkoutPayment === 'cash_on_delivery' }}
             >
-              <Ionicons name="cash-outline" size={21} color={checkoutPayment === 'cash_on_delivery' ? tierTheme.accent : colors.muted} />
+              <Ionicons name="cash-outline" size={21} color={checkoutPayment === 'cash_on_delivery' ? tierTheme.icon : colors.muted} />
               <Text style={styles.choiceTitle}>Payment on delivery</Text>
               <Text style={styles.choiceHint}>Pay when it arrives</Text>
             </Pressable>
@@ -592,12 +581,12 @@ export default function CheckoutScreen({ navigation }: any) {
                       accessibilityRole="radio"
                       accessibilityState={{ selected: paymentPhone === method.phone_e164 }}
                     >
-                      <Ionicons name="phone-portrait-outline" size={20} color={tierTheme.accent} />
+                      <Ionicons name="phone-portrait-outline" size={20} color={tierTheme.icon} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.choiceTitle}>{method.label}</Text>
                         <Text style={styles.choiceHint}>{method.phone_e164}</Text>
                       </View>
-                      {paymentPhone === method.phone_e164 && <Ionicons name="checkmark-circle" size={21} color={tierTheme.accent} />}
+                      {paymentPhone === method.phone_e164 && <Ionicons name="checkmark-circle" size={21} color={tierTheme.icon} />}
                     </Pressable>
                   ))}
                 </View>
@@ -610,15 +599,8 @@ export default function CheckoutScreen({ navigation }: any) {
                 placeholder={phone || '+255 7XX XXX XXX'}
                 editable={!pendingVerification}
               />
-              <Text style={styles.helper}>Use a Tanzanian number, or leave this blank to use your contact number. Choose an available payment method on Pesapal and follow its instructions. Enter your PIN only on your phone or the provider's trusted prompt.</Text>
+              <Text style={styles.helper}>Enter your mobile-money number, or leave this blank to use your contact number. You will see the available ways to pay before confirming. Never share your PIN with Saplaya.</Text>
             </>
-          )}
-
-          {checkoutPayment === 'online' && (
-            <View style={[styles.secureCard, { backgroundColor: tierTheme.soft }]}>
-              <Ionicons name="shield-checkmark-outline" size={22} color={tierTheme.accent} />
-              <Text style={styles.secureText}>Choose from the mobile money or card options available on Pesapal. Online payments are currently charged in TZS.</Text>
-            </View>
           )}
 
           {pendingVerification ? (
@@ -667,7 +649,7 @@ export default function CheckoutScreen({ navigation }: any) {
               <Text style={styles.helper} numberOfLines={1}>{paymentOrigin || 'Connecting securely…'}</Text>
             </View>
             <Pressable onPress={() => void openBrowserFallback()} accessibilityRole="button" accessibilityLabel="Open payment in secure browser">
-              <Ionicons name="open-outline" size={23} color={tierTheme.accent} />
+              <Ionicons name="open-outline" size={23} color={tierTheme.icon} />
             </Pressable>
           </View>
           {payment && (
@@ -746,9 +728,6 @@ const styles = StyleSheet.create({
   summaryValue: { flexShrink: 1, color: colors.ink, fontSize: 14, fontWeight: '800', textAlign: 'right' },
   summaryBold: { color: colors.ink, fontSize: 17, fontWeight: '900' },
   divider: { height: 1, marginVertical: 7, backgroundColor: colors.line },
-  confirmText: { marginTop: 8, textAlign: 'right', color: colors.green, fontSize: 12, fontWeight: '800' },
-  secureCard: { flexDirection: 'row', gap: 10, marginTop: 15, padding: 13, borderRadius: radius.md, backgroundColor: '#EFF7EC' },
-  secureText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 18 },
   primaryButton: { minHeight: 56, marginTop: 18, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
   secondaryButton: { minHeight: 48, marginTop: 10, paddingHorizontal: 12, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   primaryText: { flexShrink: 1, color: colors.white, fontSize: 16, lineHeight: 21, fontWeight: '900', textAlign: 'center' },
