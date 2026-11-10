@@ -42,6 +42,13 @@ type AuthenticatedOptions = {
   body?: unknown;
 };
 
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
 async function authenticatedRequest<T>(path: string, options: AuthenticatedOptions = {}): Promise<T> {
   const token = await getCustomerApiToken();
   const response = await fetch(`${API_URL}${path}`, {
@@ -54,10 +61,11 @@ async function authenticatedRequest<T>(path: string, options: AuthenticatedOptio
   });
   const result = await response.json() as T | { error?: string };
   if (!response.ok) {
-    throw new Error(
+    throw new ApiRequestError(
       typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
         ? result.error
         : 'The request could not be completed.',
+      response.status,
     );
   }
   return result as T;

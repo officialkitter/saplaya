@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,12 +8,15 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
-import { CheckoutQuote, confirmPayment, CustomerOrder, DeliveryEta, DeliveryOption, deliveryWindowLabel, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
+import PaymentFrame from '../components/PaymentFrame';
+import { ApiRequestError, CheckoutQuote, confirmPayment, CustomerOrder, DeliveryEta, DeliveryOption, deliveryWindowLabel, fetchCheckoutQuote, fetchDeliveryOptions, fetchPaymentMethods, initializePayment, placeCashOrder, SavedPaymentMethod } from '../lib/api';
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, shadow, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
+import { verifyAfterPaymentBrowser } from '../lib/payment-confirmation';
+import { API_URL } from '../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -33,6 +36,8 @@ export default function CheckoutScreen({ navigation }: any) {
   const [savedPaymentMethods, setSavedPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
+  const [paymentBasketKey, setPaymentBasketKey] = useState<string | null>(null);
+  const [paymentSummary, setPaymentSummary] = useState<Omit<CustomerOrder, 'id' | 'created_at'> | null>(null);
   const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
@@ -44,6 +49,9 @@ export default function CheckoutScreen({ navigation }: any) {
   const [cashRequestKey, setCashRequestKey] = useState('');
   const [pendingVerification, setPendingVerification] = useState<{ txRef: string; orderTrackingId: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [paymentVisible, setPaymentVisible] = useState(false);
+  const [paymentOrigin, setPaymentOrigin] = useState('');
+  const finishingPayment = useRef(false);
   const dailyDelivery = mode === 'retail' || mode === 'wholesale';
   const availableDeliveryOptions = useMemo(() => deliveryOptions.filter((option) =>
     dailyDelivery ? option.value === 'morning' || option.value === 'evening'
@@ -67,13 +75,17 @@ export default function CheckoutScreen({ navigation }: any) {
     [mode, lines, place.lat, place.lng, place.approximate, deliveryWindow],
   );
   const basketKey = useMemo(
-    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, approximate: place.approximate, name, email, phone, deliveryWindow, checkoutPayment }),
-    [mode, lines, place.lat, place.lng, place.approximate, name, email, phone, deliveryWindow, checkoutPayment],
+    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment }),
+    [mode, lines, place.lat, place.lng, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment],
   );
+  const currentBasketKey = useRef(basketKey);
+  currentBasketKey.current = basketKey;
 
   useEffect(() => {
     if (pendingVerification) return;
     setPayment(null);
+    setPaymentBasketKey(null);
+    setPaymentSummary(null);
     setCashRequestKey('');
   }, [basketKey, pendingVerification]);
 
@@ -216,37 +228,73 @@ export default function CheckoutScreen({ navigation }: any) {
     setPendingVerification({ txRef, orderTrackingId });
     try {
       const result = await confirmPayment(txRef, orderTrackingId);
-      const orderItems = payment && quote ? buildOrderItems(payment.items, quote) : null;
-      if (!payment || !orderItems) {
-        clear();
-        setLastOrderId(result.order_id);
-        setPayment(null);
-        setPendingVerification(null);
-        navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, newlyPlaced: true } });
-        Alert.alert('Order confirmed', 'The checkout summary is unavailable. Check order tracking or contact Saplaya with your order ID.');
-        return;
-      }
-      const order = {
-        id: result.order_id,
-        mode,
-        status: 'pending' as const,
-        subtotal: payment.subtotal,
-        delivery_fee: payment.delivery_fee,
-        created_at: new Date().toISOString(),
-        delivery_window: deliveryWindow,
-        payment_method: 'pesapal' as const,
-        order_items: orderItems,
-      };
-      clear();
+      const order = paymentSummary
+        ? { ...paymentSummary, id: result.order_id, created_at: new Date().toISOString() }
+        : undefined;
+      if (paymentBasketKey === currentBasketKey.current) clear();
       setLastOrderId(result.order_id);
       setPayment(null);
+      setPaymentBasketKey(null);
+      setPaymentSummary(null);
       setPendingVerification(null);
       navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order, newlyPlaced: true } });
+      if (!order) Alert.alert('Order confirmed', 'The checkout summary is unavailable. Check order tracking or contact Saplaya with your order ID.');
     } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 402) {
+        setPayment(null);
+        setPaymentBasketKey(null);
+        setPaymentSummary(null);
+        setPendingVerification(null);
+        Alert.alert('Payment not completed', `${error.message} Your basket is still available.`);
+        return;
+      }
       Alert.alert(
-        'Payment verification pending',
+        'Payment not yet verified',
         `${error instanceof Error ? error.message : 'The payment could not be verified right now.'} Your basket is still here. Retry verification before starting another payment.`,
       );
+    }
+  };
+
+  const openPayment = (session: PaymentSession) => {
+    const references = { txRef: session.tx_ref, orderTrackingId: session.order_tracking_id };
+    setPendingVerification(references);
+    setPaymentOrigin(new URL(session.payment_url).hostname);
+    setPaymentVisible(true);
+  };
+
+  const finishEmbeddedPayment = async () => {
+    if (!pendingVerification || finishingPayment.current) return;
+    finishingPayment.current = true;
+    setPaymentVisible(false);
+    setBusy(true);
+    try {
+      await completeOrder(pendingVerification.txRef, pendingVerification.orderTrackingId);
+    } finally {
+      finishingPayment.current = false;
+      setBusy(false);
+    }
+  };
+
+  const openBrowserFallback = async () => {
+    if (!payment || !pendingVerification || finishingPayment.current) return;
+    finishingPayment.current = true;
+    setPaymentVisible(false);
+    setBusy(true);
+    try {
+      const callbackUrl = Linking.createURL('payment-callback');
+      await verifyAfterPaymentBrowser(
+        pendingVerification,
+        () => WebBrowser.openAuthSessionAsync(payment.payment_url, callbackUrl, { preferEphemeralSession: true }),
+        completeOrder,
+      );
+    } catch (error) {
+      Alert.alert(
+        'Could not open payment',
+        `${error instanceof Error ? error.message : 'Please try again.'} Check payment status before starting another payment.`,
+      );
+    } finally {
+      finishingPayment.current = false;
+      setBusy(false);
     }
   };
 
@@ -314,23 +362,22 @@ export default function CheckoutScreen({ navigation }: any) {
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
           payment_phone: paymentPhone.trim() || phone.trim(),
         });
+        const orderItems = buildOrderItems(initialized.items, quote!);
         setPayment(initialized);
+        setPaymentBasketKey(basketKey);
+        setPaymentSummary(orderItems ? {
+          mode,
+          status: 'pending',
+          subtotal: initialized.subtotal,
+          delivery_fee: initialized.delivery_fee,
+          delivery_window: deliveryWindow,
+          payment_method: 'pesapal',
+          order_items: orderItems,
+        } : null);
         return;
       }
 
-      const callbackUrl = Linking.createURL('payment-callback');
-      const result = await WebBrowser.openAuthSessionAsync(payment.payment_url, callbackUrl, { preferEphemeralSession: true });
-      if (result.type !== 'success' || !result.url) return;
-      const callback = Linking.parse(result.url);
-      const query = callback.queryParams ?? {};
-      const txRef = query.tx_ref;
-      const orderTrackingId = query.order_tracking_id;
-      if (typeof txRef !== 'string' || typeof orderTrackingId !== 'string') {
-        Alert.alert('Payment not completed', 'No order was placed. You can try checkout again when you’re ready.');
-        setPayment(null);
-        return;
-      }
-      await completeOrder(txRef, orderTrackingId);
+      openPayment(payment);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Please check your connection and try again.';
       if (/delivery charge changed|stock|price .* changed|not enough stock/i.test(message)) {
@@ -352,6 +399,11 @@ export default function CheckoutScreen({ navigation }: any) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const resumePayment = () => {
+    if (!payment) return;
+    openPayment(payment);
   };
 
   if (!lines.length) {
@@ -377,9 +429,9 @@ export default function CheckoutScreen({ navigation }: any) {
         <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 230 }}>
           <Text style={styles.heading}>Delivery details</Text>
           <Text style={styles.subheading}>Who should we contact about this order?</Text>
-          <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" />
-          <Field label="Email for payment receipt" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
-          <Field label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
+          <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" editable={!pendingVerification} />
+          <Field label="Email for payment receipt" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" editable={!pendingVerification} />
+          <Field label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" editable={!pendingVerification} />
 
           <View style={styles.deliveryCard}>
             <View style={styles.deliveryTop}>
@@ -394,7 +446,7 @@ export default function CheckoutScreen({ navigation }: any) {
                   {place.approximate ? ' · approximate delivery address' : ''}
                 </Text>
               </View>
-              <Pressable onPress={() => navigation.navigate('LocationPicker')} accessibilityLabel="Change delivery location">
+              <Pressable onPress={() => navigation.navigate('LocationPicker')} accessibilityLabel="Change delivery location" disabled={!!pendingVerification}>
                 <Text style={[styles.change, { color: tierTheme.accent }]}>Change</Text>
               </Pressable>
             </View>
@@ -403,6 +455,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 {addresses.map((address) => (
                   <Pressable
                     key={address.id}
+                    disabled={!!pendingVerification}
                     style={[styles.addressChip, selectedAddressId === address.id && [styles.addressChipSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
                     onPress={() => chooseAddress(address.id)}
                   >
@@ -421,6 +474,7 @@ export default function CheckoutScreen({ navigation }: any) {
             {availableDeliveryOptions.map((option) => (
               <Pressable
                 key={option.value}
+                disabled={!!pendingVerification}
                 style={[styles.choiceCard, deliveryWindow === option.value && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
                 onPress={() => {
                   setDeliveryWindow(option.value);
@@ -444,6 +498,7 @@ export default function CheckoutScreen({ navigation }: any) {
           {paidDelivery && (
             <Pressable
               style={styles.acceptDelivery}
+              disabled={!!pendingVerification}
               onPress={() => setAcceptedDeliveryFee((accepted) => !accepted)}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: acceptedDeliveryFee }}
@@ -495,6 +550,7 @@ export default function CheckoutScreen({ navigation }: any) {
           <View style={styles.choiceRow}>
             <Pressable
               style={[styles.choiceCard, checkoutPayment === 'online' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
+              disabled={!!pendingVerification}
               onPress={() => {
                 setCheckoutPayment('online');
                 setPayment(null);
@@ -508,6 +564,7 @@ export default function CheckoutScreen({ navigation }: any) {
             </Pressable>
             <Pressable
               style={[styles.choiceCard, checkoutPayment === 'cash_on_delivery' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
+              disabled={!!pendingVerification}
               onPress={() => {
                 setCheckoutPayment('cash_on_delivery');
                 setPayment(null);
@@ -529,6 +586,7 @@ export default function CheckoutScreen({ navigation }: any) {
                   {savedPaymentMethods.map((method) => (
                     <Pressable
                       key={method.id}
+                      disabled={!!pendingVerification}
                       style={[styles.savedMethod, paymentPhone === method.phone_e164 && [styles.savedMethodSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
                       onPress={() => setPaymentPhone(method.phone_e164)}
                       accessibilityRole="radio"
@@ -550,6 +608,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 onChangeText={setPaymentPhone}
                 keyboardType="phone-pad"
                 placeholder={phone || '+255 7XX XXX XXX'}
+                editable={!pendingVerification}
               />
             </>
           )}
@@ -562,9 +621,16 @@ export default function CheckoutScreen({ navigation }: any) {
           )}
 
           {pendingVerification ? (
-            <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.button }]} onPress={retryVerification} disabled={busy}>
-              {busy ? <ActivityIndicator color={tierTheme.buttonText} /> : <Text style={[styles.primaryText, { color: tierTheme.buttonText }]}>Retry payment verification</Text>}
-            </Pressable>
+            <>
+              <Pressable style={[styles.primaryButton, { backgroundColor: tierTheme.button }]} onPress={retryVerification} disabled={busy}>
+                {busy ? <ActivityIndicator color={tierTheme.buttonText} /> : <Text style={[styles.primaryText, { color: tierTheme.buttonText }]}>Check payment status</Text>}
+              </Pressable>
+              {payment && (
+                <Pressable style={[styles.secondaryButton, { backgroundColor: tierTheme.soft }]} onPress={resumePayment} disabled={busy}>
+                  <Text style={[styles.change, { color: tierTheme.accent }]}>Return to secure payment</Text>
+                </Pressable>
+              )}
+            </>
           ) : (
             <Pressable
               style={[styles.primaryButton, { backgroundColor: tierTheme.button }, (busy || quoteLoading || !quote) && styles.disabled]}
@@ -589,6 +655,33 @@ export default function CheckoutScreen({ navigation }: any) {
           </Text>
         </MotiView>
       </ScrollView>
+      <Modal visible={paymentVisible} animationType="slide" onRequestClose={() => void finishEmbeddedPayment()}>
+        <SafeAreaView style={styles.paymentModal} edges={['top', 'bottom']}>
+          <View style={styles.paymentHeader}>
+            <Pressable onPress={() => void finishEmbeddedPayment()} accessibilityRole="button" accessibilityLabel="Close secure payment">
+              <Ionicons name="close" size={26} color={colors.ink} />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.paymentTitle}>Secure payment</Text>
+              <Text style={styles.helper} numberOfLines={1}>{paymentOrigin || 'Connecting securely…'}</Text>
+            </View>
+            <Pressable onPress={() => void openBrowserFallback()} accessibilityRole="button" accessibilityLabel="Open payment in secure browser">
+              <Ionicons name="open-outline" size={23} color={tierTheme.accent} />
+            </Pressable>
+          </View>
+          {payment && (
+            <PaymentFrame
+              paymentUrl={payment.payment_url}
+              apiUrl={API_URL}
+              onCallback={() => void finishEmbeddedPayment()}
+              onOriginChange={setPaymentOrigin}
+              onBrowserFallback={() => void openBrowserFallback()}
+              buttonColor={tierTheme.button}
+              buttonTextColor={tierTheme.buttonText}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -613,6 +706,9 @@ function SummaryRow({ label, value, bold }: { label: string; value: string; bold
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
+  paymentModal: { flex: 1, backgroundColor: colors.white },
+  paymentHeader: { minHeight: 62, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
+  paymentTitle: { color: colors.ink, fontSize: 16, fontWeight: '900' },
   content: { padding: 20, paddingBottom: 40 },
   heading: { marginTop: 8, marginBottom: 5, color: colors.ink, fontSize: 22, fontWeight: '900' },
   subheading: { marginBottom: 16, color: colors.muted, fontSize: 14, lineHeight: 20 },
@@ -653,6 +749,7 @@ const styles = StyleSheet.create({
   secureCard: { flexDirection: 'row', gap: 10, marginTop: 15, padding: 13, borderRadius: radius.md, backgroundColor: '#EFF7EC' },
   secureText: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 18 },
   primaryButton: { minHeight: 56, marginTop: 18, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
+  secondaryButton: { minHeight: 48, marginTop: 10, paddingHorizontal: 12, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   primaryText: { flexShrink: 1, color: colors.white, fontSize: 16, lineHeight: 21, fontWeight: '900', textAlign: 'center' },
   disabled: { opacity: 0.65 },
   disclaimer: { marginTop: 9, textAlign: 'center', color: colors.muted, fontSize: 12, lineHeight: 17 },

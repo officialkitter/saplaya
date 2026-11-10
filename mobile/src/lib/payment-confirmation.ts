@@ -9,3 +9,12 @@ export function confirmedOrder(result: unknown): { order_id: string } {
   }
   throw new Error('The payment response did not contain a confirmed order. Check order tracking before retrying.');
 }
+
+export async function verifyAfterPaymentBrowser<T>(
+  references: { txRef: string; orderTrackingId: string },
+  openBrowser: () => Promise<unknown>,
+  verify: (txRef: string, orderTrackingId: string) => Promise<T>,
+): Promise<T> {
+  await openBrowser();
+  return verify(references.txRef, references.orderTrackingId);
+}
