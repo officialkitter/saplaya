@@ -1,0 +1,544 @@
+{
+  "info": {
+    "_postman_id": "saplaya-uber-api",
+    "name": "Saplaya Uber-Like Order System",
+    "description": "Complete API testing collection for Saplaya backend with 16 endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "📌 Authentication",
+      "item": [
+        {
+          "name": "Login with Supabase",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('auth_token', jsonData.session.access_token);",
+                  "    pm.environment.set('user_id', jsonData.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"agent@example.com\",\n  \"password\": \"your-password\"\n}"
+            },
+            "url": {
+              "raw": "https://YOUR-PROJECT.supabase.co/auth/v1/token?grant_type=password",
+              "protocol": "https",
+              "host": [
+                "YOUR-PROJECT",
+                "supabase",
+                "co"
+              ],
+              "path": [
+                "auth",
+                "v1",
+                "token"
+              ],
+              "query": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 AGENT ENDPOINTS",
+      "item": [
+        {
+          "name": "1️⃣ Register Agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+254712345678\",\n  \"vehicle_type\": \"motorcycle\",\n  \"vehicle_plate\": \"KBD 123A\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/agents/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2️⃣ Get Agent Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agents/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3️⃣ Update Agent Location",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": -1.2865,\n  \"longitude\": 36.8172\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/agents/update-location",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "update-location"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4️⃣ Update Agent Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"online\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/agents/update-status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "update-status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "5️⃣ Get Agent Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agents/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "stats"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 ORDER ENDPOINTS (Customer)",
+      "item": [
+        {
+          "name": "6️⃣ Place Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup_address\": \"Startup Hub, Nairobi\",\n  \"pickup_latitude\": -1.2865,\n  \"pickup_longitude\": 36.8172,\n  \"delivery_address\": \"TRM, Nairobi\",\n  \"delivery_latitude\": -1.2756,\n  \"delivery_longitude\": 36.7469,\n  \"order_subtotal\": 500,\n  \"payment_method\": \"mpesa\",\n  \"special_instructions\": \"Ring doorbell twice\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/place",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "place"
+              ]
+            }
+          }
+        },
+        {
+          "name": "7️⃣ Place Order For Others",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup_address\": \"Store Location\",\n  \"pickup_latitude\": -1.2865,\n  \"pickup_longitude\": 36.8172,\n  \"delivery_address\": \"Office Address\",\n  \"delivery_latitude\": -1.2756,\n  \"delivery_longitude\": 36.7469,\n  \"recipient_name\": \"John Doe\",\n  \"recipient_phone\": \"+254712345679\",\n  \"recipient_email\": \"john@example.com\",\n  \"order_subtotal\": 500,\n  \"payment_method\": \"card\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/place-for-others",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "place-for-others"
+              ]
+            }
+          }
+        },
+        {
+          "name": "8️⃣ Get Customer Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/my-orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "my-orders"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚗 ORDER ENDPOINTS (Agent Claiming)",
+      "item": [
+        {
+          "name": "9️⃣ Get Nearby Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/available-nearby?latitude=-1.2865&longitude=36.8172&radiusKm=5",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "available-nearby"
+              ],
+              "query": [
+                {
+                  "key": "latitude",
+                  "value": "-1.2865"
+                },
+                {
+                  "key": "longitude",
+                  "value": "36.8172"
+                },
+                {
+                  "key": "radiusKm",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "🔟 Claim Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"order-uuid-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/claim",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "claim"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1️⃣1️⃣ Get Claimed Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/my-claimed-orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "my-claimed-orders"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1️⃣2️⃣ Update Order Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "order_id",
+                  "value": "order-uuid-here",
+                  "type": "text"
+                },
+                {
+                  "key": "status",
+                  "value": "picked_up",
+                  "type": "text",
+                  "description": "picked_up or delivered"
+                },
+                {
+                  "key": "proof_image",
+                  "type": "file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/update-status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "update-status"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 COMMISSION & EARNINGS",
+      "item": [
+        {
+          "name": "1️⃣3️⃣ Get Pending Commissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/commissions/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "commissions",
+                "pending"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1️⃣4️⃣ Get Commission History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/commissions/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "commissions",
+                "history"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1️⃣5️⃣ Request Withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 5000,\n  \"payment_method\": \"mpesa\",\n  \"mpesa_phone\": \"+254712345678\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/withdrawals/request",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "withdrawals",
+                "request"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1️⃣6️⃣ Get Withdrawal History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/withdrawals/history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "withdrawals",
+                "history"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your-jwt-token-here",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user-uuid",
+      "type": "string"
+    }
+  ]
+}

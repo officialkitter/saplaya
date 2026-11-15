@@ -27,6 +27,7 @@ import {
   registerIpn,
   submitOrder,
 } from './pesapal.js';
+import ordersAgentsRouter from './orders-agents.js';
 
 const {
   SUPABASE_URL,
@@ -3650,5 +3651,8 @@ app.put('/admin/settings', requirePerm('settings.manage'), async (req: AuthedReq
   if (error) return res.status(500).json({ error: 'Could not save platform settings.' });
   return res.json(data);
 });
+
+// Mount orders/agents router
+app.use('/api/orders-agents', ordersAgentsRouter);
 
 app.listen(Number(PORT), () => console.log(`Saplaya API on :${PORT}`));
