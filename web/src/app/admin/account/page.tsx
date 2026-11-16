@@ -44,15 +44,24 @@ function AccountPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
+  const memberId = me?.id;
+  const memberName = me?.name;
+  const memberPhone = me?.phone;
+  const memberAge = me?.age;
+  const memberJobTitle = me?.jobTitle;
+  const memberBio = me?.bio;
+  const memberAvatarPath = me?.avatarPath;
+  const memberAvatarUrl = me?.avatarUrl;
+
   useEffect(() => {
-    setName(me?.name ?? '');
-    setPhone(me?.phone ?? '');
-    setAge(me?.age?.toString() ?? '');
-    setJobTitle(me?.jobTitle ?? '');
-    setBio(me?.bio ?? '');
-    setAvatarPath(me?.avatarPath ?? '');
-    setAvatarUrl(me?.avatarUrl ?? '');
-  }, [me]);
+    setName(memberName ?? '');
+    setPhone(memberPhone ?? '');
+    setAge(memberAge?.toString() ?? '');
+    setJobTitle(memberJobTitle ?? '');
+    setBio(memberBio ?? '');
+    setAvatarPath(memberAvatarPath ?? '');
+    setAvatarUrl(memberAvatarUrl ?? '');
+  }, [memberId, memberName, memberPhone, memberAge, memberJobTitle, memberBio, memberAvatarPath, memberAvatarUrl]);
 
   useEffect(() => {
     if (!me) return;
@@ -144,19 +153,20 @@ function AccountPage() {
     }
     setSavingProfile(true);
     try {
-      await Promise.all([
-        saveProfileName(name.trim()),
-        saveManagementProfile({
-          phone: phone.trim() || null,
-          age: parsedAge,
-          job_title: jobTitle.trim() || null,
-          bio: bio.trim() || null,
-          avatar_url: avatarPath || null,
-        }),
-      ]);
+      await fetchAdmin('/admin/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ full_name: name.trim() }),
+      });
+      await saveManagementProfile({
+        phone: phone.trim() || null,
+        age: parsedAge,
+        job_title: jobTitle.trim() || null,
+        bio: bio.trim() || null,
+        avatar_url: avatarPath || null,
+      });
       push('Your personal details were updated.');
     } catch (error) {
-      push(userFacingMessage(error, 'Could not save your profile.'), 'bad');
+      push(`${userFacingMessage(error, 'Could not save your profile.')} Your name may have been saved; check your details and try again.`, 'bad');
     } finally {
       setSavingProfile(false);
     }

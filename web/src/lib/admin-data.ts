@@ -1,6 +1,6 @@
 import type { DB } from '@/lib/store';
 import { fetchAdmin } from '@/lib/supabase';
-import type { Perm, Role } from '@/lib/types';
+import type { Perm, Role, TeamMember } from '@/lib/types';
 
 type MemberResponse = {
   id: string;
@@ -33,6 +33,13 @@ type MemberResponse = {
 };
 
 type Row = Record<string, unknown>;
+
+export function includeCurrentMember(team: TeamMember[], current: TeamMember): TeamMember[] {
+  const found = team.some((person) => person.id === current.id);
+  return found
+    ? team.map((person) => person.id === current.id ? current : person)
+    : [...team, current];
+}
 
 function rows(value: unknown, endpoint: string): Row[] {
   if (!Array.isArray(value)) throw new Error(`Unexpected response from ${endpoint}.`);
@@ -81,36 +88,37 @@ export async function loadAdminData(): Promise<Partial<DB>> {
 
   const [responses, settings] = await Promise.all([Promise.all(jobs), settingsRequest]);
   const raw = Object.fromEntries(keys.map((key, index) => [key, rows(responses[index], `/admin/${key}`)]));
+  const currentMember: TeamMember = {
+    id: member.id,
+    supplierId: member.supplier_id,
+    name: member.full_name,
+    email: member.email,
+    role: member.role,
+    roleLabel: member.role_label,
+    roleScope: member.role_scope,
+    permissions: member.permissions,
+    departmentId: member.department_id,
+    department: member.department,
+    departmentTheme: member.department_theme,
+    status: member.status,
+    phone: member.phone ?? null,
+    age: member.age ?? null,
+    jobTitle: member.job_title ?? null,
+    bio: member.bio ?? null,
+    avatarUrl: member.avatar_url ?? null,
+    avatarPath: member.avatar_path ?? null,
+    operationScopeMode: member.operation_scope_mode ?? 'global',
+    operationScopes: (member.operation_scopes ?? []).map((scope) => ({
+      countryCode: scope.country_code,
+      countryName: scope.country_name,
+      regionCode: scope.region_code,
+      regionName: scope.region_name,
+      districtCode: scope.district_code,
+      districtName: scope.district_name,
+    })),
+  };
   const mapped: Partial<DB> = {
-    team: [{
-      id: member.id,
-      supplierId: member.supplier_id,
-      name: member.full_name,
-      email: member.email,
-      role: member.role,
-      roleLabel: member.role_label,
-      roleScope: member.role_scope,
-      permissions: member.permissions,
-      departmentId: member.department_id,
-      department: member.department,
-      departmentTheme: member.department_theme,
-      status: member.status,
-      phone: member.phone ?? null,
-      age: member.age ?? null,
-      jobTitle: member.job_title ?? null,
-      bio: member.bio ?? null,
-      avatarUrl: member.avatar_url ?? null,
-      avatarPath: member.avatar_path ?? null,
-      operationScopeMode: member.operation_scope_mode ?? 'global',
-      operationScopes: (member.operation_scopes ?? []).map((scope) => ({
-        countryCode: scope.country_code,
-        countryName: scope.country_name,
-        regionCode: scope.region_code,
-        regionName: scope.region_name,
-        districtCode: scope.district_code,
-        districtName: scope.district_name,
-      })),
-    }],
+    team: [currentMember],
     sessionId: member.id,
   };
 
@@ -207,7 +215,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
   }
 
   if (raw.team) {
-    mapped.team = raw.team.map((person) => ({
+    const directory: TeamMember[] = raw.team.map((person) => ({
       id: text(person.id),
       supplierId: typeof person.supplier_id === 'string' ? person.supplier_id : null,
       name: text(person.full_name),
@@ -237,6 +245,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
         }))
         : [],
     }));
+    mapped.team = includeCurrentMember(directory, currentMember);
     mapped.sessionId = member.id;
   }
 
