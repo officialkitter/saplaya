@@ -4,8 +4,8 @@ import { Nav } from '@/components/landing/Nav';
 import { Hero } from '@/components/landing/Hero';
 import { serializeJsonLd } from '@/lib/json-ld';
 
-const title = 'Saplaya | Farm produce supplies and delivery';
-const description = 'Shop fresh farm produce and pantry essentials for delivery. Explore retail and wholesale options and connect with Saplaya as a supplier.';
+const title = 'Saplaya | Fresh Produce Delivery & Wholesale';
+const description = 'Shop fresh fruit, vegetables and farm produce with Saplaya. Order retail or wholesale for delivery, or apply to sell your harvest.';
 
 export const metadata: Metadata = {
   title,

@@ -66,7 +66,12 @@ test('structured data describes the site, page hierarchy and visible FAQ answers
   assert.ok(homeData, 'The homepage must expose the Organization and WebSite graph.');
   const organization = homeData['@graph'].find((item) => item['@type'] === 'Organization');
   const website = homeData['@graph'].find((item) => item['@type'] === 'WebSite');
+  assert.equal(organization?.name, 'Saplaya');
   assert.equal(organization?.url, 'https://www.saplaya.org/');
+  assert.equal(website?.name, 'Saplaya');
+  assert.equal(website?.url, 'https://www.saplaya.org/');
+  assert.match(home.html, /<meta property="og:site_name" content="Saplaya"/);
+  assert.match(home.html, /Saplaya connects customers with farm produce for retail and wholesale\./);
   assert.equal(website?.potentialAction?.['@type'], 'SearchAction');
   assert.equal(website?.potentialAction?.target, 'https://www.saplaya.org/fresh-today?q={search_term_string}');
 

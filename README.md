@@ -61,6 +61,8 @@ After deploying the website:
 6. Validate the JSON-LD with Google's available structured-data tools and monitor Search Console's indexing and enhancement reports for errors.
 7. Recheck indexing and search performance over time. Sitemap submission and indexing requests do not guarantee crawling, indexing, rankings, or sitelinks.
 
+The preferred Google site name is **Saplaya**. The homepage's `WebSite` structured data, Open Graph site name, title and visible text should consistently use that name. Google selects site names automatically and may take days or weeks to process updates; see its [site-name guidance](https://developers.google.com/search/docs/appearance/site-names). Monitor branded queries in Search Console's Performance report rather than relying on a single personalized search. Google ignores the `meta keywords` tag, so use accurate, useful page content rather than keyword stuffing.
+
 The website's production command, `npm start --prefix web`, uses Next.js's native `PORT` support (3000 when unset), so it works on Windows and Railway without shell-specific variable expansion. Local development remains on port 3001.
 
 The Expo web command uses `http://localhost:8081`. The production API explicitly allows that origin for development; when the app is configured to use production, orders, payments, account changes, and other writes affect real data. Use a separate development environment before testing write operations. If using a local API instead, configure its `WEB_ORIGIN` to allow `http://localhost:8081` and point `EXPO_PUBLIC_API_URL` at that API.
