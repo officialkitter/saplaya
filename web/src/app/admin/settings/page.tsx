@@ -10,7 +10,61 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { useGlobalMarket } from '@/lib/global-market';
 import { deliveryFee } from '@/lib/stats';
 import { useDB, useToast } from '@/lib/store';
+import { fetchAdmin } from '@/lib/supabase';
 import { DELIVERY_ETAS, type DeliveryEta } from '@/lib/types';
+
+type GatewayStatus = {
+  mode: 'explicit' | 'legacy';
+  environment: 'live' | 'test';
+  web_return_configured: boolean;
+  providers: { id: string; label: string; methods: string[]; currencies: string[]; ready: boolean; reason?: string }[];
+};
+
+function PaymentGatewayPanel() {
+  const [status, setStatus] = useState<GatewayStatus | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    fetchAdmin<GatewayStatus>('/admin/payments/gateway-status')
+      .then((result) => { if (active) setStatus(result); })
+      .catch((cause) => { if (active) setError(userFacingMessage(cause, 'Could not load payment gateway status.')); });
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <Panel title="Payment gateway" subtitle="Providers, currencies and keys are set on the server. Secrets are never shown here.">
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {!status && !error && <p className="text-sm text-ink-mute">Checking payment providers…</p>}
+      {status && (
+        <div className="space-y-3">
+          <p className="flex flex-wrap gap-2 text-xs font-bold">
+            <span className={`rounded-full px-3 py-1 ${status.environment === 'live' ? 'bg-leaf-soft text-leaf-deep' : 'bg-amber-100 text-amber-900'}`}>
+              {status.environment === 'live' ? 'Live configuration' : 'Test mode'}
+            </span>
+            {!status.web_return_configured && <span className="rounded-full bg-red-50 px-3 py-1 text-red-800">Web return URL missing</span>}
+          </p>
+          {status.providers.length === 0 && <p className="text-sm text-ink-mute">No online payment provider is configured. Customers can only pay on delivery.</p>}
+          <ul className="space-y-2">
+            {status.providers.map((provider, index) => (
+              <li key={provider.id} className="rounded-xl border border-line p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold">{index + 1}. {provider.label}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${provider.ready ? 'bg-leaf-soft text-leaf-deep' : 'bg-red-50 text-red-800'}`}>
+                    {provider.ready ? 'Configured' : 'Not ready'}
+                  </span>
+                </div>
+                <p className="mt-1 break-words text-xs text-ink-mute">{provider.currencies.join(', ')} · {provider.methods.join(' · ')}</p>
+                {provider.reason && <p className="mt-1 text-xs text-red-800">{provider.reason}</p>}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-ink-mute">Checkout uses the first ready provider that accepts the customer&apos;s currency unless the customer picks another.</p>
+          <p className="text-xs text-ink-mute">Configuration checks do not verify account activation, merchant capabilities or successful payment delivery. Confirm these in each provider&apos;s dashboard before going live.</p>
+        </div>
+      )}
+    </Panel>
+  );
+}
 
 function SettingsPage() {
   const { formatPrice } = useGlobalMarket();
@@ -135,6 +189,7 @@ function SettingsPage() {
             <p className="mt-2 text-sm text-ink-mute">{fee === 0 ? 'The customer sees the cheerful scooter banner in their basket.' : 'The customer sees this price before they order.'}</p>
           </Panel>
 
+          <PaymentGatewayPanel />
         </div>
       </div>
     </>

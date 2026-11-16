@@ -187,7 +187,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
         deliveryWindow: ['morning', 'evening', '12h', '24h', '48h', '72h', '7d', '10d', '14d'].includes(String(relatedOrder?.delivery_window))
           ? relatedOrder?.delivery_window as import('./types').DeliveryEta
           : 'morning',
-        paymentMethod: relatedOrder?.payment_method === 'cash_on_delivery' ? 'cash_on_delivery' : 'pesapal',
+        paymentMethod: (['cash_on_delivery', 'stripe', 'snippe'] as const).find((method) => method === relatedOrder?.payment_method) ?? 'pesapal',
         area: text(order.area, 'Delivery location'),
         mode: text(relatedOrder?.mode, 'retail') as 'retail' | 'wholesale',
         items: items.map((item) => ({

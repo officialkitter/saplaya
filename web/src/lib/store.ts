@@ -47,7 +47,7 @@ interface Actions {
     districtCode: string | null;
     districtName: string | null;
   }) => Promise<void>;
-  mergeSupplier: (sourceId: string, targetId: string) => Promise<void>;
+  mergeSuppliers: (sourceIds: string[], targetId: string) => Promise<void>;
   archiveSupplier: (id: string) => Promise<void>;
   mergeProduct: (sourceId: string, targetId: string) => Promise<void>;
   archiveProduct: (id: string) => Promise<boolean>;
@@ -252,10 +252,10 @@ const createAdminStore: StateCreator<DB> = (set) => {
       await reload();
     },
 
-    mergeSupplier: async (sourceId, targetId) => {
-      await fetchAdmin(`/admin/suppliers/${encodeURIComponent(sourceId)}/merge`, {
+    mergeSuppliers: async (sourceIds, targetId) => {
+      await fetchAdmin('/admin/suppliers/merge', {
         method: 'POST',
-        body: JSON.stringify({ target_supplier_id: targetId }),
+        body: JSON.stringify({ source_supplier_ids: sourceIds, target_supplier_id: targetId }),
       });
       await reload();
     },

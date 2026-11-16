@@ -17,7 +17,6 @@ import {
   isE164Phone,
   paymentAmountsMatch,
   quoteCurrencyAmount,
-  supportedPaymentCurrencies,
   type CurrencyQuote,
 } from './currency.js';
 import { activateTeamInvitation, claimPendingTeamInvitation, teamInvitationRedirect } from './team-auth.js';
@@ -28,14 +27,16 @@ import {
   type CommissionTier,
   type OperationScope,
 } from './management.js';
+import { ipnAcknowledgement, registerIpn } from './pesapal.js';
+import { loadPaymentGatewayConfig, PAYMENT_PROVIDER_IDS, type PaymentProviderId } from './payments/config.js';
+import { PaymentGateway, settlePayment, type SettlementStore, type StoredPayment } from './payments/gateway.js';
 import {
-  getTransactionStatus,
-  isPaymentCompleted,
-  isPaymentFailed,
-  ipnAcknowledgement,
-  registerIpn,
-  submitOrder,
-} from './pesapal.js';
+  PaymentProviderError,
+  StripeProvider,
+  verifySnippeWebhook,
+  verifyStripeWebhook,
+  WebhookVerificationError,
+} from './payments/providers.js';
 import ordersAgentsRouter from './orders-agents.js';
 import { locationSearchRouter } from './location-search.js';
 import { publicErrorMessage } from './middleware.js';
@@ -44,7 +45,6 @@ const {
   SUPABASE_URL,
   SUPABASE_SECRET_KEY,
   PORT = '3000',
-  PUBLIC_API_URL,
   PAYMENT_APP_CALLBACK_URL = 'saplaya://payment-callback',
   WEB_CHECKOUT_CALLBACK_URL,
   GOOGLE_MAPS_API_KEY,
@@ -65,10 +65,139 @@ const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
   realtime: { transport: realtimeTransport },
 });
-const paymentCurrencies = supportedPaymentCurrencies();
+// Invalid explicit payment settings stop startup instead of silently degrading checkout.
+const paymentConfig = loadPaymentGatewayConfig(process.env);
+const paymentGateway = new PaymentGateway(paymentConfig, { loadPesapalIpnId });
+const publicApiBase = paymentConfig.publicApiUrl?.replace(/\/+$/, '');
+
+async function loadPesapalIpnId(): Promise<string | null> {
+  const { data, error } = await db.from('payment_provider_config')
+    .select('ipn_id')
+    .eq('provider', 'pesapal')
+    .maybeSingle();
+  if (error) throw new PaymentProviderError('Could not load Pesapal notification configuration.', 503);
+  return data?.ipn_id ?? null;
+}
+
+const STORED_PAYMENT_COLUMNS = 'transaction_ref, provider, gateway_transaction_id, payment_amount, currency, status, order_id';
+
+const settlementStore: SettlementStore = {
+  async markFailed(transactionRef) {
+    const { error } = await db.from('checkout_payments')
+      .update({ status: 'failed' })
+      .eq('transaction_ref', transactionRef)
+      .eq('status', 'pending');
+    if (error) throw new Error(`Could not mark payment failed: ${error.message}`);
+  },
+  async complete(transactionRef, provider, gatewayId) {
+    const { data, error } = await db.rpc('complete_checkout_payment', {
+      p_transaction_ref: transactionRef,
+      p_provider: provider,
+      p_gateway_transaction_id: gatewayId,
+    });
+    if (error || typeof data !== 'string') {
+      throw new Error(`Verified payment could not be converted to an order: ${error?.message ?? 'no order ID'}`);
+    }
+    return data;
+  },
+};
+
+async function settleStoredPaymentByGateway(provider: PaymentProviderId, gatewayId: string) {
+  const { data, error } = await db.from('checkout_payments')
+    .select(STORED_PAYMENT_COLUMNS)
+    .eq('provider', provider)
+    .eq('gateway_transaction_id', gatewayId)
+    .maybeSingle();
+  if (error) throw new Error(`Could not load checkout for ${provider} notification: ${error.message}`);
+  if (!data) return null;
+  return settlePayment(paymentGateway, settlementStore, data as StoredPayment);
+}
 
 const app = express();
 app.use(cors({ origin: WEB_ORIGIN === '*' ? true : WEB_ORIGIN.split(',') }));
+
+// Webhook signatures cover the exact bytes, so these routes must read the raw body before express.json().
+const rawWebhookBody = express.raw({ type: '*/*', limit: '256kb' });
+
+app.post('/api/v1/payments/stripe-webhook', rawWebhookBody, async (req, res) => {
+  const stripe = paymentConfig.providers.find((provider) => provider.id === 'stripe');
+  if (!stripe || stripe.id !== 'stripe') return res.status(404).json({ error: 'Stripe is not enabled.' });
+  let event: Record<string, unknown>;
+  try {
+    event = verifyStripeWebhook(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0), req.get('stripe-signature'), stripe.webhookSecret);
+  } catch (error) {
+    console.warn('Rejected Stripe webhook:', (error as Error).message);
+    return res.status(400).json({ error: 'Invalid signature.' });
+  }
+  if (event.livemode !== stripe.livemode) return res.status(400).json({ error: 'Webhook mode mismatch.' });
+  const handled = new Set([
+    'payment_intent.succeeded',
+    'payment_intent.processing',
+    'payment_intent.payment_failed',
+    'payment_intent.canceled',
+  ]);
+  const data = event.data as { object?: Record<string, unknown> } | undefined;
+  const intent = data?.object;
+  const intentId = typeof intent?.id === 'string' ? intent.id : '';
+  const metadata = (intent?.metadata ?? {}) as Record<string, unknown>;
+  const reference = typeof metadata.transaction_ref === 'string' ? metadata.transaction_ref : '';
+  if (!handled.has(String(event.type)) || !intentId.startsWith('pi_') || !reference.startsWith('saplaya-')) {
+    return res.json({ received: true });
+  }
+  try {
+    const result = await settleStoredPaymentByGateway('stripe', intentId);
+    if (!result) {
+      console.warn('Stripe webhook referenced an unknown PaymentIntent:', intentId);
+      return res.json({ received: true });
+    }
+    if (result.outcome === 'mismatch') console.error('Stripe payment mismatch:', reference, result.reason);
+    return res.json({ received: true });
+  } catch (error) {
+    console.error('Stripe webhook settlement failed:', error);
+    return res.status(503).json({ error: 'Settlement temporarily unavailable.' });
+  }
+});
+
+app.post('/api/v1/payments/snippe-webhook', rawWebhookBody, async (req, res) => {
+  const snippe = paymentConfig.providers.find((provider) => provider.id === 'snippe');
+  if (!snippe || snippe.id !== 'snippe') return res.status(404).json({ error: 'Snippe is not enabled.' });
+  let event: Record<string, unknown>;
+  try {
+    event = verifySnippeWebhook(
+      Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0),
+      req.get('x-webhook-signature'),
+      req.get('x-webhook-timestamp'),
+      snippe.webhookSecret,
+    );
+  } catch (error) {
+    console.warn('Rejected Snippe webhook:', (error as Error).message);
+    return res.status(401).json({ error: 'Invalid signature.' });
+  }
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  const metadata = (data.metadata ?? {}) as Record<string, unknown>;
+  const reference = typeof metadata.transaction_ref === 'string' ? metadata.transaction_ref : '';
+  const sessionReference = typeof data.session_reference === 'string' ? data.session_reference : '';
+  try {
+    let gatewayId = sessionReference;
+    if (!gatewayId && /^saplaya-[0-9a-f-]{36}$/i.test(reference)) {
+      const { data: payment, error } = await db.from('checkout_payments')
+        .select('gateway_transaction_id')
+        .eq('provider', 'snippe')
+        .eq('transaction_ref', reference)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      gatewayId = payment?.gateway_transaction_id ?? '';
+    }
+    if (!gatewayId) return res.json({ received: true });
+    const result = await settleStoredPaymentByGateway('snippe', gatewayId);
+    if (result?.outcome === 'mismatch') console.error('Snippe payment mismatch:', gatewayId, result.reason);
+    return res.json({ received: true });
+  } catch (error) {
+    console.error('Snippe webhook settlement failed:', error);
+    return res.status(503).json({ error: 'Settlement temporarily unavailable.' });
+  }
+});
+
 app.use(express.json());
 app.use(locationSearchRouter);
 
@@ -836,11 +965,23 @@ async function loadExchangeRates() {
   return exchangeRateCache;
 }
 
+async function readyPaymentCurrencies(): Promise<string[]> {
+  const providers = await paymentGateway.readyProviders();
+  return [...new Set(providers.flatMap((provider) => provider.currencies))];
+}
+
 async function paymentQuoteFor(
   amount: number,
   currency: string,
   allowTzsQuote = false,
 ): Promise<{ quote: CurrencyQuote } | { error: string; status: 400 | 503 }> {
+  let paymentCurrencies: string[];
+  try {
+    paymentCurrencies = await readyPaymentCurrencies();
+  } catch (error) {
+    console.error('Could not load payment provider readiness:', error);
+    return { error: 'Online payment options are temporarily unavailable.', status: 503 };
+  }
   if (!paymentCurrencies.includes(currency) && !(allowTzsQuote && currency === 'TZS')) {
     return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 };
   }
@@ -903,24 +1044,43 @@ app.get('/admin/pricing-policy', requirePerm('products.view'), async (_req: Auth
 });
 
 app.get('/checkout/options', async (_req, res) => {
-  let onlinePayment = false;
-  if (WEB_CHECKOUT_CALLBACK_URL && isPesapalConfigured()) {
-    const { data, error } = await db.from('payment_provider_config')
-      .select('ipn_id')
-      .eq('provider', 'pesapal')
-      .maybeSingle();
-    if (error) {
-      console.error('Could not check web payment readiness:', error.message);
+  let providers: Awaited<ReturnType<PaymentGateway['readyProviders']>> = [];
+  if (WEB_CHECKOUT_CALLBACK_URL) {
+    try {
+      providers = await paymentGateway.readyProviders();
+    } catch (error) {
+      console.error('Could not check web payment readiness:', error);
       return res.status(503).json({ error: 'Could not load checkout payment options.' });
     }
-    onlinePayment = Boolean(data?.ipn_id);
   }
   return res.json({
     cash_on_delivery: true,
     cash_currency: 'TZS',
-    online_payment: onlinePayment,
-    payment_currencies: paymentCurrencies,
+    online_payment: providers.length > 0,
+    payment_currencies: [...new Set(providers.flatMap((provider) => provider.currencies))],
+    payment_providers: providers.map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      methods: provider.methods,
+      currencies: provider.currencies,
+      requires_phone: provider.requiresPhone,
+    })),
   });
+});
+
+app.get('/admin/payments/gateway-status', requirePerm('settings.manage'), async (_req, res) => {
+  try {
+    const providers = await paymentGateway.readiness();
+    return res.json({
+      mode: paymentConfig.mode,
+      environment: paymentConfig.environment,
+      web_return_configured: Boolean(WEB_CHECKOUT_CALLBACK_URL),
+      providers,
+    });
+  } catch (error) {
+    console.error('Could not load payment gateway status:', error);
+    return res.status(503).json({ error: 'Could not load payment gateway status.' });
+  }
 });
 
 const checkoutFields = z.object({
@@ -954,6 +1114,7 @@ const checkoutFields = z.object({
     phone: z.string().trim().min(5).max(32),
   }),
   payment_phone: z.string().trim().min(5).max(32).optional(),
+  payment_provider: z.enum(PAYMENT_PROVIDER_IDS).optional(),
   currency: z.string().regex(/^[A-Za-z]{3}$/).transform((currency) => currency.toUpperCase()).default('TZS'),
   quoted_payment_amount: z.number().positive().optional(),
   recipient: z.object({
@@ -1165,14 +1326,6 @@ function webPaymentCallbackUrl(transactionRef: string, orderTrackingId: string) 
   return callback.toString();
 }
 
-function isPesapalConfigured() {
-  return Boolean(
-    (process.env.PESAPAL_CONSUMER_KEY || process.env.PESAPAL_CUSTOMER_KEY)
-    && (process.env.PESAPAL_CONSUMER_SECRET || process.env.PESAPAL_CUSTOMER_SECRET)
-    && PUBLIC_API_URL,
-  );
-}
-
 function normalizedTanzanianPhone(phone: string): string | null {
   const compact = phone.replace(/[\s()-]/g, '');
   if (!/^(?:\+?255|0)?[1-9]\d{8}$/.test(compact)) return null;
@@ -1192,14 +1345,17 @@ app.get('/orders', requireUser, async (req: AuthedRequest, res) => {
 app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) => {
   const parsed = checkoutSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  if (!paymentCurrencies.includes(parsed.data.currency)) {
-    return res.status(400).json({
-      error: `Online payments in ${parsed.data.currency} are not supported by this merchant.`,
-    });
+  if (!publicApiBase) {
+    return res.status(503).json({ error: 'Online payment is not configured on the server.' });
   }
-  if (!isPesapalConfigured()) {
-    return res.status(503).json({ error: 'Pesapal checkout is not configured on the server.' });
+  let provider: Awaited<ReturnType<PaymentGateway['select']>>;
+  try {
+    provider = await paymentGateway.select(parsed.data.currency, parsed.data.payment_provider);
+  } catch (error) {
+    console.error('Could not load payment provider readiness:', error);
+    return res.status(503).json({ error: 'Online payment is temporarily unavailable.' });
   }
+  if ('error' in provider) return res.status(provider.status).json({ error: provider.error });
   if (parsed.data.client_platform === 'web' && !WEB_CHECKOUT_CALLBACK_URL) {
     return res.status(503).json({ error: 'Web payment return URL is not configured on the server.' });
   }
@@ -1209,24 +1365,11 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     currency, quoted_payment_amount: quotedPaymentAmount, recipient, delivery_address: deliveryAddress,
   } = parsed.data;
   const phone = parsed.data.payment_phone ?? customer.phone;
-  if (!isE164Phone(phone)) {
+  if (provider.requiresPhone && !isE164Phone(phone)) {
     return res.status(400).json({ error: 'Enter a valid international phone number in E.164 format (for example, +255700000000).' });
   }
   if (currency !== 'TZS' && quotedPaymentAmount === undefined) {
     return res.status(400).json({ error: 'A quoted_payment_amount is required for foreign-currency checkout.' });
-  }
-
-  const { data: providerConfig, error: configError } = await db
-    .from('payment_provider_config')
-    .select('ipn_id')
-    .eq('provider', 'pesapal')
-    .maybeSingle();
-  if (configError) {
-    console.error('Could not load Pesapal configuration:', configError.message);
-    return res.status(500).json({ error: 'Could not prepare payment checkout.' });
-  }
-  if (!providerConfig?.ipn_id) {
-    return res.status(503).json({ error: 'Pesapal notifications have not been configured.' });
   }
 
   const { data: products, error: productError } = await db
@@ -1312,6 +1455,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
   const transactionRef = `saplaya-${randomUUID()}`;
   const { error: paymentError } = await db.from('checkout_payments').insert({
     transaction_ref: transactionRef,
+    provider: provider.id,
     customer_id: req.userId,
     mode,
     items: pricedItems,
@@ -1340,21 +1484,17 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
 
   let orderTrackingId: string | undefined;
   try {
-    const order = await submitOrder({
+    const checkout = await provider.createCheckout({
       reference: transactionRef,
       amount: paymentQuote.payment_amount,
       currency: paymentQuote.currency,
-      callbackUrl: `${PUBLIC_API_URL!.replace(/\/+$/, '')}/payments/callback`,
-      ipnId: providerConfig.ipn_id,
-      email: customer.email,
-      phone,
-      name: customer.name,
+      description: `Saplaya order ${transactionRef.slice(8, 16).toUpperCase()}`,
+      callbackUrl: `${publicApiBase}/payments/callback`,
+      webhookUrl: `${publicApiBase}/api/v1/payments/${provider.id}-webhook`,
+      customer: { email: customer.email, phone, name: customer.name },
       deliveryAddress,
     });
-    orderTrackingId = order.order_tracking_id;
-    if (order.merchant_reference !== transactionRef) {
-      throw new Error('Pesapal returned a merchant reference that does not match this checkout.');
-    }
+    orderTrackingId = checkout.gatewayId;
     const { data: savedPayment, error: trackingError } = await db
       .from('checkout_payments')
       .update({ gateway_transaction_id: orderTrackingId })
@@ -1363,7 +1503,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
       .select('transaction_ref')
       .maybeSingle();
     if (trackingError || !savedPayment) {
-      console.error('Pesapal order was created but its tracking ID could not be saved:', {
+      console.error(`${provider.id} checkout was created but its gateway ID could not be saved:`, {
         transactionRef,
         orderTrackingId,
         error: trackingError?.message ?? 'Checkout record was not updated.',
@@ -1374,7 +1514,8 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
       });
     }
     return res.status(201).json({
-      payment_url: order.redirect_url,
+      payment_url: checkout.redirectUrl,
+      payment_provider: provider.id,
       tx_ref: transactionRef,
       order_tracking_id: orderTrackingId,
       amount,
@@ -1395,9 +1536,9 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
         .update({ status: 'failed' })
         .eq('transaction_ref', transactionRef)
         .eq('status', 'pending');
-      if (updateError) console.error('Could not mark failed Pesapal initialization:', updateError.message);
+      if (updateError) console.error(`Could not mark failed ${provider.id} initialization:`, updateError.message);
     }
-    console.error('Pesapal payment initialization failed:', error);
+    console.error(`${provider.id} payment initialization failed:`, error);
     return res.status(502).json({ error: 'Could not open secure payment checkout. Please try again.' });
   }
 });
@@ -1678,20 +1819,24 @@ async function notifyCustomerOrderStatus(orderId: string, status: string) {
 
 app.get('/payments/callback', async (req, res) => {
   const transactionRef = String(req.query.OrderMerchantReference ?? req.query.tx_ref ?? '');
-  const orderTrackingId = String(req.query.OrderTrackingId ?? req.query.order_tracking_id ?? '');
-  if (!/^saplaya-[0-9a-f-]{36}$/i.test(transactionRef) || !orderTrackingId) {
+  const returnedGatewayId = String(req.query.OrderTrackingId ?? req.query.order_tracking_id ?? '');
+  if (!/^saplaya-[0-9a-f-]{36}$/i.test(transactionRef) || returnedGatewayId.length > 200) {
     return res.redirect(302, paymentCallbackUrl('', ''));
   }
   const { data: payment, error } = await db.from('checkout_payments')
-    .select('client_platform')
+    .select('client_platform, gateway_transaction_id')
     .eq('transaction_ref', transactionRef)
-    .eq('gateway_transaction_id', orderTrackingId)
     .maybeSingle();
   if (error) {
     console.error('Could not resolve payment callback destination:', error.message);
     return res.status(503).send('Payment return is temporarily unavailable. Contact support with your payment reference.');
   }
-  if (payment?.client_platform === 'web') {
+  // Snippe cannot template its session ID into the return URL, so fall back to the stored gateway ID.
+  const orderTrackingId = payment?.gateway_transaction_id ?? '';
+  if (!payment || !orderTrackingId || (returnedGatewayId && returnedGatewayId !== orderTrackingId)) {
+    return res.redirect(302, paymentCallbackUrl('', ''));
+  }
+  if (payment.client_platform === 'web') {
     if (!WEB_CHECKOUT_CALLBACK_URL) {
       return res.status(503).send('Web payment return URL is not configured. Contact support with your payment reference.');
     }
@@ -1700,22 +1845,69 @@ app.get('/payments/callback', async (req, res) => {
   return res.redirect(302, paymentCallbackUrl(transactionRef, orderTrackingId));
 });
 
+// The Saplaya payment page mounts Stripe Elements from this. The unguessable tx_ref is the capability,
+// because the mobile in-app browser that opens the page carries no Saplaya session.
+app.get('/payments/stripe/elements-session', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const transactionRef = String(req.query.tx_ref ?? '');
+  if (!/^saplaya-[0-9a-f-]{36}$/i.test(transactionRef)) return res.status(400).json({ error: 'Invalid payment reference.' });
+  const stripe = paymentGateway.get('stripe');
+  if (!(stripe instanceof StripeProvider)) return res.status(404).json({ error: 'Card payments are not enabled.' });
+  const { data: payment, error } = await db.from('checkout_payments')
+    .select('provider, status, gateway_transaction_id, payment_amount, currency, order_id')
+    .eq('transaction_ref', transactionRef)
+    .maybeSingle();
+  if (error) {
+    console.error('Could not load Stripe checkout:', error.message);
+    return res.status(503).json({ error: 'Payment is temporarily unavailable.' });
+  }
+  if (!payment || payment.provider !== 'stripe' || !payment.gateway_transaction_id) {
+    return res.status(404).json({ error: 'Payment was not found.' });
+  }
+  const returnUrl = new URL(`${publicApiBase}/payments/callback`);
+  returnUrl.searchParams.set('tx_ref', transactionRef);
+  returnUrl.searchParams.set('order_tracking_id', payment.gateway_transaction_id);
+  if (payment.status !== 'pending') {
+    return res.json({ status: payment.status, return_url: returnUrl.toString() });
+  }
+  try {
+    const session = await stripe.elementsSession(payment.gateway_transaction_id);
+    if (session.reference !== transactionRef || session.currency !== String(payment.currency).toUpperCase()
+      || !paymentAmountsMatch(Number(payment.payment_amount), session.amount, session.currency)) {
+      console.error('Stripe PaymentIntent does not match stored checkout:', transactionRef);
+      return res.status(409).json({ error: 'This payment no longer matches your order. Please start checkout again.' });
+    }
+    if (session.state !== 'pending') {
+      return res.json({ status: session.state, return_url: returnUrl.toString() });
+    }
+    return res.json({
+      status: 'pending',
+      intent_status: session.status,
+      publishable_key: session.publishableKey,
+      client_secret: session.clientSecret,
+      amount: session.amount,
+      currency: session.currency,
+      return_url: returnUrl.toString(),
+    });
+  } catch (stripeError) {
+    console.error('Could not prepare Stripe Elements session:', (stripeError as Error).message);
+    return res.status(502).json({ error: 'Card payment is temporarily unavailable. Please try again.' });
+  }
+});
+
 const confirmPaymentSchema = z.object({
   tx_ref: z.string().regex(/^saplaya-[0-9a-f-]{36}$/i),
   order_tracking_id: z.string().min(1).max(200),
 });
 
 app.post('/payments/confirm', requireUser, async (req: AuthedRequest, res) => {
-  if (!isPesapalConfigured()) {
-    return res.status(503).json({ error: 'Pesapal checkout is not configured on the server.' });
-  }
   const parsed = confirmPaymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const { tx_ref: transactionRef, order_tracking_id: orderTrackingId } = parsed.data;
   const { data: payment, error: paymentError } = await db
     .from('checkout_payments')
-    .select('payment_amount, currency, status, order_id, gateway_transaction_id')
+    .select(STORED_PAYMENT_COLUMNS)
     .eq('transaction_ref', transactionRef)
     .eq('customer_id', req.userId!)
     .maybeSingle();
@@ -1724,58 +1916,29 @@ app.post('/payments/confirm', requireUser, async (req: AuthedRequest, res) => {
   if (payment.gateway_transaction_id !== orderTrackingId) {
     return res.status(400).json({ error: 'Payment tracking details do not match this checkout.' });
   }
-  if (payment.status === 'paid' && payment.order_id) {
-    return res.json({ order_id: payment.order_id });
-  }
 
   try {
-    const verified = await getTransactionStatus(orderTrackingId);
-    if (
-      (verified.order_tracking_id && verified.order_tracking_id !== orderTrackingId)
-      || (verified.merchant_reference && verified.merchant_reference !== transactionRef)
-    ) {
-      return res.status(400).json({ error: 'Pesapal returned transaction details that do not match this checkout.' });
-    }
-    if (!isPaymentCompleted(verified)) {
-      if (isPaymentFailed(verified)) {
-        const { error: updateError } = await db
-          .from('checkout_payments')
-          .update({ status: 'failed' })
-          .eq('transaction_ref', transactionRef)
-          .eq('status', 'pending');
-        if (updateError) {
-          console.error('Could not mark failed Pesapal checkout:', updateError.message);
-          return res.status(500).json({ error: 'Could not update payment status.' });
-        }
-        return res.status(402).json({ error: 'Pesapal confirmed that this payment was not completed.' });
-      }
+    const result = await settlePayment(paymentGateway, settlementStore, payment as StoredPayment);
+    if (result.outcome === 'paid') return res.json({ order_id: result.orderId });
+    if (result.outcome === 'pending') {
       return res.status(202).json({ status: 'pending', message: 'Payment has not been confirmed yet.' });
     }
-    if (
-      verified.currency !== payment.currency
-      || !paymentAmountsMatch(verified.amount, payment.payment_amount, payment.currency)
-    ) {
-      console.error('Pesapal completed payment does not match the expected amount or currency:', transactionRef);
-      return res.status(409).json({ error: 'Payment details do not match this checkout. Please contact support.' });
+    if (result.outcome === 'failed') {
+      return res.status(402).json({ error: 'The payment provider confirmed that this payment was not completed.' });
     }
-
-    const { data: orderId, error } = await db.rpc('complete_pesapal_payment', {
-      p_transaction_ref: transactionRef,
-      p_order_tracking_id: orderTrackingId,
-    });
-    if (error) {
-      console.error('Verified payment could not be converted to an order:', error.message);
-      return res.status(409).json({ error: 'Payment was received, but the order could not be completed. Please contact support with your payment reference.' });
-    }
-    return res.json({ order_id: orderId });
+    console.error('Verified payment does not match checkout:', transactionRef, result.reason);
+    return res.status(409).json({ error: 'Payment details do not match this checkout. Please contact support.' });
   } catch (error) {
-    console.error('Pesapal transaction verification failed:', error);
-    return res.status(502).json({ error: 'Could not verify the payment right now. Please try again.' });
+    console.error('Payment verification failed:', error);
+    if (error instanceof PaymentProviderError) {
+      return res.status(502).json({ error: 'Could not verify the payment right now. Please try again.' });
+    }
+    return res.status(409).json({ error: 'Payment was received, but the order could not be completed. Please contact support with your payment reference.' });
   }
 });
 
 app.post('/admin/payments/pesapal/register-ipn', requirePerm('settings.manage'), async (_req, res) => {
-  if (!isPesapalConfigured()) {
+  if (!paymentGateway.get('pesapal') || !publicApiBase) {
     return res.status(503).json({ error: 'Pesapal credentials and PUBLIC_API_URL must be configured.' });
   }
   const { data: existing, error: lookupError } = await db
@@ -1790,7 +1953,7 @@ app.post('/admin/payments/pesapal/register-ipn', requirePerm('settings.manage'),
   if (existing?.ipn_id) return res.json({ ipn_id: existing.ipn_id, already_registered: true });
 
   try {
-    const ipnId = await registerIpn(`${PUBLIC_API_URL!.replace(/\/+$/, '')}/api/v1/payments/pesapal-ipn`);
+    const ipnId = await registerIpn(`${publicApiBase}/api/v1/payments/pesapal-ipn`);
     const { error: saveError } = await db.from('payment_provider_config').upsert({
       provider: 'pesapal',
       ipn_id: ipnId,
@@ -1815,9 +1978,12 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
   const acknowledge = (status: 200 | 500) => ipnAcknowledgement(notificationType, orderTrackingId, merchantReference, status);
   if (!orderTrackingId) return res.status(400).json({ error: 'Missing Pesapal order tracking ID.' });
 
+  if (!paymentGateway.get('pesapal')) return res.status(404).json(acknowledge(500));
+
   const { data: payment, error: lookupError } = await db
     .from('checkout_payments')
-    .select('transaction_ref, gateway_transaction_id')
+    .select(STORED_PAYMENT_COLUMNS)
+    .eq('provider', 'pesapal')
     .eq('gateway_transaction_id', orderTrackingId)
     .maybeSingle();
   if (lookupError) {
@@ -1834,58 +2000,14 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
   }
 
   try {
-    const verified = await getTransactionStatus(orderTrackingId);
-    if (
-      (verified.order_tracking_id && verified.order_tracking_id !== orderTrackingId)
-      || (verified.merchant_reference && verified.merchant_reference !== payment.transaction_ref)
-    ) {
-      console.error('Pesapal status query returned a mismatched transaction:', orderTrackingId);
+    const result = await settlePayment(paymentGateway, settlementStore, payment as StoredPayment);
+    if (result.outcome === 'mismatch') {
+      console.error('Pesapal notified payment did not match its checkout:', payment.transaction_ref, result.reason);
       return res.status(409).json(acknowledge(500));
-    }
-    if (!isPaymentCompleted(verified)) {
-      if (isPaymentFailed(verified)) {
-        const { error: updateError } = await db
-          .from('checkout_payments')
-          .update({ status: 'failed' })
-          .eq('transaction_ref', payment.transaction_ref)
-          .eq('status', 'pending');
-        if (updateError) {
-          console.error('Could not mark failed Pesapal payment from IPN:', updateError.message);
-          return res.status(503).json(acknowledge(500));
-        }
-        return res.status(200).json(acknowledge(200));
-      }
-      return res.status(200).json(acknowledge(200));
-    }
-
-    const { data: paymentDetails, error: paymentDetailsError } = await db
-      .from('checkout_payments')
-      .select('payment_amount, currency')
-      .eq('transaction_ref', payment.transaction_ref)
-      .maybeSingle();
-    if (paymentDetailsError || !paymentDetails) {
-      console.error('Could not load payment details for Pesapal IPN:', paymentDetailsError?.message);
-      return res.status(503).json(acknowledge(500));
-    }
-    if (
-      !paymentAmountsMatch(verified.amount, paymentDetails.payment_amount, paymentDetails.currency)
-      || verified.currency !== paymentDetails.currency
-    ) {
-      console.error('Pesapal notified payment amount or currency did not match:', payment.transaction_ref);
-      return res.status(409).json(acknowledge(500));
-    }
-
-    const { error: fulfillmentError } = await db.rpc('complete_pesapal_payment', {
-      p_transaction_ref: payment.transaction_ref,
-      p_order_tracking_id: orderTrackingId,
-    });
-    if (fulfillmentError) {
-      console.error('Verified Pesapal IPN could not fulfill its order:', fulfillmentError.message);
-      return res.status(503).json(acknowledge(500));
     }
     return res.status(200).json(acknowledge(200));
   } catch (error) {
-    console.error('Pesapal IPN status verification failed:', error);
+    console.error('Pesapal IPN settlement failed:', error);
     return res.status(503).json(acknowledge(500));
   }
 });
@@ -2710,6 +2832,35 @@ app.get('/admin/suppliers', requirePerm('suppliers.view_all'), async (req: Authe
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   res.json(data);
+});
+
+app.post('/admin/suppliers/merge', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
+  if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can merge farms.' });
+  const parsed = z.object({
+    source_supplier_ids: z.array(z.string().uuid()).min(1),
+    target_supplier_id: z.string().uuid(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { source_supplier_ids: sourceIds, target_supplier_id: targetId } = parsed.data;
+  if (new Set(sourceIds).size !== sourceIds.length || sourceIds.includes(targetId)) {
+    return res.status(400).json({ error: 'Choose distinct source farms and a different target farm.' });
+  }
+  try {
+    for (const id of [...sourceIds, targetId]) {
+      if (!await memberCanAccessSupplier(req.member!, id)) return res.status(404).json({ error: 'Farm not found.' });
+    }
+  } catch (scopeError) {
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
+  }
+  const { data, error } = await db.rpc('merge_multiple_farm_records', {
+    p_source_supplier_ids: sourceIds,
+    p_target_supplier_id: targetId,
+  });
+  if (error) {
+    console.error('Could not merge farm records:', error.message);
+    return res.status(409).json({ error: publicErrorMessage(error) });
+  }
+  return res.json(data);
 });
 
 app.post('/admin/suppliers/:id/merge', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {

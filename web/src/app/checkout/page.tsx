@@ -22,7 +22,14 @@ type CheckoutQuote = {
   payment_amount: number;
   exchange_rate: number;
 };
-type CheckoutOptions = { cash_on_delivery: boolean; online_payment: boolean; payment_currencies: string[]; cash_currency: string };
+type PaymentProviderOption = { id: 'stripe' | 'snippe' | 'pesapal'; label: string; methods: string[]; currencies: string[]; requires_phone: boolean };
+type CheckoutOptions = {
+  cash_on_delivery: boolean;
+  online_payment: boolean;
+  payment_currencies: string[];
+  cash_currency: string;
+  payment_providers?: PaymentProviderOption[];
+};
 type PaymentSession = { payment_url: string };
 type OrderResult = { order_id: string; amount: number };
 
@@ -41,6 +48,7 @@ export default function CheckoutPage() {
   const [forSomeoneElse, setForSomeoneElse] = useState(false);
   const [recipient, setRecipient] = useState({ name: '', phone: '' });
   const [paymentPhone, setPaymentPhone] = useState('');
+  const [preferredProvider, setPreferredProvider] = useState<PaymentProviderOption['id'] | ''>('');
   const [acceptedFee, setAcceptedFee] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -54,6 +62,13 @@ export default function CheckoutPage() {
       : option.value !== 'morning' && option.value !== 'evening',
   ), [deliveryOptions, isDailyDelivery]);
   const theme = volumeTheme(mode);
+  const currencyProviders = useMemo(
+    () => (options?.payment_providers ?? []).filter((provider) => provider.currencies.includes(market.currency)),
+    [options, market.currency],
+  );
+  const selectedProvider = currencyProviders.find((provider) => provider.id === preferredProvider) ?? currencyProviders[0];
+  // Older API responses omit payment_providers; those deployments are Pesapal-only and need a phone.
+  const providerNeedsPhone = selectedProvider ? selectedProvider.requires_phone : true;
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
     mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
@@ -147,7 +162,8 @@ export default function CheckoutPage() {
       if (paymentMethod === 'online') {
         const payment = await storefrontRequest<PaymentSession>('/payments/initialize', {
           ...input,
-          ...(paymentPhone.trim() ? { payment_phone: paymentPhone.trim() } : {}),
+          ...(selectedProvider ? { payment_provider: selectedProvider.id } : {}),
+          ...(providerNeedsPhone && paymentPhone.trim() ? { payment_phone: paymentPhone.trim() } : {}),
         });
         window.location.assign(payment.payment_url);
         return;
@@ -171,7 +187,7 @@ export default function CheckoutPage() {
     } finally {
       setBusy(false);
     }
-  }, [lines, market.location, market.placeName, market.currency, quote, quoteError, contact, forSomeoneElse, recipient, paymentPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, quoteKey, clear]);
+  }, [lines, market.location, market.placeName, market.currency, quote, quoteError, contact, forSomeoneElse, recipient, paymentPhone, selectedProvider, providerNeedsPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, quoteKey, clear]);
 
   if (orderId) {
     return (
@@ -314,17 +330,41 @@ export default function CheckoutPage() {
 
           {paymentMethod === 'online' && options?.online_payment && (
             <div className="space-y-2 rounded-xl border border-line p-3">
-              <label className="block text-sm font-bold">Mobile money number (optional)
-                <input
-                  type="tel"
-                  autoComplete="tel"
-                  value={paymentPhone}
-                  onChange={(event) => setPaymentPhone(event.target.value)}
-                  placeholder="Use your contact number"
-                  className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
-                />
-              </label>
-              <p className="text-xs text-ink-mute">Enter the mobile-money number linked to your account, or leave this blank to use your contact number. You’ll see the available payment options before confirming. Enter your PIN only on your phone or the payment provider&apos;s trusted prompt.</p>
+              {currencyProviders.length > 1 && (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-bold">Choose how to pay</legend>
+                  {currencyProviders.map((provider) => (
+                    <label key={provider.id} className="flex items-start gap-3 rounded-xl border border-line p-3 text-sm">
+                      <input
+                        type="radio"
+                        name="payment-provider"
+                        className="mt-1"
+                        checked={selectedProvider?.id === provider.id}
+                        onChange={() => setPreferredProvider(provider.id)}
+                      />
+                      <span>
+                        <span className="block font-bold">{provider.label}</span>
+                        <span className="block text-xs text-ink-mute">{provider.methods.join(' · ')}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              {providerNeedsPhone && (
+                <>
+                  <label className="block text-sm font-bold">Mobile money number (optional)
+                    <input
+                      type="tel"
+                      autoComplete="tel"
+                      value={paymentPhone}
+                      onChange={(event) => setPaymentPhone(event.target.value)}
+                      placeholder="Use your contact number"
+                      className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
+                    />
+                  </label>
+                  <p className="text-xs text-ink-mute">Enter the mobile-money number linked to your account, or leave this blank to use your contact number. Enter your PIN only on your phone or the payment provider&apos;s trusted prompt.</p>
+                </>
+              )}
               <p className="text-xs font-bold text-ink-mute">Review your total and available payment options before confirming.</p>
             </div>
           )}

@@ -147,7 +147,7 @@ export type CustomerOrder = {
   delivery_fee: number;
   created_at: string;
   delivery_window?: DeliveryEta;
-  payment_method?: 'pesapal' | 'cash_on_delivery';
+  payment_method?: 'pesapal' | 'stripe' | 'snippe' | 'cash_on_delivery';
   customer_email?: string;
   order_items: OrderItem[];
 };
@@ -155,6 +155,7 @@ export type CustomerOrder = {
 export function initializePayment(input: CheckoutInput) {
   return authenticatedRequest<{
     payment_url: string;
+    payment_provider?: 'pesapal' | 'stripe' | 'snippe';
     tx_ref: string;
     order_tracking_id: string;
     amount: number;

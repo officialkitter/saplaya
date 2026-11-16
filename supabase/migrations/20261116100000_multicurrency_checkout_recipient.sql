@@ -131,7 +131,7 @@ begin
     raise exception 'Invalid delivery address';
   end if;
 
-  v_request_hash := encode(digest(jsonb_build_object(
+  v_request_hash := encode(digest((jsonb_build_object(
     'customer', p_customer, 'mode', p_mode,
     'items', (
       select jsonb_agg(jsonb_build_object('product_id', item->>'product_id', 'qty', item->>'qty') order by ordinality)

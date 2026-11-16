@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^7.1.0",
+    "@stripe/stripe-js": "^10.3.0",
     "@supabase/supabase-js": "^2.45.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.0",

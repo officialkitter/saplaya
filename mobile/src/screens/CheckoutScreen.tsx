@@ -410,7 +410,7 @@ export default function CheckoutScreen({ navigation }: any) {
           subtotal: initialized.subtotal,
           delivery_fee: initialized.delivery_fee,
           delivery_window: deliveryWindow,
-          payment_method: 'pesapal',
+          payment_method: initialized.payment_provider ?? 'pesapal',
           order_items: orderItems,
         } : null);
         return;
