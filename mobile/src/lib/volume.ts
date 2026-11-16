@@ -3,6 +3,12 @@ import { Mode, Product } from '../types';
 export type VolumeTier = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
 export type BaseMode = 'retail' | 'wholesale';
 
+export function quickAddQuantity(product: Pick<Product, 'stock' | 'wholesale_min_qty'>, currentQty: number, mode: BaseMode): number {
+  const minimum = mode === 'wholesale' ? Math.max(1, product.wholesale_min_qty) : 1;
+  const increment = currentQty < minimum ? minimum - currentQty : 1;
+  return currentQty + increment <= Math.min(product.stock, 10000) ? increment : 0;
+}
+
 export function volumeTier(product: Product, qty: number, mode: Mode): VolumeTier {
   const wholesaleMinimum = Math.max(1, product.wholesale_min_qty);
   if (qty >= wholesaleMinimum * 100) return 'mega_bulk';

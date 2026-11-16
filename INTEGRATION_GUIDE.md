@@ -1,4 +1,4 @@
-> Historical integration proposal: use [the current README](README.md) for database, environment and deployment setup. Do not apply the legacy database script to the existing marketplace. Endpoint examples and readiness claims below have not been verified against production.
+> Historical integration proposal: use [the operations guide](docs/operations.md) for database, environment and deployment setup. Do not apply the legacy database script to the existing marketplace. Endpoint examples and readiness claims below have not been verified against production.
 
 # 🚀 SAPLAYA INTEGRATION GUIDE - IMMEDIATE SETUP
 

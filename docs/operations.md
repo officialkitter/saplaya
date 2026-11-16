@@ -1,0 +1,178 @@
+# Saplaya operations
+
+One premium storefront for customers. Behind it, every product and order carries a `supplier_id`, so each independent farm tracks only its own orders and stock. Everything lives in this one repo:
+
+```
+saplaya/
+├─ mobile/     Customer app (Expo, React Native, TypeScript)
+├─ web/        Landing page + admin panel (Next.js, Tailwind, Framer Motion, Recharts)
+├─ backend/    Node.js + Express API (deploy to Railway)
+├─ supabase/   schema and migrations for auth, catalog pricing, checkout and admin operations
+└─ scripts/    Dev helpers
+```
+
+## Quick start
+From the repo root:
+```
+npm run install:all     # installs web, mobile and backend
+npm run dev             # website + admin on http://localhost:3001
+npm run dev:mobile:web  # customer app in the browser, usually http://localhost:8081
+npm run dev:mobile      # customer app in Expo Go / simulator
+npm run dev:backend     # API
+```
+`npm run dev` frees port 3001 first if an old dev server is still holding it (this prevents `EADDRINUSE`). You can also run `npm run free-port` on its own.
+
+## Development
+Configure the Supabase and backend environment variables for the customer app and website before starting local services. Customer products and orders are loaded from the configured API and Supabase project.
+
+### Integration verification and documentation authority
+
+This guide is the setup and deployment source of truth; [PesaPal setup](../backend/PESAPAL.md) provides payment-specific instructions. The older integration summaries and agent-delivery guides are historical proposals, not evidence that the hosted database or their endpoints are production-ready. Do not apply `backend/db-migration.sql` over the existing marketplace schema; review and apply only the required, compatible migrations in the order below.
+
+The current public API is `https://saplaya-backend.up.railway.app`. The retired `saplaya-production-5cea.up.railway.app` hostname returns 404 and must not be used by new web or mobile builds. Set the API service's `PUBLIC_API_URL`, the website's `NEXT_PUBLIC_API_URL`, and mobile builds' `EXPO_PUBLIC_API_URL` to the current endpoint. Changing a Railway variable does not update an already-installed mobile app. Next.js public variables are embedded at build time, so rebuild the website after changing its API URL.
+
+The EAS production and preview environments use that same API endpoint and `EXPO_PUBLIC_AUTH_CALLBACK_URL=https://www.saplaya.org/auth/callback`. Preview builds therefore still target production data: do not use them for test writes. The development environment has no API URL configured; explicitly select an isolated development API before building. A new native build and distribution are required for installed apps to receive changed build-time configuration or native error-handling changes. No app-store release is performed by updating these variables.
+
+From PowerShell at the repository root, run these read-only checks after deployment:
+
+```powershell
+$env:PUBLIC_API_URL = 'https://saplaya-backend.up.railway.app'
+$env:TEAM_WEB_ORIGIN = 'https://www.saplaya.org'
+npm run verify:integration
+```
+
+The check verifies API/database readiness, the public catalog response, browser CORS, country options, TZS exchange rates, and the website's server-rendered heading. It exits unsuccessfully if any check fails. It does not create test customers, applications, orders or payments, or prove that authenticated checkout and admin operations work. Also verify the deployed website in a browser: products and farm country options must load without network errors, and retail/wholesale and currency controls must retain their behavior.
+
+Keep the existing frontend sections, styles, shopping modes and forms during SEO updates. The public website uses `https://www.saplaya.org` as its canonical host. Separate crawlable routes and structured data improve content discovery but cannot guarantee rankings or Google sitelinks.
+
+The public website has dedicated `/how-it-works`, `/fresh-today`, `/for-farmers` and `/faq` routes, with a `/help` hub for the `Home > Help > Questions` breadcrumb. Public routes have unique titles and descriptions, canonical URLs, and one H1. The homepage retains every original section. Navigation menus and the footer link to the dedicated routes; existing homepage section IDs remain valid for older links. The standalone catalog reuses the same retail/wholesale selector and basket state as the homepage. Structured data describes the organization and site search, public breadcrumbs, and the visible FAQ answers.
+
+To check the routes against a running build, set `TEST_WEB_ORIGIN` to that instance's origin and run `node --test web/test/public-routes.test.mjs`. These read-only tests check rendered content, navigation, SEO metadata, structured data, sitemap/robots output, homepage preservation and a real 404 response. Use a separate development environment before testing any forms, payments or other writes.
+
+### Search indexing after deployment
+
+After deploying the website:
+
+1. Verify `https://www.saplaya.org` loads over HTTPS and the apex `https://saplaya.org` redirects to the canonical `www` host.
+2. Check `https://www.saplaya.org/robots.txt` and `https://www.saplaya.org/sitemap.xml`. Confirm the sitemap lists only intended public URLs, uses the `www` host, and includes the priorities; robots.txt must point to that sitemap.
+3. In [Google Search Console](https://search.google.com/search-console), add and verify the domain property. Google recommends DNS verification; publish its TXT record in the domain's DNS settings, then complete verification.
+4. Open **Sitemaps**, submit `sitemap.xml`, and check that Google reports it as successfully processed.
+5. Use **URL Inspection** for the homepage and each public route (`/how-it-works`, `/fresh-today`, `/for-farmers`, `/faq`, `/help`). Confirm the inspected canonical is the matching `www` URL, then request indexing where appropriate.
+6. Validate the JSON-LD with Google's available structured-data tools and monitor Search Console's indexing and enhancement reports for errors.
+7. Recheck indexing and search performance over time. Sitemap submission and indexing requests do not guarantee crawling, indexing, rankings, or sitelinks.
+
+The preferred Google site name is **Saplaya**. The homepage's `WebSite` structured data, Open Graph site name, title and visible text should consistently use that name. Google selects site names automatically and may take days or weeks to process updates; see its [site-name guidance](https://developers.google.com/search/docs/appearance/site-names). Monitor branded queries in Search Console's Performance report rather than relying on a single personalized search. Google ignores the `meta keywords` tag, so use accurate, useful page content rather than keyword stuffing.
+
+The website's production command, `npm start --prefix web`, uses Next.js's native `PORT` support (3000 when unset), so it works on Windows and Railway without shell-specific variable expansion. Local development remains on port 3001.
+
+The Expo web command uses `http://localhost:8081`. The production API explicitly allows that origin for development; when the app is configured to use production, orders, payments, account changes, and other writes affect real data. Use a separate development environment before testing write operations. If using a local API instead, configure its `WEB_ORIGIN` to allow `http://localhost:8081` and point `EXPO_PUBLIC_API_URL` at that API.
+
+## Roles and restrictions
+- **Five roles:** `platform_owner`, `platform_manager`, `supplier_owner`, `supplier_staff`, `driver`.
+- Enforced by the backend (`PERMISSIONS` in `backend/src/index.ts`) and the database, mirrored in the UI (`web/src/lib/roles.ts`). Keep both tables identical.
+- A farm only ever sees its own orders, products, stock and team.
+- Farms see a customer's first name and delivery area only. Phone numbers are for the Saplaya team and drivers.
+- Nobody can hand out a role above their own. Farm owners can only add packers.
+- The platform Owner approves shared customer prices; farm teams manage their own listings and stock and can request a shared-price change.
+- Customer listings require an approved shared price and real active farm stock.
+- A customer's location prioritizes nearby farms but does not hide stocked listings from active farms whose coordinates are missing. Checkout still requires farm coordinates to calculate delivery charges; add those coordinates in the farm's admin settings.
+
+## App name and icon
+- The app display name, Saplaya icon, Android adaptive icon and splash artwork are configured in `mobile/app.json` and `mobile/assets/`.
+- `mobile/android` and `mobile/ios` are generated by Expo (`npx expo prebuild` / `expo run:android`) and are git-ignored.
+
+## 1. Supabase
+1. Create a project and run `supabase/schema.sql` in the SQL editor.
+2. Run `supabase/mobile_account_payments.sql`. It creates customer profile/address/review storage, supplier applications, avatar storage, and the paid-checkout records and RPC.
+3. Run `supabase/002_roles.sql`. It adds team roles, farm status, and makes supplier applications work for both the website and the app.
+4. Run `supabase/pesapal_payments.sql`, `supabase/live_web_applications.sql`, `supabase/admin_settings.sql`, and `supabase/admin_operations.sql` to install payment fulfillment, public farm applications, delivery settings, and transactional stock restocking.
+5. Run `supabase/central_product_catalog.sql` to seed the shared catalog and enforce owner-approved common prices. It includes 114 indicative reference entries; new entries start unapproved and no farm inventory is created. Existing listings with differing farm prices are held for owner review.
+6. Run `supabase/checkout_delivery_windows.sql` to persist delivery slots and enable idempotent, stock-checked cash-on-delivery orders.
+7. After the catalog SQL and baseline admin operations SQL, apply `supabase/migrations/20261027170000_shared_catalog_farm_stocking.sql`. The admin Products page then lets authorized users add approved shared products to an active farm. The owner chooses the farm; each action adds 10 units only when the farm does not already have positive stock. Unapproved prices remain unavailable for sale.
+8. Apply `supabase/migrations/20261104190000_volume_location_delivery.sql`, then `supabase/migrations/20261106150000_tier_pricing_and_order_modes.sql`. The first adds farm coordinates and the volume-pricing and delivery foundations; the second adds owner-managed 70%/65%/55% default tier percentages, recalculates shared prices when those settings change, and enables quantity-derived bulk order modes. Review both migrations before applying them to production; the customer apps and API must be deployed together with the database changes.
+9. Apply `supabase/migrations/20261107100000_management_commissions_regions.sql` after the pricing migrations. It adds worldwide farm/application locations, employee profiles and operation scopes, the scoped dashboard analytics RPC, and weekly assigned-delivered-sales commission data. Commission tiers and the bonus are rates of the configured margin pool (not gross sales); only assigned supplier orders delivered during the Monday–Sunday UTC week qualify, and total incentives are capped by the configured budget. Review the migration before applying it to production; the web and mobile applications and API must be deployed together with the database changes.
+10. Auth → Providers → enable **Anonymous sign-ins** and **Email** for Supabase customer guests, email accounts, and web team accounts. The production config enables guest sessions and turns off **Confirm email** so email/password signups can continue immediately; this is a project-wide verification policy. Signed-in customers can request email verification later from Account → Personal details. Firebase phone identity is configured separately below.
+11. The mobile app uses the stable `saplaya://auth/callback` deep link for OAuth and email links. Keep it in the Supabase Auth redirect allow-list. The intended canonical website is `https://www.saplaya.org`; the configuration includes its auth callbacks and retains the existing Railway callbacks during the transition. Verify that the domain serves the deployed website before changing the hosted Supabase Site URL or removing the existing callbacks. Applying this local configuration does not itself configure the hosted project.
+12. Add real farm listings and stock through the supplier admin panel. Customer listings need approved shared prices and real available stock. Use hosted, properly licensed product photos.
+13. For the first Owner: create the user in Auth, then insert a `team_members` row (`role = 'platform_owner'`, `status = 'active'`, `user_id` = that user's id). The owner invites everyone else from the admin panel. Team members receive a secure account-setup link by email and create their own password; passwords are never emailed. Team login uses the invited email address.
+
+### Firebase customer identity
+Mobile phone customers use native Firebase Auth; the web team/admin panel and mobile email accounts continue to use Supabase Auth. In Firebase, register Android package `com.saplaya.app` and iOS bundle ID `com.saplaya.app`, then place their client config files at `mobile/google-services.json` and `mobile/GoogleService-Info.plist`. The two files must belong to project `saplaya-v1`; each app ID must match `mobile/app.json`. Use an Expo development/release build because React Native Firebase native modules do not run in Expo Go. Enable Firebase as a third-party provider in the hosted Supabase project with project ID `saplaya-v1`; `supabase/config.toml` contains the matching local setting. Firebase ID tokens must include the `role: authenticated` custom claim before Supabase data requests can pass RLS.
+
+Mobile Supabase sessions use Expo SecureStore on iOS/Android, with one-time migration from the earlier AsyncStorage session key; web auth continues to use browser-compatible storage. The native splash is held until app startup state is ready, then transitions into the branded app splash.
+
+Run the baseline SQL files above first, then apply `supabase/migrations/20261024000000_firebase_auth_identity.sql`. It seeds mappings for existing Supabase users with verified phone numbers or email addresses, replaces customer RLS identity checks with a Firebase-aware UUID resolver, and keeps customer ownership tied to the existing `auth.users` UUID. The API bootstraps verified Firebase users at `POST /auth/firebase/bootstrap`, links by verified phone/email only, and sets the Firebase `authenticated` claim. If verified phone and email point to different existing accounts, linking is rejected for manual resolution.
+
+Set `FIREBASE_PROJECT_ID=saplaya-v1` and `FIREBASE_SERVICE_ACCOUNT_JSON` in Railway. The latter must be the Firebase Admin service-account JSON stored as a Railway secret; never commit it or put it in a client variable. For iOS phone auth, also configure Firebase's APNs/reCAPTCHA requirements for the registered app. Firebase phone verification SMS provider activation and billing are a separate setup step.
+
+Signed-in mobile customers can receive FCM notifications when a supplier changes an order's status. Messaging is included in the native Expo build; a new development/release build is required after adding or changing native Firebase modules. Configure the Firebase Admin service account above and upload an APNs authentication key in Firebase for iOS delivery. Supabase account-verification and password-reset emails are configured under Supabase Auth → Email Templates; Firebase phone OTP does not send those emails.
+
+#### Free phone-auth testing (no real SMS)
+To exercise the OTP flow without sending or paying for SMS, open Firebase Console → `saplaya-v1` → Authentication → Sign-in method → Phone, then add a fictional phone number and a fixed six-digit test code under **Phone numbers for testing**. Use only a number reserved for testing, never a customer's real number. Enter that same number and code in the app; Firebase accepts the test credential without sending an SMS. These test accounts validate the sign-in and backend identity flow, not delivery to a handset.
+
+Firebase's current limits document says real phone verification SMS requires the Blaze pay-as-you-go plan and is billed per SMS. Do not enable live SMS or upgrade billing until that spend is approved. For live use later, enable the Phone provider, allow Tanzania (`+255`) in the SMS region policy, and complete native app verification setup (Android signing fingerprints and iOS APNs/reCAPTCHA configuration).
+
+## 2. Backend (Railway)
+```
+cd backend
+Copy-Item .env.example .env
+npm install
+npm run dev
+```
+Set `SUPABASE_URL`, the rotated `SUPABASE_SECRET_KEY`, and `SUPABASE_JWKS_URL` in `backend/.env`. Keep the secret key server-side; never add it to an `EXPO_PUBLIC_` variable. Set the API's `WEB_ORIGIN` to a comma-separated list of exact browser origins, without spaces or trailing slashes. Include `https://www.saplaya.org` and, while it remains in use, `https://saplaya-web.up.railway.app`; otherwise browsers block API requests, including location, products and admin access. Set `TEAM_WEB_ORIGIN` to the single canonical origin `https://www.saplaya.org` for invitation links.
+
+For Railway, deploy `backend/` as a separate service with its root directory set to `/backend`, Node.js 22 or later, build command `npm run build`, start command `npm start`, and health check path `/health`. The backend requires Node 22+ for the native WebSocket support used by the Supabase client. Set `PUBLIC_API_URL` to its own public URL and point `EXPO_PUBLIC_API_URL` (mobile) and `NEXT_PUBLIC_API_URL` (web) to it.
+
+The website domain is not automatically an API endpoint. Point `www.saplaya.org` at the deployed web service using the hosting provider's domain instructions, and redirect the apex `saplaya.org` to it. Verify the website, TLS, auth callbacks, and any API routing before changing hosted configuration. Keep the existing API URL until a replacement is deployed and its health and application routes are verified; otherwise sign-in, checkout, and mobile requests can stop working. After the domain is live, set `WEB_CHECKOUT_CALLBACK_URL` to `https://www.saplaya.org/checkout/payment` and update Supabase Auth's hosted Site URL and allow-list.
+
+Set `PESAPAL_ENV` to `sandbox` during testing or `live` in production, then configure `PESAPAL_CONSUMER_KEY` and `PESAPAL_CONSUMER_SECRET` as server-only secrets. The server also accepts the legacy `PESAPAL_CUSTOMER_KEY` and `PESAPAL_CUSTOMER_SECRET` environment variable names. The official API 3.0 hosts are `https://cybqa.pesapal.com/pesapalv3` (sandbox) and `https://pay.pesapal.com/v3`. Set `PAYMENT_APP_CALLBACK_URL` to `saplaya://payment-callback`; set `WEB_CHECKOUT_CALLBACK_URL` to the exact deployed website URL ending in `/checkout/payment` to enable web Pesapal checkout.
+
+After the mobile payment browser closes, the app verifies the original checkout with the server even if no callback was received. An unverified payment can be checked again or reopened without creating another transaction; only a server-confirmed order is shown as successful. The current recovery state is kept in memory and needs durable recovery across app restarts before release.
+
+The backend also requires `SUPABASE_SECRET_KEY` (the Supabase server-side secret/service-role key); never put it in mobile or web `NEXT_PUBLIC_` variables. The mobile app requires `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `EXPO_PUBLIC_API_URL`. The website requires `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_API_URL`. Configure a Tanzania-capable SMS provider, production SMTP/email confirmation templates, and the Supabase Auth redirect allow-list.
+
+For a Supabase URL change, preserve existing mobile and admin sessions by setting `EXPO_PUBLIC_SUPABASE_AUTH_STORAGE_KEY` and `NEXT_PUBLIC_SUPABASE_AUTH_STORAGE_KEY` at build time to the old default key, `sb-<project-ref>-auth-token`. For the current Saplaya project this is `sb-gycjliqtcstomzegfcbz-auth-token`. These are storage identifiers, not credentials. The storefront uses its own stable storage key. Do not change the URLs until the custom domain is active and both old and new endpoints have been validated; published mobile builds keep their original URL until users update. Test existing signed-in and anonymous sessions, Google and Apple sign-in, email recovery, invitations, and backend token verification during the cutover. Register both provider callbacks first and coordinate any disruption with users.
+
+For Supabase email, configure SMTP using a verified sender domain and store the provider credential only in the hosted Supabase SMTP settings. A `/auth/v1/recover` HTTP 500 occurs before the recipient opens a callback link; inspect Supabase Auth logs, SMTP credentials and the email template before changing callback handling. Rotate any credentials disclosed in chat or logs.
+
+The member portal offers email/password sign-in; removing its Google button does not disable Google for customer accounts. The `/auth/confirm` page waits for a button press before verifying an invite or recovery token. Deploy and verify this page before changing hosted templates, retain a copy of existing templates, and test freshly generated team and mobile links. The invite template can use `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&redirect_to={{ .RedirectTo }}` and recovery can use the equivalent with `type=recovery`. The destination must be `/auth/callback` on the same origin or one of the explicitly supported production website origins; recovery also accepts the exact `saplaya://auth/callback` mobile destination. Team links require `returnTo=%2Flogin`. Test template URL encoding and all supported redirect origins before production cutover. This reduces automatic token consumption by scanners that only follow links; it does not prevent scanners that activate buttons, expired tokens, or SMTP problems. Old one-time links cannot be repaired; issue a fresh invitation or reset link after cutover.
+
+To display a verified place name for a visitor's device location, enable billing and the Google Maps Geocoding API, then set `GOOGLE_MAPS_API_KEY` as a backend-only secret. Restrict the key to the Geocoding API and configure a suitable quota; never expose it through a `NEXT_PUBLIC_` variable. The public `POST /location/reverse-geocode` endpoint returns a neighborhood/locality and country, does not persist coordinates or cache provider content, and the landing page displays Google Maps attribution beside the place name.
+
+After applying the payment SQL, sign in as a `platform_owner` and call `POST /admin/payments/pesapal/register-ipn` once. It registers `PUBLIC_API_URL/api/v1/payments/pesapal-ipn` and stores the returned IPN ID in `payment_provider_config`. Customer routes: `GET /products`, `GET /promos`, `GET /orders`, `POST /payments/initialize`, `POST /payments/confirm`, `POST /supplier-applications`. Pesapal's callback returns the user to the app; payment completion is determined only by a server-to-server status query and the asynchronous IPN.
+
+The storefront catalog accepts `q`, `category`, `minPrice`, `maxPrice`, `fresh=true`, and `sort` (`default`, `price_asc`, `price_desc`, or `nearby`) on `GET /products`. Price filters and price sorting use retail prices in TZS, even when other pricing tiers or display currencies are shown. Fresh means harvested within the preceding 24 hours; nearby sorting requires a valid `lat` and `lng`. Filtering occurs before pagination and the response includes available categories. Deploy the backend before clients that use these filters.
+
+The customer search interface exposes product categories and the harvested-within-24-hours filter. Retail and wholesale are selected by the shopper; bulk and mega-bulk activate automatically at the existing per-product quantity thresholds. Daily delivery windows are 07:00–10:00 and 15:00–18:00 local time. “Payment on delivery” is the customer-facing label for the existing `cash_on_delivery` order value; this label change does not add new payment methods.
+
+The public product catalog returns `null` for bulk and mega-bulk prices. The authenticated checkout quote returns the applicable unit price for a qualifying, in-stock quantity after delivery location and other checkout validation; this is not a guarantee of confidentiality against customers submitting qualifying quotes. Until a quote is available, clients display that the price will be confirmed at checkout. Coordinate the API change with mobile updates and test older installed apps before production deployment.
+
+Web order tracking uses the verified customer session and refreshes the customer's own order list every 30 seconds. Guest orders remain accessible only while that browser retains its guest session; clearing site data or switching browsers loses access to that session. Deploy the backend before enabling the updated web tracking page.
+
+The `20261106120000_pricing_and_record_merge_safety.sql` migration removes confidential bulk/mega-bulk prices from public Supabase reads and adds transactional farm/product merge and archive operations. Apply and verify that migration before deploying the matching backend. The storefront checkout requires Supabase anonymous sign-in to be enabled; web Pesapal payments also require `WEB_CHECKOUT_CALLBACK_URL` and a registered Pesapal IPN. Web cash-on-delivery orders are available without a registered payment provider.
+
+Public: `POST /apply` (landing page form).
+Admin routes (all permission-checked by role): `/admin/me` (view/update the signed-in team profile), `/admin/stockable-catalog`, `/admin/catalog/:id/stock`, `/admin/catalog/:id/publish`, `/admin/orders`, `/admin/supplier-orders/:id/status`, `/admin/products`, `/admin/inventory-movements`, `/admin/restock`, `/admin/suppliers`, `/admin/applications`, `/admin/team`, and `/admin/settings`. Farm/product merge and remove actions are restricted to platform owners and administrators; referenced history is archived, not deleted. Customers can edit their details and change an authenticated account password from the mobile Account screen; web team members can update their profile and password from My account. Phone-only accounts continue to sign in with SMS codes.
+
+## 3. Mobile app
+```
+cd mobile
+Copy-Item .env.example .env
+# Set the Supabase URL, publishable key, and backend URL in .env
+npm install
+npx expo start
+```
+For Android builds with `npx expo run:android`, install JDK 17 and the Android SDK, and make sure `JAVA_HOME` points to JDK 17.
+
+The basket continues to checkout, where the backend recalculates the total before Pesapal's hosted checkout opens. Customers choose an available payment method there; a mobile-money prompt is initiated by Pesapal after selection. An order is only created after the backend verifies a successful payment.
+
+## How the "secret supplier" design works
+- Customers read `storefront_products` (a view without `supplier_id`). The app's types have no supplier fields.
+- The mobile account migration revokes direct client execution of the legacy `place_order()` RPC. The backend verifies Pesapal status, then creates the order using the server-priced checkout snapshot in one transaction.
+- When a farm changes its `supplier_orders.status`, a trigger recomputes `orders.status` (the least advanced farm wins; cancelled farms are ignored). Supabase Realtime delivers that UPDATE to the Tracking screen.
+- Cancelling returns stock and logs a `cancel_return` movement.
+
+## Notes
+- Replace any remaining stock product imagery with properly licensed, production product photography.
+- Delivery tiers are stored in `platform_settings`; the backend is authoritative for checkout pricing.
+- Use Pesapal sandbox mode until the full IPN and server verification flow has been tested in the target deployment.

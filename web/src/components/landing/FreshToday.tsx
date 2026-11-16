@@ -1,19 +1,96 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Sprout } from 'lucide-react';
+import { Search, ShoppingBasket, Sprout, X } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { localDayPeriod, type LocalDayPeriod } from '@/lib/format';
-import { useStorefrontProducts, type StorefrontFilters } from '@/lib/storefront';
+import { useStorefrontProducts, type StorefrontFilters, type StorefrontProduct } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
 import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
 import { ModeSlide } from './ModeSlide';
 
+function ProductCard({ product, fresh, onAdded }: {
+  product: StorefrontProduct;
+  fresh: boolean;
+  onAdded: (product: StorefrontProduct) => void;
+}) {
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const market = useGlobalMarket();
+  const { add, lines, mode, preferredMode } = useStorefrontCart();
+  const theme = volumeTheme(mode);
+  const qty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
+  const tier = volumeTier(product, qty || 1, preferredMode);
+  const price = volumePrice(product, qty || 1, preferredMode);
+  const revealed = pinned || hovered;
+
+  return (
+    <article
+      className="relative min-h-[15rem] overflow-hidden rounded-[1.75rem] bg-line shadow-soft"
+      onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHovered(true); }}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== 'mouse') return;
+        if (revealed && event.currentTarget.contains(document.activeElement)) setPinned(true);
+        setHovered(false);
+      }}
+    >
+      <button
+        type="button"
+        aria-label={`${pinned ? 'Hide' : 'Show'} details for ${product.name}`}
+        aria-expanded={revealed}
+        onClick={() => setPinned((value) => !value)}
+        className="relative block aspect-[4/3] min-h-[15rem] w-full overflow-hidden focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-[-4px] focus-visible:outline-leaf"
+      >
+        <SmartImage
+          src={product.image_url ?? undefined}
+          alt={product.name}
+          className="absolute inset-0 text-6xl"
+          imgClassName="motion-safe:transition motion-safe:duration-700 motion-safe:hover:scale-105"
+        />
+      </button>
+      {revealed && (
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: reduceMotion ? 0 : 0.2 }}
+          className="absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-2xl border-t border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-md sm:p-4"
+        >
+          <div className="flex items-start gap-2">
+            <h4 className="min-w-0 flex-1 break-words font-display text-lg font-extrabold leading-6 text-ink" title={product.name}>{product.name}</h4>
+            <button type="button" aria-label={`Hide details for ${product.name}`} onClick={() => { setPinned(false); setHovered(false); }} className="grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-leaf">
+              <X size={18} aria-hidden />
+            </button>
+          </div>
+          {fresh && <p className="flex items-center gap-1 text-xs font-bold text-leaf-deep"><Sprout size={14} aria-hidden /> Harvested within 24 hours</p>}
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-1 font-bold" style={{ color: theme.accent }}>
+            <span>{price === null ? 'Price confirmed at checkout' : market.formatPrice(price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
+          </p>
+          {typeof product.farm_distance_km === 'number' && <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>}
+          {tier !== 'retail' && <p className="mt-1 text-xs font-bold" style={{ color: theme.accent }}>{tier === 'mega_bulk' ? 'Mega-bulk' : tier === 'bulk' ? 'Bulk' : 'Wholesale'} price</p>}
+          {qty > 0 && <p className="mt-1 text-sm font-semibold text-ink-soft">{qty} {product.unit} in your basket</p>}
+          <button
+            type="button"
+            disabled={product.stock < 1 || qty >= Math.min(product.stock, 10000)}
+            onClick={() => { add(product); onAdded(product); }}
+            className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-extrabold shadow-sm transition-transform active:scale-[0.98] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ backgroundColor: theme.button, color: theme.buttonText }}
+          >
+            <ShoppingBasket size={18} aria-hidden />
+            {product.stock < 1 ? 'Currently unavailable' : qty >= Math.min(product.stock, 10000) ? 'Maximum available in basket' : qty ? 'Add another' : 'Add to basket'}
+          </button>
+        </motion.div>
+      )}
+    </article>
+  );
+}
+
 export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: boolean }) {
   const market = useGlobalMarket();
-  const { add, lines, mode, preferredMode, setPreferredMode } = useStorefrontCart();
+  const { lines, mode, preferredMode, setPreferredMode } = useStorefrontCart();
   const theme = volumeTheme(mode);
   const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -176,50 +253,14 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
                   )}
                 </div>
                 <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                  {section.products.map((product) => {
-                    const qty = lines.find((line) => line.product.id === product.id)?.qty ?? 0;
-                    const tier = volumeTier(product, qty || 1, preferredMode);
-                    const price = volumePrice(product, qty || 1, preferredMode);
-                    return (
-                    <article key={product.id} className="group overflow-hidden rounded-[1.75rem] bg-white shadow-soft">
-                      <div className="relative aspect-[4/3] overflow-hidden bg-line">
-                        <SmartImage
-                          src={product.image_url ?? undefined}
-                          alt={product.name}
-                          className="absolute inset-0 text-6xl"
-                          imgClassName="transition duration-700 group-hover:scale-105"
-                        />
-                        {section.key === 'fresh' && (
-                          <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-leaf-deep">
-                            <Sprout size={14} className="shrink-0" /> Harvested within 24 hours
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-3 sm:p-4">
-                        <h4 className="line-clamp-2 min-h-[3rem] break-words font-display text-lg font-extrabold leading-6 text-ink sm:text-xl" title={product.name}>{product.name}</h4>
-                        <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1 font-bold" style={{ color: theme.accent }}>
-                          <span>{price === null ? 'Price confirmed at checkout' : market.formatPrice(price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
-                        </p>
-                        {typeof product.farm_distance_km === 'number' && (
-                          <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>
-                        )}
-                        {tier !== 'retail' && <p className="mt-2 text-xs font-bold" style={{ color: theme.accent }}>{tier === 'mega_bulk' ? 'Mega-bulk' : tier === 'bulk' ? 'Bulk' : 'Wholesale'} price</p>}
-                        {qty > 0 && <p className="mt-2 text-sm font-semibold text-ink-soft">{qty} {product.unit} in your basket</p>}
-                        <button
-                          type="button"
-                          disabled={product.stock < 1 || qty >= Math.min(product.stock, 10000)}
-                          onClick={() => {
-                            add(product);
-                            setBasketNotice({ id: product.id, name: product.name, unit: product.unit });
-                          }}
-                          className="mt-3 min-h-11 w-full rounded-xl px-4 py-2.5 text-sm font-extrabold transition-transform active:scale-[0.98] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                          style={{ backgroundColor: theme.button, color: theme.buttonText }}
-                        >
-                          {product.stock < 1 ? 'Currently unavailable' : qty >= Math.min(product.stock, 10000) ? 'Maximum available in basket' : qty ? 'Add another' : 'Add to basket'}
-                        </button>
-                      </div>
-                    </article>
-                  ); })}
+                  {section.products.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      fresh={section.key === 'fresh'}
+                      onAdded={(item) => setBasketNotice({ id: item.id, name: item.name, unit: item.unit })}
+                    />
+                  ))}
                   {hasMore && <button type="button" onClick={() => void loadMore()} className="font-bold text-leaf-deep underline">Load more products</button>}
                 </div>
               </div>

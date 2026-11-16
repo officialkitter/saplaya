@@ -32,9 +32,10 @@ function Dashboard() {
   const { me, farmId, suppliers, products, orders } = useScope();
   const applications = useDB((s) => s.applications);
   const [restockFor, setRestockFor] = useState<string | null>(null);
+  const [salesDays, setSalesDays] = useState<7 | 14 | 30>(14);
 
   const platform = !farmId;
-  const sales = useMemo(() => salesByDay(orders, 14), [orders]);
+  const sales = useMemo(() => salesByDay(orders, salesDays), [orders, salesDays]);
   const total14 = useMemo(() => orders.filter(countsAsSale).reduce((n, o) => n + orderTotal(o), 0), [orders]);
   const change = useMemo(() => weekChange(orders), [orders]);
   const statuses = useMemo(() => statusCounts(orders), [orders]);
@@ -118,7 +119,20 @@ function Dashboard() {
 
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <Panel title="Sales each day" subtitle="Money from orders that were not cancelled">
+        <Panel title="Sales each day" subtitle="Goods sales from up to 300 recently updated orders, excluding cancelled orders">
+          <div role="group" aria-label="Sales chart period" className="mb-4 inline-flex max-w-full flex-wrap gap-1 rounded-2xl border border-[#E6DCCE] bg-[#FAF6EF] p-1 shadow-inner">
+            {([7, 14, 30] as const).map((days) => (
+              <button
+                key={days}
+                type="button"
+                aria-pressed={salesDays === days}
+                onClick={() => setSalesDays(days)}
+                className={`min-h-11 rounded-xl px-4 text-sm font-bold transition motion-reduce:transition-none ${salesDays === days ? 'bg-white text-leaf-deep shadow-sm' : 'text-ink-soft hover:bg-white/70'}`}
+              >
+                {days} days
+              </button>
+            ))}
+          </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={sales} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
