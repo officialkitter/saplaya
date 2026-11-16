@@ -87,7 +87,7 @@ function Dashboard() {
       </motion.section>
 
       {/* One strip, not four cards */}
-      <section className="grid grid-cols-2 divide-line rounded-[1.75rem] border border-line bg-white shadow-soft lg:grid-cols-4 lg:divide-x">
+      <section className="glass-surface grid grid-cols-2 divide-line rounded-[1.75rem] lg:grid-cols-4 lg:divide-x">
         <div className="p-5">
           <p className="text-[15px] font-semibold text-ink-mute">{platform ? 'Sales through Saplaya' : 'Your sales'}, 14 days</p>
           <p className="mt-1 font-display text-3xl font-extrabold"><CountUp value={total14} prefix="TSh " /></p>

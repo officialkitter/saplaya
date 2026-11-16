@@ -39,7 +39,7 @@ export default function CheckoutScreen({ navigation }: any) {
   const [paymentSummary, setPaymentSummary] = useState<Omit<CustomerOrder, 'id' | 'created_at'> | null>(null);
   const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
-  const [quote, setQuote] = useState<CheckoutQuote | null>(null);
+  const [quotedBasket, setQuotedBasket] = useState<{ key: string; quote: CheckoutQuote } | null>(null);
   const [quoteError, setQuoteError] = useState('');
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefreshVersion, setQuoteRefreshVersion] = useState(0);
@@ -58,10 +58,6 @@ export default function CheckoutScreen({ navigation }: any) {
   ), [deliveryOptions, dailyDelivery]);
   const tierTheme = volumeTheme(mode);
 
-  const km = quote?.distance_km;
-  const speedFee = quote?.speed_fee;
-  const estimate = quote?.amount ?? 0;
-  const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
   const quoteKey = useMemo(
     () => JSON.stringify({
       mode,
@@ -73,6 +69,11 @@ export default function CheckoutScreen({ navigation }: any) {
     }),
     [mode, lines, place.lat, place.lng, place.approximate, deliveryWindow],
   );
+  const quote = quotedBasket?.key === quoteKey ? quotedBasket.quote : null;
+  const km = quote?.distance_km;
+  const speedFee = quote?.speed_fee;
+  const estimate = quote?.amount ?? 0;
+  const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
   const basketKey = useMemo(
     () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment }),
     [mode, lines, place.lat, place.lng, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment],
@@ -90,7 +91,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
   useEffect(() => {
     let active = true;
-    setQuote(null);
+    setQuotedBasket(null);
     setQuoteError('');
     setAcceptedDeliveryFee(false);
     if (place.approximate) {
@@ -114,7 +115,7 @@ export default function CheckoutScreen({ navigation }: any) {
       lat: place.lat,
       lng: place.lng,
     }).then((result) => {
-      if (active) setQuote(result);
+      if (active) setQuotedBasket({ key: quoteKey, quote: result });
     }).catch((error: unknown) => {
       if (active) setQuoteError(userFacingMessage(error, 'Could not prepare your delivery quote.'));
     }).finally(() => {
@@ -324,6 +325,7 @@ export default function CheckoutScreen({ navigation }: any) {
           delivery_window: deliveryWindow,
           delivery_fee_accepted: acceptedDeliveryFee,
           quoted_delivery_fee: quote!.delivery_fee,
+          quoted_subtotal: quote!.subtotal,
           request_key: requestKey,
           items: quote!.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
           lat: place.lat,
@@ -342,7 +344,7 @@ export default function CheckoutScreen({ navigation }: any) {
           payment_method: 'cash_on_delivery' as const,
           order_items: orderItems,
         } : undefined;
-        clear();
+        if (basketKey === currentBasketKey.current) clear();
         setLastOrderId(result.order_id);
         navigation.navigate('Tabs', { screen: 'Tracking', params: { orderId: result.order_id, order, newlyPlaced: true } });
         if (!order) Alert.alert('Order confirmed', 'The checkout summary is unavailable. Check order tracking or contact Saplaya with your order ID.');
@@ -355,6 +357,7 @@ export default function CheckoutScreen({ navigation }: any) {
           delivery_window: deliveryWindow,
           delivery_fee_accepted: acceptedDeliveryFee,
           quoted_delivery_fee: quote!.delivery_fee,
+          quoted_subtotal: quote!.subtotal,
           items: quote!.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
           lat: place.lat,
           lng: place.lng,
@@ -379,8 +382,8 @@ export default function CheckoutScreen({ navigation }: any) {
       openPayment(payment);
     } catch (error) {
       const message = userFacingMessage(error, 'Please check your connection and try again.');
-      if (/delivery charge changed|stock|price .* changed|not enough stock/i.test(message)) {
-        setQuote(null);
+      if (error instanceof ApiRequestError && error.status === 409) {
+        setQuotedBasket(null);
         setAcceptedDeliveryFee(false);
         setQuoteRefreshVersion((version) => version + 1);
       }

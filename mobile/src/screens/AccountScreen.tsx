@@ -6,7 +6,7 @@ import { View as MotiView } from 'moti/build/components/view';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow, volumeTheme } from '../theme';
+import { colors, glass, radius, shadow, volumeTheme } from '../theme';
 
 const sections = [
   { key: 'profile', title: 'Personal details', subtitle: 'Your name, phone and profile photo', icon: 'person-outline' as const },
@@ -98,7 +98,7 @@ export default function AccountScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
   content: { padding: 20, paddingBottom: 36 },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: radius.lg, padding: 18, backgroundColor: colors.white },
+  identity: { ...glass, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: radius.lg, padding: 18 },
   avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.line },
   avatarFallback: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#E8F5E9', alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 19, fontWeight: '900', color: colors.ink },
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   orderShortcut: { marginTop: 14, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, backgroundColor: '#EFF7EC' },
   shortcutIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { marginTop: 26, marginBottom: 10, color: colors.muted, fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
-  menu: { overflow: 'hidden', backgroundColor: colors.white, borderRadius: radius.lg, paddingHorizontal: 15 },
+  menu: { ...glass, overflow: 'hidden', borderRadius: radius.lg, paddingHorizontal: 15 },
   row: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.line },
   rowIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#EFF7EC', alignItems: 'center', justifyContent: 'center' },

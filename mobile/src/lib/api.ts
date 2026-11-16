@@ -70,6 +70,7 @@ export type CheckoutInput = {
   delivery_window: DeliveryEta;
   delivery_fee_accepted: boolean;
   quoted_delivery_fee: number;
+  quoted_subtotal?: number;
   items: { product_id: string; qty: number }[];
   lat: number;
   lng: number;

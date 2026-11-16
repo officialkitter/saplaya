@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStorefrontCart } from '@/lib/cart';
 import { useGlobalMarket } from '@/lib/global-market';
-import { storefrontRequest } from '@/lib/storefront-auth';
+import { StorefrontRequestError, storefrontRequest } from '@/lib/storefront-auth';
 import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
 
 type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
@@ -33,7 +33,8 @@ export default function CheckoutPage() {
   const [options, setOptions] = useState<CheckoutOptions | null>(null);
   const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
   const [paymentMethod, setPaymentMethod] = useState<'cash_on_delivery' | 'online'>('cash_on_delivery');
-  const [quote, setQuote] = useState<CheckoutQuote | null>(null);
+  const [quotedBasket, setQuotedBasket] = useState<{ key: string; quote: CheckoutQuote } | null>(null);
+  const [quoteRefreshVersion, setQuoteRefreshVersion] = useState(0);
   const [quoteError, setQuoteError] = useState('');
   const [contact, setContact] = useState({ name: '', email: '', phone: '' });
   const [paymentPhone, setPaymentPhone] = useState('');
@@ -54,6 +55,9 @@ export default function CheckoutPage() {
   const quoteKey = JSON.stringify({
     mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
   });
+  const currentQuoteKey = useRef(quoteKey);
+  currentQuoteKey.current = quoteKey;
+  const quote = quotedBasket?.key === quoteKey ? quotedBasket.quote : null;
 
   useEffect(() => {
     let active = true;
@@ -78,7 +82,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     let active = true;
-    setQuote(null);
+    setQuotedBasket(null);
     setQuoteError('');
     setAcceptedFee(false);
     if (!items.length || !market.location || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
@@ -89,12 +93,12 @@ export default function CheckoutPage() {
       lat: market.location.lat,
       lng: market.location.lng,
     }).then((result) => {
-      if (active) setQuote(result);
+      if (active) setQuotedBasket({ key: quoteKey, quote: result });
     }).catch((cause: unknown) => {
       if (active) setQuoteError(userFacingMessage(cause, 'Could not prepare your delivery quote.'));
     });
     return () => { active = false; };
-  }, [quoteKey, availableDeliveryOptions, items, market.location, mode, deliveryWindow]);
+  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, items, market.location, mode, deliveryWindow]);
 
   useEffect(() => {
     cashRequestKey.current = null;
@@ -119,7 +123,8 @@ export default function CheckoutPage() {
         delivery_window: deliveryWindow,
         delivery_fee_accepted: acceptedFee,
         quoted_delivery_fee: quote.delivery_fee,
-        items,
+        quoted_subtotal: quote.subtotal,
+        items: quote.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
         lat: market.location.lat,
         lng: market.location.lng,
         customer: { name: contact.name.trim(), email: contact.email.trim(), phone: contact.phone.trim() },
@@ -137,13 +142,21 @@ export default function CheckoutPage() {
         request_key: cashRequestKey.current ?? (cashRequestKey.current = crypto.randomUUID()),
       });
       setOrderId(order.order_id);
-      clear();
+      if (currentQuoteKey.current === quoteKey) clear();
     } catch (cause) {
-      setError(userFacingMessage(cause, 'Could not place your order.'));
+      if (cause instanceof StorefrontRequestError && cause.status === 409) {
+        setQuotedBasket(null);
+        setAcceptedFee(false);
+        cashRequestKey.current = null;
+        setQuoteRefreshVersion((version) => version + 1);
+        setError('Your basket or delivery quote changed. Review the refreshed quote before continuing.');
+      } else {
+        setError(userFacingMessage(cause, 'Could not place your order.'));
+      }
     } finally {
       setBusy(false);
     }
-  }, [lines, market.location, quote, quoteError, contact, paymentPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, items, clear]);
+  }, [lines, market.location, quote, quoteError, contact, paymentPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, quoteKey, clear]);
 
   if (orderId) {
     return (

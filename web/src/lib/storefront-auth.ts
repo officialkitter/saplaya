@@ -6,6 +6,12 @@ const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 let customerClient: ReturnType<typeof createClient> | undefined;
 
+export class StorefrontRequestError extends UserFacingError {
+  constructor(readonly status: number) {
+    super(safeHttpErrorMessage(status));
+  }
+}
+
 function getCustomerClient() {
   if (!supabaseUrl || !publishableKey) {
     throw new Error('Configure the public Supabase URL and publishable key for guest checkout.');
@@ -47,7 +53,7 @@ export async function storefrontRequest<T>(path: string, input?: unknown): Promi
   });
   const result = await response.json() as T | { error?: string };
   if (!response.ok) {
-    throw new UserFacingError(safeHttpErrorMessage(response.status));
+    throw new StorefrontRequestError(response.status);
   }
   return result as T;
 }

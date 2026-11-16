@@ -886,6 +886,7 @@ const checkoutFields = z.object({
   delivery_window: z.enum(DELIVERY_WINDOW_VALUES),
   delivery_fee_accepted: z.boolean().default(false),
   quoted_delivery_fee: z.number().int().nonnegative(),
+  quoted_subtotal: z.number().int().nonnegative().optional(),
   items: z.array(z.object({
     product_id: z.string().uuid(),
     qty: z.number().positive().max(10000),
@@ -990,6 +991,7 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     distance_km: number;
   }[] = [];
   const selectedProductsForMode: { wholesale_min_qty: number }[] = [];
+  const selectedProductIds = new Set<string>();
 
   for (const item of items) {
     const requested = requestedProducts.find((product) => product.id === item.product_id)!;
@@ -1019,7 +1021,11 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     }
 
     locatedCandidates.sort((a, b) => a.distance - b.distance || Number(b.product.stock) - Number(a.product.stock));
-    const selected = locatedCandidates[0];
+    const selected = locatedCandidates.find((candidate) => !selectedProductIds.has(candidate.product.id));
+    if (!selected) {
+      return res.status(409).json({ error: `Your basket contains overlapping listings for ${requested.name}. Combine the quantities in one listing and try again.` });
+    }
+    selectedProductIds.add(selected.product.id);
     selectedProductsForMode.push({ wholesale_min_qty: Number(selected.product.wholesale_min_qty) });
     const unitPrice = priceForQuantity(selected.product, item.qty, mode);
     if (unitPrice === null) {
@@ -1209,6 +1215,9 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     return res.status(409).json({ error: 'The selected delivery timeframe is not currently available.' });
   }
   const fee = deliveryFor(distance, deliverySettings) + configuredSpeedFee;
+  if (parsed.data.quoted_subtotal !== undefined && subtotal !== parsed.data.quoted_subtotal) {
+    return res.status(409).json({ error: 'The item prices changed. Review the refreshed quote before continuing.' });
+  }
   if (fee !== quotedDeliveryFee) {
     return res.status(409).json({ error: 'The delivery charge changed. Review the refreshed quote before continuing.' });
   }
@@ -1370,6 +1379,9 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   }
 
   const fee = deliveryFor(distance, deliverySettings) + configuredSpeedFee;
+  if (parsed.data.quoted_subtotal !== undefined && subtotal !== parsed.data.quoted_subtotal) {
+    return res.status(409).json({ error: 'The item prices changed. Review the refreshed quote before placing your order.' });
+  }
   if (fee !== quotedDeliveryFee) {
     return res.status(409).json({ error: 'The delivery charge changed. Review the refreshed quote before placing your order.' });
   }

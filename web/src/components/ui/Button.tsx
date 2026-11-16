@@ -21,13 +21,13 @@ const SIZE: Record<Size, string> = {
 };
 
 const base =
-  'inline-flex select-none items-center justify-center gap-2 font-bold transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50';
+  'inline-flex select-none items-center justify-center gap-2 font-bold transition active:scale-[0.97] motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-50';
 
 export function Button({
   variant = 'primary', size = 'md', className, icon, children, ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; icon?: ReactNode }) {
   return (
-    <button className={cn(base, VARIANT[variant], SIZE[size], className)} {...rest}>
+    <button className={cn(base, variant !== 'ghost' && 'tactile-control', VARIANT[variant], SIZE[size], className)} {...rest}>
       {icon}
       {children}
     </button>
@@ -38,7 +38,7 @@ export function LinkButton({
   href, variant = 'primary', size = 'md', className, icon, children,
 }: { href: string; variant?: Variant; size?: Size; className?: string; icon?: ReactNode; children: ReactNode }) {
   return (
-    <Link href={href} className={cn(base, VARIANT[variant], SIZE[size], className)}>
+    <Link href={href} className={cn(base, variant !== 'ghost' && 'tactile-control', VARIANT[variant], SIZE[size], className)}>
       {icon}
       {children}
     </Link>

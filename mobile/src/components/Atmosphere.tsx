@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Easing } from 'react-native-reanimated';
+import { Easing, useReducedMotion } from 'react-native-reanimated';
 import { View as MotiView } from 'moti/build/components/view';
 
 type Props = {
@@ -29,9 +29,27 @@ const mist: Cloud[] = [
 
 export default function Atmosphere({ variant = 'light', accent }: Props) {
   const photo = variant === 'photo';
+  const reduceMotion = useReducedMotion();
   return (
     <View pointerEvents="none" style={styles.layer}>
-      {mist.map((cloud, index) => (
+      {mist.map((cloud, index) => {
+        const cloudStyle = [
+          styles.cloud,
+          {
+            width: cloud.width,
+            height: cloud.height,
+            top: cloud.top,
+            right: cloud.right,
+            bottom: cloud.bottom,
+            left: cloud.left,
+            backgroundColor: photo
+              ? index === 1 ? 'rgba(255,255,255,0.78)' : 'rgba(221,246,212,0.76)'
+              : accent ?? (index === 1 ? 'rgba(255,213,79,0.52)' : 'rgba(76,175,80,0.46)'),
+          },
+        ];
+        return reduceMotion ? (
+          <View key={index} style={[cloudStyle, { opacity: 0.08 }]} />
+        ) : (
         <MotiView
           key={index}
           from={{ opacity: photo ? 0.03 : 0.05, scale: 0.92, translateX: 0, translateY: 0 }}
@@ -44,22 +62,10 @@ export default function Atmosphere({ variant = 'light', accent }: Props) {
             loop: true,
             repeatReverse: true,
           }}
-          style={[
-            styles.cloud,
-            {
-              width: cloud.width,
-              height: cloud.height,
-              top: cloud.top,
-              right: 'right' in cloud ? cloud.right : undefined,
-              bottom: 'bottom' in cloud ? cloud.bottom : undefined,
-              left: 'left' in cloud ? cloud.left : undefined,
-              backgroundColor: photo
-                ? index === 1 ? 'rgba(255,255,255,0.78)' : 'rgba(221,246,212,0.76)'
-                : accent ?? (index === 1 ? 'rgba(255,213,79,0.52)' : 'rgba(76,175,80,0.46)'),
-            },
-          ]}
+          style={cloudStyle}
         />
-      ))}
+        );
+      })}
     </View>
   );
 }
