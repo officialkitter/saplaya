@@ -50,20 +50,20 @@ export default function Atmosphere({ variant = 'light', accent }: Props) {
         return reduceMotion ? (
           <View key={index} style={[cloudStyle, { opacity: 0.08 }]} />
         ) : (
-        <MotiView
-          key={index}
-          from={{ opacity: photo ? 0.03 : 0.05, scale: 0.92, translateX: 0, translateY: 0 }}
-          animate={{ opacity: photo ? 0.12 : 0.12, scale: 1.08, translateX: cloud.dx, translateY: cloud.dy }}
-          transition={{
-            type: 'timing',
-            duration: cloud.duration,
-            delay: cloud.delay,
-            easing: Easing.inOut(Easing.sin),
-            loop: true,
-            repeatReverse: true,
-          }}
-          style={cloudStyle}
-        />
+          <MotiView
+            key={index}
+            from={{ opacity: photo ? 0.03 : 0.05, scale: 0.92, translateX: 0, translateY: 0 }}
+            animate={{ opacity: photo ? 0.12 : 0.12, scale: 1.08, translateX: cloud.dx, translateY: cloud.dy }}
+            transition={{
+              type: 'timing',
+              duration: cloud.duration,
+              delay: cloud.delay,
+              easing: Easing.inOut(Easing.sin),
+              loop: true,
+              repeatReverse: true,
+            }}
+            style={cloudStyle}
+          />
         );
       })}
     </View>
