@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { Check, ImagePlus, Pencil, Plus, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
@@ -81,7 +82,7 @@ function SharedCatalog() {
       setItems(result.items);
       setProposals(result.proposals);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not load the shared catalog.', 'bad');
+      push(userFacingMessage(error, 'Could not load the shared catalog.'), 'bad');
     } finally {
       setLoading(false);
     }
@@ -98,7 +99,7 @@ function SharedCatalog() {
         setPricingPolicyReady(true);
       })
       .catch((error: unknown) => {
-        push(error instanceof Error ? error.message : 'Could not load automatic pricing rules.', 'bad');
+        push(userFacingMessage(error, 'Could not load automatic pricing rules.'), 'bad');
       });
   }, [push]);
 
@@ -152,7 +153,7 @@ function SharedCatalog() {
       setForm((current) => current ? { ...current, image_url: data.publicUrl } : current);
       push('Product photo added.');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not upload this photo.', 'bad');
+      push(userFacingMessage(error, 'Could not upload this photo.'), 'bad');
     } finally {
       setUploadingPhoto(false);
     }
@@ -217,7 +218,7 @@ function SharedCatalog() {
       setForm(null);
       await reload();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save this catalog price.', 'bad');
+      push(userFacingMessage(error, 'Could not save this catalog price.'), 'bad');
     } finally {
       setSaving(false);
     }
@@ -233,7 +234,7 @@ function SharedCatalog() {
       push(approve ? 'The shared price was updated from this proposal.' : 'The price proposal was declined.');
       await reload();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not review this proposal.', 'bad');
+      push(userFacingMessage(error, 'Could not review this proposal.'), 'bad');
     } finally {
       setSaving(false);
     }

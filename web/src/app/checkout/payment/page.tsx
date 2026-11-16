@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useStorefrontCart } from '@/lib/cart';
@@ -35,7 +36,7 @@ export default function PaymentReturnPage() {
       clear();
     }).catch((error: unknown) => {
       if (!active) return;
-      setMessage(error instanceof Error ? error.message : 'Could not verify the payment.');
+      setMessage(userFacingMessage(error, 'Could not verify the payment.'));
       setCanRetry(true);
     });
     return () => { active = false; };

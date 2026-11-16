@@ -9,10 +9,11 @@ import { useStorefrontProducts, type StorefrontFilters } from '@/lib/storefront'
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
 import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
+import { ModeSlide } from './ModeSlide';
 
-export function FreshToday() {
+export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: boolean }) {
   const market = useGlobalMarket();
-  const { add, lines, mode, preferredMode } = useStorefrontCart();
+  const { add, lines, mode, preferredMode, setPreferredMode } = useStorefrontCart();
   const theme = volumeTheme(mode);
   const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -24,6 +25,11 @@ export function FreshToday() {
   const [basketNotice, setBasketNotice] = useState<{ id: string; name: string; unit: string } | null>(null);
   const { products, loading, error, retry, hasMore, categories, loadMore } = useStorefrontProducts(40, market.location, filters);
   const searching = Boolean(filters.query?.trim() || filters.category || filters.fresh);
+
+  useEffect(() => {
+    const initialQuery = new URLSearchParams(window.location.search).get('q');
+    if (initialQuery) setQuery(initialQuery.slice(0, 100));
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -83,6 +89,12 @@ export function FreshToday() {
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
           Explore farm produce and pantry essentials. Allow location access to prioritize nearby stocked farms.
         </p>
+        {showShoppingMode && (
+          <div className="mt-6">
+            <ModeSlide wholesale={preferredMode === 'wholesale'} onChange={(wholesale) => setPreferredMode(wholesale ? 'wholesale' : 'retail')} />
+            <p className="mt-3 text-ink-soft">Switch between retail and wholesale. Larger basket quantities unlock the existing volume prices.</p>
+          </div>
+        )}
         {market.location && (
           <p className="mt-2 text-sm font-semibold text-leaf-deep">
             {market.placeNameStatus === 'ready'

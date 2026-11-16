@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, GitMerge, Mail, MapPin, Pause, Phone, Play, Plus, Sprout, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -80,7 +81,7 @@ function Farms() {
   useEffect(() => {
     void fetchAdmin<LocationOption[]>('/locations/countries')
       .then(setCountries)
-      .catch((error: unknown) => push(error instanceof Error ? error.message : 'Could not load countries.', 'bad'));
+      .catch((error: unknown) => push(userFacingMessage(error, 'Could not load countries.'), 'bad'));
   }, [push]);
   useEffect(() => {
     let active = true;
@@ -89,7 +90,7 @@ function Farms() {
     if (!areaForm.countryCode) return () => { active = false; };
     void fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(areaForm.countryCode)}/regions`)
       .then((options) => { if (active) setAreaRegions(options); })
-      .catch((error: unknown) => { if (active) push(error instanceof Error ? error.message : 'Could not load farm regions.', 'bad'); });
+      .catch((error: unknown) => { if (active) push(userFacingMessage(error, 'Could not load farm regions.'), 'bad'); });
     return () => { active = false; };
   }, [areaForm.countryCode, push]);
   useEffect(() => {
@@ -98,7 +99,7 @@ function Farms() {
     if (!areaForm.countryCode || !areaForm.regionCode) return () => { active = false; };
     void fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(areaForm.countryCode)}/regions/${encodeURIComponent(areaForm.regionCode)}/districts`)
       .then((options) => { if (active) setAreaDistricts(options); })
-      .catch((error: unknown) => { if (active) push(error instanceof Error ? error.message : 'Could not load farm districts.', 'bad'); });
+      .catch((error: unknown) => { if (active) push(userFacingMessage(error, 'Could not load farm districts.'), 'bad'); });
     return () => { active = false; };
   }, [areaForm.countryCode, areaForm.regionCode, push]);
 
@@ -161,7 +162,7 @@ function Farms() {
       });
       setAdding(false);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not add this farm.', 'bad');
+      push(userFacingMessage(error, 'Could not add this farm.'), 'bad');
     }
   }
 
@@ -178,7 +179,7 @@ function Farms() {
       push(`GPS coordinates saved for ${locationEditing.name}.`);
       setLocationEditing(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save farm coordinates.', 'bad');
+      push(userFacingMessage(error, 'Could not save farm coordinates.'), 'bad');
     }
   }
 
@@ -200,7 +201,7 @@ function Farms() {
       push(`Operation area saved for ${areaEditing.name}.`);
       setAreaEditing(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save this farm’s operation area.', 'bad');
+      push(userFacingMessage(error, 'Could not save this farm’s operation area.'), 'bad');
     }
   }
 
@@ -211,7 +212,7 @@ function Farms() {
         ? `${farmName} is approved. A sign-in link was sent to ${invitedEmail ?? email}.`
         : `${farmName} was declined.`, decision === 'approved' ? 'good' : 'info');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not update this application.', 'bad');
+      push(userFacingMessage(error, 'Could not update this application.'), 'bad');
     }
   }
 
@@ -223,7 +224,7 @@ function Farms() {
       push(next === 'active' ? `${toggle.name} is selling again.` : `${toggle.name} is paused.`, next === 'active' ? 'good' : 'info');
       setToggle(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not update this farm.', 'bad');
+      push(userFacingMessage(error, 'Could not update this farm.'), 'bad');
     }
   }
 
@@ -235,7 +236,7 @@ function Farms() {
       push('Declined application deleted.');
       setDeletingApplication(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not delete this application.', 'bad');
+      push(userFacingMessage(error, 'Could not delete this application.'), 'bad');
     } finally {
       setDeleting(false);
     }
@@ -250,7 +251,7 @@ function Farms() {
       setMergeSource(null);
       setMergeTargetId('');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not merge these farms.', 'bad');
+      push(userFacingMessage(error, 'Could not merge these farms.'), 'bad');
     } finally {
       setFarmActionBusy(false);
     }
@@ -264,7 +265,7 @@ function Farms() {
       push(`${archiveFarm.name} was removed from the active platform. Historical records were preserved.`);
       setArchiveFarm(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not remove this farm.', 'bad');
+      push(userFacingMessage(error, 'Could not remove this farm.'), 'bad');
     } finally {
       setFarmActionBusy(false);
     }
@@ -282,7 +283,7 @@ function Farms() {
     try {
       setRegions(await fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(countryCode)}/regions`));
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not load regions.', 'bad');
+      push(userFacingMessage(error, 'Could not load regions.'), 'bad');
     }
   };
   const setRegion = async (regionCode: string) => {
@@ -295,7 +296,7 @@ function Farms() {
     try {
       setDistricts(await fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(form.countryCode)}/regions/${encodeURIComponent(regionCode)}/districts`));
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not load districts.', 'bad');
+      push(userFacingMessage(error, 'Could not load districts.'), 'bad');
     }
   };
   const setDistrict = (districtName: string) => {

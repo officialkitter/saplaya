@@ -28,6 +28,7 @@ import {
   submitOrder,
 } from './pesapal.js';
 import ordersAgentsRouter from './orders-agents.js';
+import { publicErrorMessage } from './middleware.js';
 
 const {
   SUPABASE_URL,
@@ -60,6 +61,7 @@ app.use(cors({ origin: WEB_ORIGIN === '*' ? true : WEB_ORIGIN.split(',') }));
 app.use(express.json());
 
 app.get('/locations/countries', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
   return res.json(Country.getAllCountries()
     .map((country) => ({ code: country.isoCode, name: country.name }))
     .sort((left, right) => left.name.localeCompare(right.name)));
@@ -68,6 +70,7 @@ app.get('/locations/countries', (_req, res) => {
 app.get('/locations/countries/:countryCode/regions', (req, res) => {
   const countryCode = z.string().regex(/^[A-Z]{2}$/).safeParse(req.params.countryCode.toUpperCase());
   if (!countryCode.success) return res.status(400).json({ error: 'Invalid country code.' });
+  res.set('Cache-Control', 'public, max-age=3600');
   return res.json(State.getStatesOfCountry(countryCode.data)
     .map((region) => ({ code: region.isoCode, name: region.name }))
     .sort((left, right) => left.name.localeCompare(right.name)));
@@ -77,6 +80,7 @@ app.get('/locations/countries/:countryCode/regions/:regionCode/districts', (req,
   const countryCode = z.string().regex(/^[A-Z]{2}$/).safeParse(req.params.countryCode.toUpperCase());
   const regionCode = z.string().trim().min(1).max(100).safeParse(req.params.regionCode);
   if (!countryCode.success || !regionCode.success) return res.status(400).json({ error: 'Invalid country or region code.' });
+  res.set('Cache-Control', 'public, max-age=3600');
   return res.json(City.getCitiesOfState(countryCode.data, regionCode.data)
     .map((district) => ({ code: district.name, name: district.name }))
     .sort((left, right) => left.name.localeCompare(right.name)));
@@ -713,7 +717,7 @@ app.get('/products', async (req, res) => {
       .order('stock', { ascending: false })
       .order('id')
       .range(offset, offset + queryBatchSize - 1);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: publicErrorMessage(error) });
     products.push(...(data ?? []));
     if ((data?.length ?? 0) < queryBatchSize) break;
   }
@@ -775,7 +779,7 @@ app.get('/products', async (req, res) => {
 
 app.get('/promos', async (_req, res) => {
   const { data, error } = await db.from('promos').select('*').eq('active', true).order('sort_order');
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   res.json(data);
 });
 
@@ -1889,7 +1893,7 @@ app.get('/admin/dashboard-analytics', requirePerm('dashboard.view'), async (req:
   try {
     allowedSupplierIds = await scopedSupplierIds(m);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data: analytics, error } = allowedSupplierIds === null
     ? await db.rpc('admin_dashboard_analytics', {
@@ -1998,7 +2002,7 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
   try {
     allowedSupplierIds = await scopedSupplierIds(m);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db
@@ -2009,7 +2013,7 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   if (m.role === 'driver') q = q.in('status', ['packing', 'en_route', 'delivered']);
   const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   const customerIds = [...new Set((data ?? [])
     .flatMap((row) => Array.isArray(row.orders) ? row.orders : row.orders ? [row.orders] : [])
     .map((order) => order.customer_id)
@@ -2078,7 +2082,7 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
   try {
     allowedSupplierIds = await scopedSupplierIds(m);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (allowedSupplierIds?.length === 0) return res.status(404).json({ error: 'Not found' });
   if (m.role === 'driver' && !DRIVER_STATUSES.includes(parsed.data.status)) {
@@ -2087,7 +2091,7 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
   let currentQuery = db.from('supplier_orders').select('status').eq('id', req.params.id);
   if (allowedSupplierIds) currentQuery = currentQuery.in('supplier_id', allowedSupplierIds);
   const { data: current, error: currentError } = await currentQuery.maybeSingle();
-  if (currentError) return res.status(500).json({ error: currentError.message });
+  if (currentError) return res.status(500).json({ error: publicErrorMessage(currentError) });
   if (!current) return res.status(404).json({ error: 'Not found' });
 
   let q = db
@@ -2096,7 +2100,7 @@ app.patch('/admin/supplier-orders/:id/status', requirePerm('orders.update_status
     .eq('id', req.params.id);
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q.select().maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   if (!data) return res.status(404).json({ error: 'Not found' });
   if (current.status !== data.status) {
     void notifyCustomerOrderStatus(data.order_id, data.status).catch((notificationError: unknown) => {
@@ -2115,13 +2119,13 @@ app.get('/admin/products', requirePerm('products.view'), async (req: AuthedReque
   try {
     allowedSupplierIds = await scopedSupplierIds(m);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db.from('products').select('*').order('name');
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   const catalogIds = [...new Set((data ?? [])
     .map((product) => product.catalog_product_id)
     .filter((id): id is string => typeof id === 'string'))];
@@ -2166,7 +2170,7 @@ app.post('/admin/products', requirePerm('products.edit'), async (req: AuthedRequ
   try {
     if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data, error } = await db.rpc('create_product_with_stock', {
     p_supplier_id: supplierId,
@@ -2204,14 +2208,14 @@ app.patch('/admin/products/:id', requirePerm('products.edit'), async (req: Authe
   try {
     if (!await memberCanAccessSupplier(m, current.supplier_id)) return res.status(404).json({ error: 'Product not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { stock: _ignored, ...safe } = parsed.data; // stock only changes via /admin/restock so every change is logged
   const { data, error } = await db.from('products').update(safe).eq('id', req.params.id).eq('supplier_id', current.supplier_id).select().maybeSingle();
   if (error?.code === '23505') {
     return res.status(409).json({ error: 'A listing with this product name already exists at your farm. Update that listing or choose it from the approved catalog.' });
   }
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   if (!data) return res.status(404).json({ error: 'Not found' });
   res.json(data);
 });
@@ -2229,7 +2233,7 @@ app.post('/admin/products/:id/merge', requirePerm('suppliers.manage'), async (re
   });
   if (error) {
     console.error('Could not merge farm product records:', error.message);
-    return res.status(409).json({ error: error.message });
+    return res.status(409).json({ error: publicErrorMessage(error) });
   }
   return res.json(data);
 });
@@ -2241,7 +2245,7 @@ app.delete('/admin/products/:id', requirePerm('suppliers.manage'), async (req: A
   const { data, error } = await db.rpc('archive_farm_product', { p_product_id: id.data });
   if (error) {
     console.error('Could not remove farm product:', error.message);
-    return res.status(409).json({ error: error.message });
+    return res.status(409).json({ error: publicErrorMessage(error) });
   }
   return res.json(data);
 });
@@ -2258,7 +2262,7 @@ app.get('/admin/stockable-catalog', requirePerm('products.view'), async (req: Au
   try {
     if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
 
   const [{ data: items, error: catalogError }, { data: listings, error: listingsError }] = await Promise.all([
@@ -2301,7 +2305,7 @@ app.post('/admin/catalog/:id/stock', requirePerm('stock.adjust'), async (req: Au
   try {
     if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
 
   const { data, error } = await db.rpc('stock_catalog_product_for_farm', {
@@ -2315,8 +2319,7 @@ app.post('/admin/catalog/:id/stock', requirePerm('stock.adjust'), async (req: Au
       : error.message.includes('not been approved') || error.message.includes('active farm') ? 409
         : 500;
     return res.status(status).json({
-      error: status === 409
-        ? error.message
+      error: status === 409 ? 'This shared product is not available for this action.'
         : status === 404 ? 'This shared product could not be found.' : 'Could not add stock to this farm.',
     });
   }
@@ -2342,7 +2345,7 @@ app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: 
   try {
     if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Farm not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
 
   const { data, error } = await db.rpc('publish_catalog_product_for_farm', {
@@ -2353,8 +2356,7 @@ app.post('/admin/catalog/:id/publish', requirePerm('stock.adjust'), async (req: 
     console.error('Could not make a shared product available:', error.message);
     const status = error.message.includes('not found') ? 404 : error.message.includes('not been approved') ? 409 : 500;
     return res.status(status).json({
-      error: status === 409
-        ? error.message
+      error: status === 409 ? 'This shared product is not available for this action.'
         : status === 404 ? 'This shared product is not ready to be shown.' : 'Could not make this product available.',
     });
   }
@@ -2366,7 +2368,7 @@ app.get('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedReque
   try {
     allowedSupplierIds = await scopedSupplierIds(req.member!);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const proposalQuery = allowedSupplierIds?.length === 0
     ? Promise.resolve({ data: [], error: null })
@@ -2497,7 +2499,7 @@ app.post('/admin/catalog-proposals/:id/review', requirePerm('catalog.manage'), a
   try {
     if (!await memberCanAccessSupplier(req.member!, proposal.supplier_id)) return res.status(404).json({ error: 'Price proposal not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data, error } = await db.rpc('review_catalog_price_proposal', {
     p_proposal_id: id.data,
@@ -2516,7 +2518,7 @@ app.get('/admin/inventory-movements', requirePerm('inventory.view'), async (req:
   try {
     allowedSupplierIds = await scopedSupplierIds(m);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db
@@ -2526,7 +2528,7 @@ app.get('/admin/inventory-movements', requirePerm('inventory.view'), async (req:
     .limit(200);
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   res.json(data);
 });
 
@@ -2553,7 +2555,7 @@ app.post('/admin/restock', requirePerm('stock.adjust'), async (req: AuthedReques
     try {
       if (!await memberCanAccessSupplier(m, supplierId)) return res.status(404).json({ error: 'Product not found.' });
     } catch (scopeError) {
-      return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+      return res.status(503).json({ error: publicErrorMessage(scopeError) });
     }
   }
   const { data: stockAfter, error } = await db.rpc('restock_product', {
@@ -2576,13 +2578,13 @@ app.get('/admin/suppliers', requirePerm('suppliers.view_all'), async (req: Authe
   try {
     allowedSupplierIds = await scopedSupplierIds(req.member!);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let query = db.from('suppliers').select('*').order('name');
   if (allowedSupplierIds) query = query.in('id', allowedSupplierIds);
   const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   res.json(data);
 });
 
@@ -2599,7 +2601,7 @@ app.post('/admin/suppliers/:id/merge', requirePerm('suppliers.manage'), async (r
       return res.status(404).json({ error: 'Farm not found.' });
     }
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data, error } = await db.rpc('merge_farm_records', {
     p_source_supplier_id: sourceId.data,
@@ -2607,7 +2609,7 @@ app.post('/admin/suppliers/:id/merge', requirePerm('suppliers.manage'), async (r
   });
   if (error) {
     console.error('Could not merge farm records:', error.message);
-    return res.status(409).json({ error: error.message });
+    return res.status(409).json({ error: publicErrorMessage(error) });
   }
   return res.json(data);
 });
@@ -2619,12 +2621,12 @@ app.delete('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: 
   try {
     if (!await memberCanAccessSupplier(req.member!, id.data)) return res.status(404).json({ error: 'Farm not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data, error } = await db.rpc('archive_farm_record', { p_supplier_id: id.data });
   if (error) {
     console.error('Could not remove farm record:', error.message);
-    return res.status(409).json({ error: error.message });
+    return res.status(409).json({ error: publicErrorMessage(error) });
   }
   return res.json(data);
 });
@@ -2655,7 +2657,7 @@ app.patch('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: A
   try {
     if (!await memberCanAccessSupplier(member, req.params.id)) return res.status(404).json({ error: 'Farm not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data: current, error: currentError } = await db.from('suppliers')
     .select('country_code, region_code, district_code')
@@ -2677,7 +2679,7 @@ app.patch('/admin/suppliers/:id', requirePerm('suppliers.manage'), async (req: A
     ...(parsed.data.region_name ? { region: parsed.data.region_name } : {}),
   };
   const { data, error } = await db.from('suppliers').update(updateData).eq('id', req.params.id).select().maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   res.json(data);
 });
 
@@ -2729,7 +2731,7 @@ app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: Authed
   const invited = await db.auth.admin.inviteUserByEmail(parsed.data.contact_email, { redirectTo });
   if (invited.error || !invited.data.user) {
     await db.from('suppliers').delete().eq('id', supplier.id);
-    return res.status(502).json({ error: invited.error?.message ?? 'Could not invite the farm owner.' });
+    return res.status(502).json({ error: publicErrorMessage(invited.error) });
   }
   const { data: member, error: memberError } = await db.from('team_members').insert({
     user_id: invited.data.user.id,
@@ -2753,10 +2755,10 @@ app.get('/admin/applications', requirePerm('suppliers.manage'), async (req: Auth
   try {
     allowedSupplierIds = await scopedSupplierIds(member);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const { data, error } = await db.from('supplier_applications').select('*').order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   if (allowedSupplierIds === null) return res.json(data);
   return res.json((data ?? []).filter((application) => (
     typeof application.country_code === 'string'
@@ -2831,7 +2833,7 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
 
   if (decision === 'reject') {
     const { error } = await db.from('supplier_applications').update({ status: 'declined' }).eq('id', a.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: publicErrorMessage(error) });
     return res.json({ ok: true });
   }
 
@@ -2850,7 +2852,7 @@ app.post('/admin/applications/:id/:decision', requirePerm('suppliers.manage'), a
   if (se?.code === '23505') {
     return res.status(409).json({ error: 'A farm with this name and region already exists. Review the existing farm instead.' });
   }
-  if (se) return res.status(500).json({ error: se.message });
+  if (se) return res.status(500).json({ error: publicErrorMessage(se) });
 
   const invited = await db.auth.admin.inviteUserByEmail(a.email, { redirectTo });
   if (invited.error || !invited.data.user) {
@@ -2891,7 +2893,7 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
   let q = db.from('team_members').select('id, supplier_id, full_name, email, role, status').order('full_name');
   if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id); // a farm only sees its own people
   const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: publicErrorMessage(error) });
   let visibleMembers = data ?? [];
   let visibleProfiles: { team_member_id: string; phone: string | null; age: number | null; job_title: string | null; bio: string | null; avatar_url: string | null; operation_scope_mode: string }[] = [];
   let visibleScopes: { team_member_id: string; country_code: string; country_name: string; region_code: string; region_name: string; district_code: string | null; district_name: string | null }[] = [];
@@ -2900,7 +2902,7 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
     try {
       allowedSupplierIds = await scopedSupplierIds(m) ?? [];
     } catch (scopeError) {
-      return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+      return res.status(503).json({ error: publicErrorMessage(scopeError) });
     }
     const [{ data: profiles, error: profileError }, { data: scopes, error: scopesError }] = await Promise.all([
       db.from('team_member_profiles').select('team_member_id, phone, age, job_title, bio, avatar_url, operation_scope_mode'),
@@ -3089,7 +3091,7 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
   const redirectTo = teamInvitationRedirect(process.env.TEAM_WEB_ORIGIN);
   if (!redirectTo) return res.status(503).json({ error: 'Team invitation redirect is not configured.' });
   const invited = await db.auth.admin.inviteUserByEmail(parsed.data.email, { redirectTo });
-  if (invited.error) return res.status(500).json({ error: invited.error.message });
+  if (invited.error) return res.status(500).json({ error: publicErrorMessage(invited.error) });
   const { data, error } = await db.from('team_members').insert({
     user_id: invited.data.user.id, supplier_id,
     full_name: parsed.data.full_name, email: parsed.data.email, role: role.role_key, status: 'invited',
@@ -3147,7 +3149,7 @@ app.patch('/admin/team/:id', requirePerm('team.manage'), async (req: AuthedReque
       try {
         if (!await memberCanAccessSupplier(m, target.supplier_id)) return res.status(404).json({ error: 'Not found' });
       } catch (scopeError) {
-        return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+        return res.status(503).json({ error: publicErrorMessage(scopeError) });
       }
     } else {
       const [{ data: targetProfile, error: targetProfileError }, { data: targetScopes, error: targetScopesError }] = await Promise.all([
@@ -3245,7 +3247,7 @@ app.get('/admin/management/commission-summary', requirePerm('management.view'), 
   try {
     allowedSupplierIds = await scopedSupplierIds(member);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   const [{ data: sales, error: salesError }, { data: policy, error: policyError }, { data: tiers, error: tiersError }] = await Promise.all([
     allowedSupplierIds?.length === 0
@@ -3300,7 +3302,7 @@ app.get('/admin/management/assignable-orders', requirePerm('management.manage'),
   try {
     allowedSupplierIds = await scopedSupplierIds(req.member!);
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let query = db.from('supplier_orders')
@@ -3570,7 +3572,7 @@ app.post('/admin/management/supplier-orders/:id/assign', requirePerm('management
   try {
     if (!await memberCanAccessSupplier(member, supplierOrder.supplier_id)) return res.status(404).json({ error: 'Order not found.' });
   } catch (scopeError) {
-    return res.status(503).json({ error: scopeError instanceof Error ? scopeError.message : 'Could not load your assigned operation areas.' });
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
   }
   if (parsed.data.team_member_id === null) {
     const { error } = await db.from('supplier_order_assignments').delete().eq('supplier_order_id', id.data);

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { safeHttpErrorMessage, UserFacingError } from './user-facing-error';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -42,11 +43,7 @@ export async function fetchAdmin<T>(path: string, init: RequestInit = {}): Promi
   });
   const result = await response.json() as T | { error?: string };
   if (!response.ok) {
-    throw new Error(
-      typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
-        ? result.error
-        : 'The admin request could not be completed.',
-    );
+    throw new UserFacingError(safeHttpErrorMessage(response.status));
   }
   return result as T;
 }

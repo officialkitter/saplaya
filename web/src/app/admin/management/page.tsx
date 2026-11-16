@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
@@ -122,7 +123,7 @@ function Management() {
     let active = true;
     void fetchAdmin<LocationOption[]>('/locations/countries')
       .then((options) => { if (active) setCountries(options); })
-      .catch((error: unknown) => push(error instanceof Error ? error.message : 'Could not load countries.', 'bad'));
+      .catch((error: unknown) => push(userFacingMessage(error, 'Could not load countries.'), 'bad'));
     return () => { active = false; };
   }, [push]);
 
@@ -133,7 +134,7 @@ function Management() {
     if (!newScope.country_code) return () => { active = false; };
     void fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(newScope.country_code)}/regions`)
       .then((options) => { if (active) setRegions(options); })
-      .catch((error: unknown) => push(error instanceof Error ? error.message : 'Could not load regions.', 'bad'));
+      .catch((error: unknown) => push(userFacingMessage(error, 'Could not load regions.'), 'bad'));
     return () => { active = false; };
   }, [newScope.country_code, push]);
 
@@ -143,7 +144,7 @@ function Management() {
     if (!newScope.country_code || !newScope.region_code) return () => { active = false; };
     void fetchAdmin<LocationOption[]>(`/locations/countries/${encodeURIComponent(newScope.country_code)}/regions/${encodeURIComponent(newScope.region_code)}/districts`)
       .then((options) => { if (active) setDistricts(options); })
-      .catch((error: unknown) => push(error instanceof Error ? error.message : 'Could not load districts.', 'bad'));
+      .catch((error: unknown) => push(userFacingMessage(error, 'Could not load districts.'), 'bad'));
     return () => { active = false; };
   }, [newScope.country_code, newScope.region_code, push]);
 
@@ -176,7 +177,7 @@ function Management() {
 
   useEffect(() => {
     void reload().catch((error: unknown) => {
-      push(error instanceof Error ? error.message : 'Could not load management information.', 'bad');
+      push(userFacingMessage(error, 'Could not load management information.'), 'bad');
     });
   }, [reload, push]);
 
@@ -245,7 +246,7 @@ function Management() {
       push(`${selectedMember.full_name}’s profile and operation access were saved.`);
       await reload();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save this team member.', 'bad');
+      push(userFacingMessage(error, 'Could not save this team member.'), 'bad');
     } finally {
       setSavingMember(false);
     }
@@ -261,7 +262,7 @@ function Management() {
       push('Weekly commission targets and rates were saved.');
       await reload();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save the commission policy.', 'bad');
+      push(userFacingMessage(error, 'Could not save the commission policy.'), 'bad');
     } finally {
       setSavingPolicy(false);
     }
@@ -277,7 +278,7 @@ function Management() {
       push(teamMemberId ? `${order.code} was assigned.` : `${order.code} is unassigned.`);
       await reload();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not assign this order.', 'bad');
+      push(userFacingMessage(error, 'Could not assign this order.'), 'bad');
     } finally {
       setBusyOrderId(null);
     }

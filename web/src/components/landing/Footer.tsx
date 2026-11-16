@@ -45,9 +45,10 @@ export function Footer() {
             : 'Global marketplace'}
         </p>
         <nav className="flex flex-wrap gap-x-6 gap-y-2 text-[15px] font-semibold text-ink-soft" aria-label="Footer">
-          <a href="#how" className="hover:text-leaf">How it works</a>
-          <a href="#farmers" className="hover:text-leaf">Sell on Saplaya</a>
-          <a href="#faq" className="hover:text-leaf">Questions</a>
+          <Link href="/how-it-works" className="hover:text-leaf">How it works</Link>
+          <Link href="/fresh-today" className="hover:text-leaf">Fresh today</Link>
+          <Link href="/for-farmers" className="hover:text-leaf">For farmers</Link>
+          <Link href="/faq" className="hover:text-leaf">Questions</Link>
           <Link href="/privacy" className="hover:text-leaf">Privacy policy</Link>
           <Link href="/login" className="hover:text-leaf">Member sign in</Link>
         </nav>

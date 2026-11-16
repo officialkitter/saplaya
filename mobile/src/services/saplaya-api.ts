@@ -7,6 +7,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import type { Session } from '@supabase/supabase-js';
+import { safeHttpErrorMessage, UserFacingError } from '../lib/user-facing-error';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -376,17 +377,12 @@ export class SaplayaApiClient {
   // ERROR HANDLING
   // ============================================
 
-  private handleError(error: AxiosError<any>): Promise<never> {
-    const errorData = error.response?.data;
-    const errorMessage = errorData?.error || errorData?.message || error.message || 'An error occurred';
-
-    console.error('API Error:', {
-      status: error.response?.status,
-      message: errorMessage,
-      data: errorData,
-    });
-
-    return Promise.reject(new Error(errorMessage));
+  private handleError(error: AxiosError<unknown>): Promise<never> {
+    const status = error.response?.status;
+    console.error('Saplaya API request failed.', { status, name: error.name });
+    return Promise.reject(new UserFacingError(typeof status === 'number'
+      ? safeHttpErrorMessage(status)
+      : 'We could not reach Saplaya. Check your connection and try again.'));
   }
 }
 
@@ -409,17 +405,3 @@ export function getApiClient(): SaplayaApiClient {
   }
   return apiClient;
 }
-
-// ============================================
-// EXPORT TYPES
-// ============================================
-
-export type {
-  Agent,
-  Order,
-  OrderRecipient,
-  Commission,
-  Withdrawal,
-  Notification,
-  ApiResponse,
-};

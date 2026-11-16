@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStorefrontCart } from '@/lib/cart';
@@ -65,7 +66,7 @@ export default function CheckoutPage() {
       setOptions(checkout);
     }).catch((cause: unknown) => {
       if (!active) return;
-      setSetupError(cause instanceof Error ? cause.message : 'Checkout options are unavailable.');
+      setSetupError(userFacingMessage(cause, 'Checkout options are unavailable.'));
     });
     return () => { active = false; };
   }, []);
@@ -90,7 +91,7 @@ export default function CheckoutPage() {
     }).then((result) => {
       if (active) setQuote(result);
     }).catch((cause: unknown) => {
-      if (active) setQuoteError(cause instanceof Error ? cause.message : 'Could not prepare your delivery quote.');
+      if (active) setQuoteError(userFacingMessage(cause, 'Could not prepare your delivery quote.'));
     });
     return () => { active = false; };
   }, [quoteKey, availableDeliveryOptions, items, market.location, mode, deliveryWindow]);
@@ -138,7 +139,7 @@ export default function CheckoutPage() {
       setOrderId(order.order_id);
       clear();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not place your order.');
+      setError(userFacingMessage(cause, 'Could not place your order.'));
     } finally {
       setBusy(false);
     }

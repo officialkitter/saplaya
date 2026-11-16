@@ -1,4 +1,6 @@
 'use client';
+import { userFacingMessage } from '@/lib/user-facing-error';
+
 
 import { useEffect, useRef, useState } from 'react';
 import { LogoMark } from '@/components/ui/Logo';
@@ -17,7 +19,7 @@ export default function ConfirmEmailPage() {
       link.current = parseEmailLink(window.location.href);
       setReady(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'This link is incomplete. Request a new email.');
+      setError(userFacingMessage(reason, 'This link is incomplete. Request a new email.'));
     } finally {
       window.history.replaceState(null, '', '/auth/confirm');
     }
@@ -31,7 +33,7 @@ export default function ConfirmEmailPage() {
       const destination = await verifyEmailLink(getSupabase(), link.current);
       window.location.replace(destination);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'The link could not be verified. Request a new email.');
+      setError(userFacingMessage(reason, 'The link could not be verified. Request a new email.'));
       setBusy(false);
     }
   }

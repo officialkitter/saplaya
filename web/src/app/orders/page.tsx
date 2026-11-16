@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { storefrontRequest } from '@/lib/storefront-auth';
@@ -42,7 +43,7 @@ export default function OrdersPage() {
           setError('');
         }
       }).catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : 'Could not load your orders.');
+        if (active) setError(userFacingMessage(cause, 'Could not load your orders.'));
       }).finally(() => {
         if (active) setLoading(false);
       });

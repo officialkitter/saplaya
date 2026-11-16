@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
 import { Ban, ClipboardList, DoorOpen, Lock, Search, ShoppingBag, Truck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -115,7 +116,7 @@ function Orders() {
       await setOrderStatus(o.id, a.next);
       push(`${o.code} is now ${STATUS[a.next].label.toLowerCase()}. The customer sees this in their app.`);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not update the order.', 'bad');
+      push(userFacingMessage(error, 'Could not update the order.'), 'bad');
     }
   }
 
@@ -126,7 +127,7 @@ function Orders() {
       push(`${cancelling.code} was cancelled and the stock was returned.`, 'info');
       setCancelId(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not cancel the order.', 'bad');
+      push(userFacingMessage(error, 'Could not cancel the order.'), 'bad');
     }
   }
 
@@ -229,7 +230,7 @@ function Orders() {
               <StatusPill status={open.status} />
               <p className="text-ink-mute">{timeAgo(open.placedAt)}</p>
             </div>
-            <div className="rounded-3xl bg-white p-5 shadow-soft"><Pipeline status={open.status} /></div>
+            <div className="overflow-x-auto rounded-3xl bg-white p-5 shadow-soft"><div className="min-w-[288px]"><Pipeline status={open.status} /></div></div>
 
             <div className="grid grid-cols-2 gap-3 text-[15px]">
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Customer</p><p className="font-bold">{customerLabel(open, me.role, me.roleScope)}</p></div>

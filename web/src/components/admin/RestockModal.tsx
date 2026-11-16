@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { useEffect, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -40,7 +41,7 @@ export function RestockModal({
       push(`Added ${formatNum(n)} ${product.unit} of ${product.name}.`);
       onClose();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not update stock.', 'bad');
+      push(userFacingMessage(error, 'Could not update stock.'), 'bad');
     }
   }
 

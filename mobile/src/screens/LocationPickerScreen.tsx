@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +24,7 @@ export default function LocationPickerScreen({ navigation }: any) {
       await setPlace(place);
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Could not update delivery location', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not update delivery location', userFacingMessage(error, 'Please try again.'));
     }
   };
 
@@ -33,7 +34,7 @@ export default function LocationPickerScreen({ navigation }: any) {
       await useCurrentLocation();
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Could not get location', error instanceof Error ? error.message : 'Allow location access or choose a saved address.');
+      Alert.alert('Could not get location', userFacingMessage(error, 'Allow location access or choose a saved address.'));
     } finally {
       setBusy(false);
     }

@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
@@ -192,7 +193,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         setCustomerId(sessionUser?.id ?? null);
       }
     }).catch((sessionError: unknown) => {
-      if (active) setError(sessionError instanceof Error ? sessionError.message : 'Could not restore your account.');
+      if (active) setError(userFacingMessage(sessionError, 'Could not restore your account.'));
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (active && !getCurrentPhoneIdentity()) {
@@ -212,7 +213,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
           setCustomerId(sessionUser?.id ?? null);
         }).catch((sessionError: unknown) => {
           if (active && currentVersion === version) {
-            setError(sessionError instanceof Error ? sessionError.message : 'Could not restore your account.');
+            setError(userFacingMessage(sessionError, 'Could not restore your account.'));
           }
         });
         return;
@@ -224,7 +225,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         if (active && currentVersion === version) setCustomerId(userId);
       }).catch((identityError: unknown) => {
         if (active && currentVersion === version) {
-          setError(identityError instanceof Error ? identityError.message : 'Could not restore your account.');
+          setError(userFacingMessage(identityError, 'Could not restore your account.'));
         }
       });
     });
@@ -239,13 +240,13 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     const handle = (url: string) => {
       void completeAuthUrl(url).catch((authError: unknown) => {
-        if (active) setError(authError instanceof Error ? authError.message : 'Could not verify your email link.');
+        if (active) setError(userFacingMessage(authError, 'Could not verify your email link.'));
       });
     };
     void Linking.getInitialURL().then((url) => {
       if (url) handle(url);
     }).catch((urlError: unknown) => {
-      if (active) setError(urlError instanceof Error ? urlError.message : 'Could not open your email link.');
+      if (active) setError(userFacingMessage(urlError, 'Could not open your email link.'));
     });
     const subscription = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => {
@@ -303,7 +304,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     };
 
     load().catch((loadError: unknown) => {
-      if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load your account details.');
+      if (active) setError(userFacingMessage(loadError, 'Could not load your account details.'));
     }).finally(() => {
       if (active) setLoading(false);
     });

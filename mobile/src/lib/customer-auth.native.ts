@@ -91,7 +91,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<Custo
       phone: user.phoneNumber ?? phone,
       updated_at: new Date().toISOString(),
     });
-    if (error) throw new Error(`Account created, but could not save the profile name: ${error.message}`);
+    if (error) throw new Error('Account created, but could not save the profile name. Please try again.');
   }
   pendingFullName = undefined;
   return identityFor(user);

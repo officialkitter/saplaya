@@ -64,7 +64,7 @@ function Inventory() {
         actions={canStock ? <Button icon={<PackagePlus size={20} />} onClick={() => setRestock(true)}>Add stock</Button> : undefined}
       />
 
-      <section className="mb-6 grid grid-cols-3 divide-x divide-line rounded-[1.75rem] border border-line bg-white shadow-soft">
+      <section className="mb-6 grid grid-cols-1 divide-y divide-line rounded-[1.75rem] border border-line bg-white shadow-soft sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         <div className="p-5"><p className="text-[15px] font-semibold text-ink-mute">Sold, 14 days</p><p className="mt-1 font-display text-3xl font-extrabold">{formatNum(sold)}</p></div>
         <div className="p-5"><p className="text-[15px] font-semibold text-ink-mute">Added, 14 days</p><p className="mt-1 font-display text-3xl font-extrabold text-leaf">{formatNum(added)}</p></div>
         <div className="p-5"><p className="text-[15px] font-semibold text-ink-mute">Running low</p><p className={cn('mt-1 font-display text-3xl font-extrabold', lowCount > 0 && 'text-[#C27C00]')}>{lowCount}</p></div>

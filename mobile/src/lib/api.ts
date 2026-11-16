@@ -2,6 +2,8 @@ import { API_URL, supabase } from './supabase';
 import { getCustomerApiToken } from './customer-auth';
 import { Mode, Product, Promo } from '../types';
 import { confirmedOrder } from './payment-confirmation';
+import { safeHttpErrorMessage, UserFacingError } from './user-facing-error';
+import { fetchPublicJson } from './public-request';
 
 const PAGE = 20;
 
@@ -26,15 +28,11 @@ export async function fetchProducts(page: number, location?: { lat: number; lng:
     query.set('lat', String(location.lat));
     query.set('lng', String(location.lng));
   }
-  const response = await fetch(`${API_URL}/products?${query.toString()}`);
-  if (!response.ok) throw new Error('Could not load items');
-  return response.json();
+  return fetchPublicJson(`${API_URL}/products?${query.toString()}`);
 }
 
 export async function fetchPromos(): Promise<Promo[]> {
-  const response = await fetch(`${API_URL}/promos`);
-  if (!response.ok) throw new Error('Could not load promotions.');
-  return response.json();
+  return fetchPublicJson(`${API_URL}/promos`);
 }
 
 type AuthenticatedOptions = {
@@ -42,7 +40,7 @@ type AuthenticatedOptions = {
   body?: unknown;
 };
 
-export class ApiRequestError extends Error {
+export class ApiRequestError extends UserFacingError {
   constructor(message: string, readonly status: number) {
     super(message);
     this.name = 'ApiRequestError';
@@ -61,12 +59,7 @@ async function authenticatedRequest<T>(path: string, options: AuthenticatedOptio
   });
   const result = await response.json() as T | { error?: string };
   if (!response.ok) {
-    throw new ApiRequestError(
-      typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
-        ? result.error
-        : 'The request could not be completed.',
-      response.status,
-    );
+    throw new ApiRequestError(safeHttpErrorMessage(response.status), response.status);
   }
   return result as T;
 }
@@ -192,7 +185,7 @@ export async function deletePaymentMethod(id: string) {
   });
   if (response.status === 204) return;
   const result = await response.json() as { error?: string };
-  throw new Error(result.error ?? 'Could not remove this payment method.');
+  throw new ApiRequestError(safeHttpErrorMessage(response.status), response.status);
 }
 
 export async function registerPushToken(token: string, platform: 'android' | 'ios') {

@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
 import { EyeOff, GitMerge, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -99,7 +100,7 @@ function Products() {
       );
       setStockCatalog(result);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not load shared products.', 'bad');
+      push(userFacingMessage(error, 'Could not load shared products.'), 'bad');
     } finally {
       setStockCatalogLoading(false);
     }
@@ -120,7 +121,7 @@ function Products() {
         setPricingPolicyReady(true);
       })
       .catch((error: unknown) => {
-        push(error instanceof Error ? error.message : 'Could not load automatic pricing rules.', 'bad');
+        push(userFacingMessage(error, 'Could not load automatic pricing rules.'), 'bad');
       });
   }, [push]);
 
@@ -159,7 +160,7 @@ function Products() {
       }
       await loadStockCatalog();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not add this product to the farm.', 'bad');
+      push(userFacingMessage(error, 'Could not add this product to the farm.'), 'bad');
     } finally {
       setStockCatalogBusyId(null);
     }
@@ -173,7 +174,7 @@ function Products() {
       push(`${item.name} is now available in the shop.`);
       await loadStockCatalog();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not make this product available.', 'bad');
+      push(userFacingMessage(error, 'Could not make this product available.'), 'bad');
     } finally {
       setStockCatalogBusyId(null);
     }
@@ -188,7 +189,7 @@ function Products() {
       setMergeSource(null);
       setMergeTargetId('');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not merge these products.', 'bad');
+      push(userFacingMessage(error, 'Could not merge these products.'), 'bad');
     } finally {
       setProductActionBusy(false);
     }
@@ -204,7 +205,7 @@ function Products() {
         : `${removingProduct.name} was deleted.`);
       setRemovingProduct(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not remove this product.', 'bad');
+      push(userFacingMessage(error, 'Could not remove this product.'), 'bad');
     } finally {
       setProductActionBusy(false);
     }
@@ -250,7 +251,7 @@ function Products() {
       }
       setEditing(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save this product.', 'bad');
+      push(userFacingMessage(error, 'Could not save this product.'), 'bad');
     }
   }
 

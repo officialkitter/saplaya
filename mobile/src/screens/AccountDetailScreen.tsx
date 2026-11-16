@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useEffect, useState } from 'react';
 import {
   Alert, FlatList, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
@@ -87,7 +88,7 @@ function ProfileDetails() {
       if (result.canceled) return;
       await uploadAvatar(result.assets[0]);
     } catch (error) {
-      Alert.alert('Could not update photo', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not update photo', userFacingMessage(error, 'Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -111,7 +112,7 @@ function ProfileDetails() {
       await saveProfile({ ...profile, fullName, phone });
       Alert.alert('Saved', 'Your personal details have been updated.');
     } catch (error) {
-      Alert.alert('Could not save profile', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not save profile', userFacingMessage(error, 'Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -124,7 +125,7 @@ function ProfileDetails() {
       setVerificationSent(true);
       Alert.alert('Check your inbox', 'We sent a link to verify your email address.');
     } catch (error) {
-      Alert.alert('Could not send verification email', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not send verification email', userFacingMessage(error, 'Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -198,7 +199,7 @@ function AccountSecurity() {
       setConfirmPassword('');
       Alert.alert('Password changed', 'Your new password is ready to use.');
     } catch (error) {
-      Alert.alert('Could not change password', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not change password', userFacingMessage(error, 'Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -253,7 +254,7 @@ function Addresses() {
       const current = await useCurrentLocation();
       setCoordinates(current);
     } catch (error) {
-      Alert.alert('Could not get location', error instanceof Error ? error.message : 'Choose an address or try again.');
+      Alert.alert('Could not get location', userFacingMessage(error, 'Choose an address or try again.'));
     } finally {
       setBusy(false);
     }
@@ -272,7 +273,7 @@ function Addresses() {
       setAddress('');
       Alert.alert('Address saved', 'This address is ready for your next order.');
     } catch (error) {
-      Alert.alert('Could not save address', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not save address', userFacingMessage(error, 'Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -286,7 +287,7 @@ function Addresses() {
       await setPlace({ lat: saved.lat, lng: saved.lng, label: saved.address, approximate: false });
       Alert.alert('Delivery address updated', `Your next order will go to ${saved.label}.`);
     } catch (error) {
-      Alert.alert('Could not update address', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not update address', userFacingMessage(error, 'Please try again.'));
     }
   };
 
@@ -296,7 +297,7 @@ function Addresses() {
       text: 'Remove',
       style: 'destructive',
       onPress: () => removeAddress(id).catch((error: unknown) => {
-        Alert.alert('Could not remove address', error instanceof Error ? error.message : 'Please try again.');
+        Alert.alert('Could not remove address', userFacingMessage(error, 'Please try again.'));
       }),
     },
   ]);
@@ -351,7 +352,7 @@ function PaymentMethods() {
     void fetchPaymentMethods().then((result) => {
       if (active) setMethods(result);
     }).catch((error: unknown) => {
-      if (active) Alert.alert('Could not load payment methods', error instanceof Error ? error.message : 'Please try again.');
+      if (active) Alert.alert('Could not load payment methods', userFacingMessage(error, 'Please try again.'));
     }).finally(() => {
       if (active) setLoading(false);
     });
@@ -376,7 +377,7 @@ function PaymentMethods() {
       });
       setPhone('');
     } catch (error) {
-      Alert.alert('Could not save payment method', error instanceof Error ? error.message : 'Please check the number and try again.');
+      Alert.alert('Could not save payment method', userFacingMessage(error, 'Please check the number and try again.'));
     } finally {
       setBusy(false);
     }
@@ -394,7 +395,7 @@ function PaymentMethods() {
             await deletePaymentMethod(method.id);
             setMethods(await fetchPaymentMethods());
           } catch (error) {
-            Alert.alert('Could not remove payment method', error instanceof Error ? error.message : 'Please try again.');
+            Alert.alert('Could not remove payment method', userFacingMessage(error, 'Please try again.'));
           } finally {
             setBusy(false);
           }
@@ -463,7 +464,7 @@ function Reviews() {
       setRating(5);
       Alert.alert('Thank you', 'Your review has been saved.');
     } catch (error) {
-      Alert.alert('Could not save review', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not save review', userFacingMessage(error, 'Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -517,7 +518,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
 
   useEffect(() => {
     void fetchLocationCountries().then(setCountries).catch((error: unknown) => {
-      Alert.alert('Could not load countries', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not load countries', userFacingMessage(error, 'Please try again.'));
     });
   }, []);
 
@@ -532,7 +533,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
     try {
       setRegions(await fetchLocationRegions(option.code));
     } catch (error) {
-      Alert.alert('Could not load regions', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not load regions', userFacingMessage(error, 'Please try again.'));
     }
   };
 
@@ -545,7 +546,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
     try {
       setDistricts(await fetchLocationDistricts(country.code, option.code));
     } catch (error) {
-      Alert.alert('Could not load districts', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not load districts', userFacingMessage(error, 'Please try again.'));
     }
   };
 
@@ -582,7 +583,7 @@ function SupplierRegistration({ navigation }: { navigation: any }) {
       setManualDistrict('');
       setProducts('');
     } catch (error) {
-      Alert.alert('Could not submit application', error instanceof Error ? error.message : 'Please check your details and try again.');
+      Alert.alert('Could not submit application', userFacingMessage(error, 'Please check your details and try again.'));
     } finally {
       setBusy(false);
     }
@@ -627,7 +628,7 @@ function HelpCenter() {
     try {
       await Linking.openURL('mailto:?subject=Saplaya%20customer%20support');
     } catch (error) {
-      Alert.alert('Could not open email', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not open email', userFacingMessage(error, 'Please try again.'));
     }
   };
   return (
@@ -720,7 +721,7 @@ function SignOut({ navigation }: { navigation: any }) {
           await signOut();
           navigation.popToTop();
         } catch (error) {
-          Alert.alert('Could not sign out', error instanceof Error ? error.message : 'Please try again.');
+          Alert.alert('Could not sign out', userFacingMessage(error, 'Please try again.'));
         } finally {
           setBusy(false);
         }

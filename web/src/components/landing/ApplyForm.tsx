@@ -1,11 +1,13 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Loader2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Fields';
 import { fetchLocationCountries, fetchLocationDistricts, fetchLocationRegions, type LocationOption } from '@/lib/locations';
+import { safeHttpErrorMessage, UserFacingError } from '@/lib/user-facing-error';
 
 const SIZES = ['Less than 5 acres', '5 to 20 acres', 'More than 20 acres'];
 
@@ -29,7 +31,7 @@ export function ApplyForm() {
     let active = true;
     void fetchLocationCountries()
       .then((options) => { if (active) { setCountries(options); setLocationError(''); } })
-      .catch((error: unknown) => { if (active) setLocationError(error instanceof Error ? error.message : 'Could not load countries.'); });
+      .catch((error: unknown) => { if (active) setLocationError(userFacingMessage(error, 'Could not load countries.')); });
     return () => { active = false; };
   }, []);
 
@@ -40,7 +42,7 @@ export function ApplyForm() {
     if (!f.countryCode) return () => { active = false; };
     void fetchLocationRegions(f.countryCode)
       .then((options) => { if (active) { setRegions(options); setLocationError(''); } })
-      .catch((error: unknown) => { if (active) setLocationError(error instanceof Error ? error.message : 'Could not load regions.'); });
+      .catch((error: unknown) => { if (active) setLocationError(userFacingMessage(error, 'Could not load regions.')); });
     return () => { active = false; };
   }, [f.countryCode]);
 
@@ -50,7 +52,7 @@ export function ApplyForm() {
     if (!f.countryCode || !f.regionCode) return () => { active = false; };
     void fetchLocationDistricts(f.countryCode, f.regionCode)
       .then((options) => { if (active) { setDistricts(options); setLocationError(''); } })
-      .catch((error: unknown) => { if (active) setLocationError(error instanceof Error ? error.message : 'Could not load districts.'); });
+      .catch((error: unknown) => { if (active) setLocationError(userFacingMessage(error, 'Could not load districts.')); });
     return () => { active = false; };
   }, [f.countryCode, f.regionCode]);
 
@@ -96,12 +98,11 @@ export function ApplyForm() {
         }),
       });
       if (!res.ok) {
-        const result = await res.json() as { error?: unknown };
-        throw new Error(typeof result.error === 'string' ? result.error : 'Application request failed.');
+        throw new UserFacingError(safeHttpErrorMessage(res.status));
       }
     } catch (error) {
       setBusy(false);
-      setSendError(error instanceof Error ? error.message : 'We could not send your form. Check your internet and try again.');
+      setSendError(userFacingMessage(error, 'We could not send your form. Check your internet and try again.'));
       return;
     }
     setBusy(false);

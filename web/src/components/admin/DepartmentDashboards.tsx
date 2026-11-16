@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { useEffect, useMemo, useState } from 'react';
 import { Panel } from '@/components/admin/Guard';
 import { Select } from '@/components/ui/Fields';
@@ -79,7 +80,7 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
     ).then((result) => {
       if (active) setData(result);
     }).catch((error: unknown) => {
-      if (active) push(error instanceof Error ? error.message : 'Could not load department dashboards.', 'bad');
+      if (active) push(userFacingMessage(error, 'Could not load department dashboards.'), 'bad');
     }).finally(() => {
       if (active) setLoading(false);
     });

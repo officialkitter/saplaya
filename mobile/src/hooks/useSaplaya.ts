@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 // ============================================
 // SAPLAYA MOBILE APP - REACT HOOKS
 // ============================================
@@ -28,7 +29,7 @@ export function useAgentProfile() {
         setError(response.error || 'Failed to fetch profile');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,7 @@ export function useAgentProfile() {
         throw new Error(response.error || 'Failed to update profile');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     } finally {
       setLoading(false);
@@ -66,7 +67,7 @@ export function useAgentProfile() {
         throw new Error(response.error || 'Failed to update location');
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'An error occurred';
+      const errorMsg = userFacingMessage(err, 'An error occurred');
       console.error('Location update error:', errorMsg);
       throw err;
     }
@@ -83,7 +84,7 @@ export function useAgentProfile() {
         throw new Error(response.error || 'Failed to update status');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     }
   }, []);
@@ -112,7 +113,7 @@ export function useCustomerOrders() {
         setError(response.error || 'Failed to fetch orders');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -131,7 +132,7 @@ export function useCustomerOrders() {
         throw new Error(response.error || 'Failed to place order');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     } finally {
       setLoading(false);
@@ -151,7 +152,7 @@ export function useCustomerOrders() {
         throw new Error(response.error || 'Failed to place order');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     } finally {
       setLoading(false);
@@ -162,14 +163,15 @@ export function useCustomerOrders() {
     try {
       const api = getApiClient();
       const response = await api.cancelOrder(orderId);
-      if (response.success && response.data) {
-        setOrders(orders.map(o => o.id === orderId ? response.data : o));
-        return response.data;
+      const updatedOrder = response.data;
+      if (response.success && updatedOrder) {
+        setOrders(orders.map(o => o.id === orderId ? updatedOrder : o));
+        return updatedOrder;
       } else {
         throw new Error(response.error || 'Failed to cancel order');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     }
   }, [orders]);
@@ -198,7 +200,7 @@ export function useAvailableOrders() {
         setError(response.error || 'Failed to fetch nearby orders');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -215,7 +217,7 @@ export function useAvailableOrders() {
         throw new Error(response.error || 'Failed to claim order');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     }
   }, [orders]);
@@ -240,7 +242,7 @@ export function useClaimedOrders() {
         setError(response.error || 'Failed to fetch claimed orders');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -250,14 +252,15 @@ export function useClaimedOrders() {
     try {
       const api = getApiClient();
       const response = await api.updateOrderStatus(orderId, status, proofImageUri);
-      if (response.success && response.data) {
-        setOrders(orders.map(o => o.id === orderId ? response.data : o));
-        return response.data;
+      const updatedOrder = response.data;
+      if (response.success && updatedOrder) {
+        setOrders(orders.map(o => o.id === orderId ? updatedOrder : o));
+        return updatedOrder;
       } else {
         throw new Error(response.error || 'Failed to update order status');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     }
   }, [orders]);
@@ -287,7 +290,7 @@ export function useCommissions() {
         setError(response.error || 'Failed to fetch commissions');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -305,7 +308,7 @@ export function useCommissions() {
         setError(response.error || 'Failed to fetch history');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -323,7 +326,7 @@ export function useCommissions() {
         setError(response.error || 'Failed to fetch summary');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -353,7 +356,7 @@ export function useWithdrawals() {
         setError(response.error || 'Failed to fetch withdrawals');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -372,7 +375,7 @@ export function useWithdrawals() {
         throw new Error(response.error || 'Failed to request withdrawal');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     } finally {
       setLoading(false);
@@ -403,7 +406,7 @@ export function useNotifications() {
         setError(response.error || 'Failed to fetch notifications');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -413,14 +416,15 @@ export function useNotifications() {
     try {
       const api = getApiClient();
       const response = await api.markNotificationAsRead(notificationId);
-      if (response.success && response.data) {
-        setNotifications(notifications.map(n => n.id === notificationId ? response.data : n));
-        return response.data;
+      const updatedNotification = response.data;
+      if (response.success && updatedNotification) {
+        setNotifications(notifications.map(n => n.id === notificationId ? updatedNotification : n));
+        return updatedNotification;
       } else {
         throw new Error(response.error || 'Failed to mark as read');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     }
   }, [notifications]);
@@ -436,7 +440,7 @@ export function useNotifications() {
         throw new Error(response.error || 'Failed to mark all as read');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(userFacingMessage(err, 'An error occurred'));
       throw err;
     }
   }, [notifications]);

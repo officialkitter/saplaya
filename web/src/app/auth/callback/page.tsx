@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { AlertCircle, CheckCircle2, LoaderCircle, LockKeyhole } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { LogoMark } from '@/components/ui/Logo';
@@ -69,7 +70,7 @@ export default function AuthCallbackPage() {
         window.history.replaceState(null, '', teamReturn ? '/auth/callback?returnTo=%2Flogin' : '/auth/callback');
         setState({
           status: 'error',
-          message: error instanceof Error ? error.message : 'We could not verify this link. Request a new one and try again.',
+          message: userFacingMessage(error, 'We could not verify this link. Request a new one and try again.'),
         });
       }
     });
@@ -114,7 +115,7 @@ export default function AuthCallbackPage() {
       console.error('Saplaya password recovery failed:', error);
       setState({
         status: 'recovery',
-        message: error instanceof Error ? error.message : 'We could not save your password. Try again.',
+        message: userFacingMessage(error, 'We could not save your password. Try again.'),
       });
       setSaving(false);
     }

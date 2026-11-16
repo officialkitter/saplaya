@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -85,7 +86,7 @@ export default function TrackingScreen({ route, navigation }: any) {
               ?? null
         ));
       } catch (error) {
-        if (active) setHistoryError(error instanceof Error ? error.message : 'Could not load order history.');
+        if (active) setHistoryError(userFacingMessage(error, 'Could not load order history.'));
       } finally {
         if (active) setLoading(false);
       }

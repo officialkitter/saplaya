@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { safeHttpErrorMessage, UserFacingError } from './user-facing-error';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -26,7 +27,7 @@ export async function getStorefrontCustomerToken() {
   if (error) throw error;
   if (data.session) return data.session.access_token;
   const result = await client.auth.signInAnonymously();
-  if (result.error) throw new Error(`Guest checkout could not start: ${result.error.message}`);
+  if (result.error) throw new Error('Guest checkout could not start. Please try again.');
   if (!result.data.session) throw new Error('Guest checkout could not create a customer session.');
   return result.data.session.access_token;
 }
@@ -46,11 +47,7 @@ export async function storefrontRequest<T>(path: string, input?: unknown): Promi
   });
   const result = await response.json() as T | { error?: string };
   if (!response.ok) {
-    throw new Error(
-      typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
-        ? result.error
-        : 'The storefront request could not be completed.',
-    );
+    throw new UserFacingError(safeHttpErrorMessage(response.status));
   }
   return result as T;
 }

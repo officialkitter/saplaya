@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,7 +42,9 @@ export default function HomeScreen({ navigation }: any) {
   const [page, setPage] = useState(startupData ? 1 : 0);
   const [hasMore, setHasMore] = useState(startupData?.products.hasMore ?? true);
   const [loading, setLoading] = useState(!startupData);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
@@ -49,6 +52,8 @@ export default function HomeScreen({ navigation }: any) {
   const [filters, setFilters] = useState<ProductFilters>({});
   const [categories, setCategories] = useState<string[]>([]);
   const requestGeneration = useRef(0);
+  const mounted = useRef(true);
+  const refreshInFlight = useRef(false);
   const tierTheme = volumeTheme(mode);
   const searching = Boolean(filters.query?.trim() || filters.category || filters.minPrice || filters.maxPrice || filters.fresh || (filters.sort && filters.sort !== 'default'));
 
@@ -115,7 +120,7 @@ export default function HomeScreen({ navigation }: any) {
       setPage((p) => p + 1);
       setError(null);
     } catch (e: unknown) {
-      if (generation === requestGeneration.current) setError(e instanceof Error ? e.message : 'Could not load items.');
+      if (generation === requestGeneration.current) setError(userFacingMessage(e, 'Could not load items.'));
     } finally {
       if (generation === requestGeneration.current) setLoading(false);
     }
@@ -141,7 +146,7 @@ export default function HomeScreen({ navigation }: any) {
       setError(null);
     } catch (e: unknown) {
       if (!isActive() || generation !== requestGeneration.current) return;
-      const message = e instanceof Error ? e.message : 'Could not load items.';
+      const message = userFacingMessage(e, 'Could not load items.');
       setError(message);
       console.error('Could not refresh customer products:', e);
     } finally {
@@ -150,9 +155,43 @@ export default function HomeScreen({ navigation }: any) {
   }, [productLocation, filters]);
 
   useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const refreshCatalog = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshProducts(() => mounted.current),
+        fetchPromos().then((result) => {
+          if (mounted.current) {
+            setPromos(result);
+            setPromoError(false);
+          }
+        }).catch((promoError: unknown) => {
+          console.error('Could not refresh promotions:', promoError);
+          if (mounted.current) setPromoError(true);
+        }),
+      ]);
+    } finally {
+      refreshInFlight.current = false;
+      if (mounted.current) setRefreshing(false);
+    }
+  }, [refreshProducts]);
+
+  useEffect(() => {
     if (startupData) return;
-    fetchPromos().then(setPromos).catch((promoError: unknown) => {
+    fetchPromos().then((result) => {
+      if (mounted.current) {
+        setPromos(result);
+        setPromoError(false);
+      }
+    }).catch((promoError: unknown) => {
       console.error('Could not load promotions:', promoError);
+      if (mounted.current) setPromoError(true);
     });
   }, [startupData]);
 
@@ -218,6 +257,7 @@ export default function HomeScreen({ navigation }: any) {
             : null}
 
       <PromoSlider promos={promos} />
+      {promoError && <Text style={styles.marketNote}>Promotions could not be refreshed. Pull down to try again.</Text>}
 
       <Text style={styles.q}>How are you shopping today?</Text>
       <ModeToggle />
@@ -297,6 +337,8 @@ export default function HomeScreen({ navigation }: any) {
         }
         onEndReachedThreshold={0.6}
         onEndReached={loadMore}
+        refreshing={refreshing}
+        onRefresh={() => { void refreshCatalog(); }}
         contentContainerStyle={{ paddingBottom: 30 }}
         showsVerticalScrollIndicator={false}
       />

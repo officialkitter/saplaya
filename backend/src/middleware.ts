@@ -47,12 +47,16 @@ export function handleZodError(error: ZodError) {
   };
 }
 
+export function publicErrorMessage(error: unknown): string {
+  console.error('Saplaya API operation failed.', {
+    name: error instanceof Error ? error.name : 'UnknownError',
+  });
+  return 'We could not complete this request. Please try again.';
+}
+
 export function errorHandler(error: unknown) {
   if (error instanceof ZodError) {
     return { status: 400, body: handleZodError(error) };
   }
-  if (error instanceof Error) {
-    return { status: 500, body: { error: error.message } };
-  }
-  return { status: 500, body: { error: 'Unknown error occurred' } };
+  return { status: 500, body: { error: publicErrorMessage(error) } };
 }

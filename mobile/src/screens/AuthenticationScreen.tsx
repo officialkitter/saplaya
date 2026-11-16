@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert, FlatList, ImageBackground, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent,
@@ -66,7 +67,7 @@ export default function AuthenticationScreen({ navigation }: any) {
     return false;
   };
   const friendlyError = (error: unknown, provider?: 'google' | 'apple') => {
-    const message = error instanceof Error ? error.message : '';
+    const message = userFacingMessage(error, '');
     if (provider === 'google' && /access_denied|user_cancelled|user canceled/i.test(message)) {
       return 'Google sign-in was cancelled. You can try again whenever you are ready.';
     }

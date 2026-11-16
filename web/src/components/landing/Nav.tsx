@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { MapPin, Menu, ShoppingBasket, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Logo } from '@/components/ui/Logo';
@@ -11,13 +12,14 @@ import { useStorefrontCart } from '@/lib/cart';
 import { volumeTheme } from '@/lib/volume';
 
 const LINKS = [
-  { href: '#how', label: 'How it works' },
-  { href: '#fresh', label: 'Fresh today' },
-  { href: '#farmers', label: 'For farmers' },
-  { href: '#faq', label: 'Questions' },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/fresh-today', label: 'Fresh today' },
+  { href: '/for-farmers', label: 'For farmers' },
+  { href: '/faq', label: 'Questions' },
 ];
 
 export function Nav() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const requested = useRef(false);
   const { count, mode } = useStorefrontCart();
@@ -66,9 +68,9 @@ export function Nav() {
         </Link>
         <nav className="hidden shrink-0 items-center gap-1 xl:flex" aria-label="Main">
           {LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="whitespace-nowrap rounded-full px-3 py-2 text-[15px] font-semibold text-ink-soft transition hover:bg-leaf-soft hover:text-leaf-deep">
+            <Link key={l.href} href={l.href} aria-current={pathname === l.href ? 'page' : undefined} className="whitespace-nowrap rounded-full px-3 py-2 text-[15px] font-semibold text-ink-soft transition hover:bg-leaf-soft hover:text-leaf-deep">
               {l.label}
-            </a>
+            </Link>
           ))}
         </nav>
         <div className="hidden shrink-0 items-center gap-2 xl:flex">
@@ -78,7 +80,7 @@ export function Nav() {
           </Link>
           <Link href="/orders" className="whitespace-nowrap rounded-full px-3 py-2 text-sm font-bold text-ink-soft">Track orders</Link>
           <LinkButton href="/login" variant="ghost">Member sign in</LinkButton>
-          <LinkButton href="#download" variant="sun">Get the app</LinkButton>
+          <LinkButton href="/#download" variant="sun">Get the app</LinkButton>
         </div>
         <button className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-ink hover:bg-leaf-soft xl:hidden" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen((o) => !o)}>
           {open ? <X size={26} /> : <Menu size={26} />}
@@ -94,13 +96,13 @@ export function Nav() {
             <div className="flex flex-col gap-1 px-5 py-4">
               {marketControls('market-currency-mobile')}
               {LINKS.map((l) => (
-                <a key={l.href} href={l.href} onClick={() => setOpen(false)} className="rounded-xl px-3 py-3 text-lg font-semibold text-ink hover:bg-leaf-soft">
+                <Link key={l.href} href={l.href} aria-current={pathname === l.href ? 'page' : undefined} onClick={() => setOpen(false)} className="rounded-xl px-3 py-3 text-lg font-semibold text-ink hover:bg-leaf-soft">
                   {l.label}
-                </a>
+                </Link>
               ))}
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <LinkButton href="/login" variant="soft">Member sign in</LinkButton>
-                <LinkButton href="#download" variant="sun">Get the app</LinkButton>
+                <LinkButton href="/#download" variant="sun">Get the app</LinkButton>
               </div>
               <Link href="/checkout" onClick={() => setOpen(false)} style={{ backgroundColor: theme.soft, color: theme.accent }} className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-extrabold">
                 <ShoppingBasket size={18} /> Basket{count ? ` · ${count}` : ''}

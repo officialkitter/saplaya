@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon, UserRound,
@@ -55,7 +56,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   async function signOut() {
     const { error } = await getSupabase().auth.signOut();
     if (error) {
-      push(error.message, 'bad');
+      push(userFacingMessage(error, 'Could not load this page. Please try again.'), 'bad');
       return;
     }
     logout();
@@ -127,14 +128,19 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function BootScreen() {
+function BootScreen({ error, retry }: { error: string | null; retry: () => void }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-milk">
-      <div className="flex flex-col items-center gap-4">
+    <div className="grid min-h-screen place-items-center bg-milk px-5">
+      <div className="flex max-w-md flex-col items-center gap-4 text-center">
         <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 1.1, repeat: Infinity }}>
           <LogoMark size={64} />
         </motion.div>
-        <p className="font-semibold text-ink-soft">Getting your farm ready</p>
+        <p role={error ? 'alert' : 'status'} className="font-semibold text-ink-soft">{error ?? 'Getting your farm ready'}</p>
+        {error && (
+          <button type="button" onClick={retry} className="rounded-xl bg-leaf px-5 py-3 font-bold text-white">
+            Try again
+          </button>
+        )}
       </div>
     </div>
   );
@@ -143,14 +149,16 @@ function BootScreen() {
 export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const ready = useBoot((s) => s.ready);
+  const bootError = useBoot((s) => s.error);
+  const retry = useBoot((s) => s.retry);
   const me = useMe();
   const [menu, setMenu] = useState(false);
 
   useEffect(() => {
-    if (ready && !me) router.replace('/login');
-  }, [ready, me, router]);
+    if (ready && !me && !bootError) router.replace('/login');
+  }, [ready, me, bootError, router]);
 
-  if (!ready || !me) return <BootScreen />;
+  if (!ready || !me || bootError) return <BootScreen error={bootError} retry={retry} />;
 
   return (
     <div className="min-h-screen bg-milk">
@@ -183,8 +191,8 @@ export function Shell({ children }: { children: ReactNode }) {
         )}
       </AnimatePresence>
 
-      <main className="lg:pl-72">
-        <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">{children}</div>
+      <main className="min-w-0 lg:pl-72">
+        <div className="mx-auto min-w-0 max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">{children}</div>
       </main>
     </div>
   );

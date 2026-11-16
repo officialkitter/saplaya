@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { UserFacingError } from './user-facing-error';
 
 type EmailLink = { tokenHash: string; type: 'invite' | 'recovery'; team: boolean };
 
@@ -13,11 +14,11 @@ export function parseEmailLink(href: string): EmailLink {
   const tokenHash = url.searchParams.get('token_hash');
   const type = url.searchParams.get('type');
   if (!tokenHash || tokenHash.length > 512 || (type !== 'invite' && type !== 'recovery')) {
-    throw new Error('This link is incomplete. Request a new email and try again.');
+    throw new UserFacingError('This link is incomplete. Request a new email and try again.');
   }
   const redirect = url.searchParams.get('redirect_to');
   if (type === 'invite' && !redirect) {
-    throw new Error('This invitation is missing its destination. Request a new email.');
+    throw new UserFacingError('This invitation is missing its destination. Request a new email.');
   }
   let team = false;
   if (redirect) {
@@ -25,7 +26,7 @@ export function parseEmailLink(href: string): EmailLink {
     try {
       target = new URL(redirect);
     } catch {
-      throw new Error('This link has an invalid destination. Request a new email.');
+      throw new UserFacingError('This link has an invalid destination. Request a new email.');
     }
     const nativeRecovery = type === 'recovery'
       && productionCallbackOrigins.has(url.origin)
@@ -36,13 +37,13 @@ export function parseEmailLink(href: string): EmailLink {
       if (!trustedOrigin || target.username || target.password || target.pathname !== '/auth/callback'
         || target.hash || [...target.searchParams.keys()].some((key) => key !== 'returnTo')
         || (target.searchParams.has('returnTo') && target.searchParams.get('returnTo') !== '/login')) {
-        throw new Error('This link has an invalid destination. Request a new email.');
+        throw new UserFacingError('This link has an invalid destination. Request a new email.');
       }
       team = target.searchParams.get('returnTo') === '/login';
     }
   }
   if (type === 'invite' && !team) {
-    throw new Error('This invitation has an invalid destination. Request a new email.');
+    throw new UserFacingError('This invitation has an invalid destination. Request a new email.');
   }
   return { tokenHash, type, team };
 }
@@ -50,7 +51,7 @@ export function parseEmailLink(href: string): EmailLink {
 export async function verifyEmailLink(supabase: SupabaseClient, link: EmailLink): Promise<string> {
   const { data, error } = await supabase.auth.verifyOtp({ token_hash: link.tokenHash, type: link.type });
   if (error) throw error;
-  if (!data.session) throw new Error('This link did not return an active session. Request a new email.');
+  if (!data.session) throw new UserFacingError('This link did not return an active session. Request a new email.');
   const fragment = new URLSearchParams({
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,

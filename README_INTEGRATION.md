@@ -1,3 +1,5 @@
+> Historical integration summary: use [the current README](README.md) for authoritative setup and verification. The readiness claims and legacy schema instructions below are not a production verification report.
+
 # 🚀 SAPLAYA - Uber-Like Order & Delivery System
 
 **Status: ✅ PRODUCTION READY | Backend Running | All 16 APIs Implemented**

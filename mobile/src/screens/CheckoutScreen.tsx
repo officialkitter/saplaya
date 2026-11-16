@@ -1,3 +1,4 @@
+import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
@@ -115,7 +116,7 @@ export default function CheckoutScreen({ navigation }: any) {
     }).then((result) => {
       if (active) setQuote(result);
     }).catch((error: unknown) => {
-      if (active) setQuoteError(error instanceof Error ? error.message : 'Could not prepare your delivery quote.');
+      if (active) setQuoteError(userFacingMessage(error, 'Could not prepare your delivery quote.'));
     }).finally(() => {
       if (active) setQuoteLoading(false);
     });
@@ -175,7 +176,7 @@ export default function CheckoutScreen({ navigation }: any) {
       await setPlace({ lat: saved.lat, lng: saved.lng, label: saved.address, approximate: false });
       setSelectedAddressId(id);
     } catch (error) {
-      Alert.alert('Could not select address', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not select address', userFacingMessage(error, 'Please try again.'));
     }
   };
 
@@ -243,12 +244,12 @@ export default function CheckoutScreen({ navigation }: any) {
         setPaymentBasketKey(null);
         setPaymentSummary(null);
         setPendingVerification(null);
-        Alert.alert('Payment not completed', `${error.message} Your basket is still available.`);
+        Alert.alert('Payment not completed', `${userFacingMessage(error, 'Please check the payment status and try again.')} Your basket is still available.`);
         return;
       }
       Alert.alert(
         'Payment not yet verified',
-        `${error instanceof Error ? error.message : 'The payment could not be verified right now.'} Your basket is still here. Retry verification before starting another payment.`,
+        `${userFacingMessage(error, 'The payment could not be verified right now.')} Your basket is still here. Retry verification before starting another payment.`,
       );
     }
   };
@@ -288,7 +289,7 @@ export default function CheckoutScreen({ navigation }: any) {
     } catch (error) {
       Alert.alert(
         'Could not open payment',
-        `${error instanceof Error ? error.message : 'Please try again.'} Check payment status before starting another payment.`,
+        `${userFacingMessage(error, 'Please try again.')} Check payment status before starting another payment.`,
       );
     } finally {
       finishingPayment.current = false;
@@ -377,7 +378,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
       openPayment(payment);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Please check your connection and try again.';
+      const message = userFacingMessage(error, 'Please check your connection and try again.');
       if (/delivery charge changed|stock|price .* changed|not enough stock/i.test(message)) {
         setQuote(null);
         setAcceptedDeliveryFee(false);

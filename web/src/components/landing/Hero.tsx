@@ -5,35 +5,11 @@ import { Sprout, Truck } from 'lucide-react';
 import { LinkButton } from '@/components/ui/Button';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { cn } from '@/lib/format';
+import { ModeSlide } from './ModeSlide';
 import { useStorefrontProducts, type StorefrontProduct } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
 import { volumeTheme } from '@/lib/volume';
-
-/** The big slide toggle: same control the customer app uses. */
-function ModeSlide({ wholesale, onChange }: { wholesale: boolean; onChange: (w: boolean) => void }) {
-  return (
-    <div role="group" aria-label="Shopping mode" className="relative flex h-[68px] w-full max-w-md rounded-full border-2 border-line bg-white p-1.5 shadow-soft">
-      <motion.span
-        aria-hidden
-        className="absolute bottom-1.5 left-1.5 top-1.5 w-[calc(50%-6px)] rounded-full"
-        animate={{ x: wholesale ? '100%' : '0%', backgroundColor: wholesale ? '#FFD54F' : '#2E7D32' }}
-        transition={{ type: 'spring', damping: 15, stiffness: 190 }}
-      />
-      {([false, true] as const).map((w) => (
-        <button
-          key={String(w)}
-          aria-pressed={wholesale === w}
-          onClick={() => onChange(w)}
-          className={cn('relative z-10 flex-1 rounded-full text-base font-extrabold transition-colors sm:text-lg', wholesale === w ? (w ? 'text-ink' : 'text-white') : 'text-ink-mute')}
-        >
-          {w ? 'Wholesale' : 'Retail'}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Phone({
   wholesale,
@@ -164,7 +140,7 @@ export function Hero() {
 
           <div className="mt-8 flex flex-wrap gap-3">
             <LinkButton href="#download" variant="sun" size="lg">Get the app</LinkButton>
-            <LinkButton href="#farmers" variant="soft" size="lg" icon={<Sprout size={22} />}>Sell your harvest</LinkButton>
+            <LinkButton href="/for-farmers" variant="soft" size="lg" icon={<Sprout size={22} />}>Sell your harvest</LinkButton>
           </div>
         </div>
 

@@ -1,3 +1,4 @@
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { create, type StateCreator } from 'zustand';
 import { useMemo } from 'react';
 import { fetchAdmin } from './supabase';
@@ -295,7 +296,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         await reload();
         return null;
       } catch (error) {
-        return error instanceof Error ? error.message : 'Could not invite this team member.';
+        return userFacingMessage(error, 'Could not invite this team member. Please try again.');
       }
     },
 
@@ -329,8 +330,22 @@ const createAdminStore: StateCreator<DB> = (set) => {
 
 export const useDB = create<DB>()(createAdminStore);
 
-interface BootState { ready: boolean; setReady: () => void }
-export const useBoot = create<BootState>((set) => ({ ready: false, setReady: () => set({ ready: true }) }));
+interface BootState {
+  ready: boolean;
+  error: string | null;
+  attempt: number;
+  setReady: () => void;
+  setError: (message: string) => void;
+  retry: () => void;
+}
+export const useBoot = create<BootState>((set) => ({
+  ready: false,
+  error: null,
+  attempt: 0,
+  setReady: () => set({ ready: true, error: null }),
+  setError: (error) => set({ ready: true, error }),
+  retry: () => set((state) => ({ ready: false, error: null, attempt: state.attempt + 1 })),
+}));
 
 export function useMe(): TeamMember | null {
   const sessionId = useDB((s) => s.sessionId);

@@ -1,3 +1,5 @@
+> Historical implementation summary: use [the current README](README.md) for authoritative setup. The status claims below do not verify hosted migrations, authorization, payments or deployed behavior.
+
 # 🚀 Saplaya Backend - Complete Update
 
 ## Status: ✅ PRODUCTION READY

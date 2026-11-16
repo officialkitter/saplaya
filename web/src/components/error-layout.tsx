@@ -1,55 +1,59 @@
+'use client';
+
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { LogoMark } from '@/components/ui/Logo';
 
 interface ErrorPageProps {
-  statusCode: number;
+  statusCode?: number;
   title: string;
   description: string;
   icon: React.ReactNode;
+  primaryHref?: string;
+  primaryLabel?: string;
+  onPrimaryAction?: () => void;
 }
 
-export default function ErrorPageLayout({ statusCode, title, description, icon }: ErrorPageProps) {
+export default function ErrorPageLayout({
+  statusCode,
+  title,
+  description,
+  icon,
+  primaryHref = '/',
+  primaryLabel = 'Back to Saplaya',
+  onPrimaryAction,
+}: ErrorPageProps) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
-      <div className="max-w-md w-full text-center">
-        {/* Icon */}
-        <div className="mb-8 flex justify-center">{icon}</div>
-
-        {/* Status Code */}
-        <h1 className="text-6xl font-bold text-slate-900 mb-4">{statusCode}</h1>
-
-        {/* Title */}
-        <h2 className="text-2xl md:text-3xl font-semibold text-slate-800 mb-3">{title}</h2>
-
-        {/* Description */}
-        <p className="text-slate-600 mb-8 text-base md:text-lg">{description}</p>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Back to Home
-          </Link>
-          <button
-            onClick={() => window.history.back()}
-            className="inline-flex items-center justify-center px-6 py-3 bg-slate-200 text-slate-800 font-medium rounded-lg hover:bg-slate-300 transition-colors"
-          >
-            Go Back
+    <main className="flex min-h-screen items-center justify-center bg-milk px-5 py-10">
+      <section className="w-full max-w-xl rounded-[2rem] border border-line bg-white p-8 text-center shadow-lift sm:p-10">
+        <div className="mb-8 flex items-center justify-center gap-3">
+          <LogoMark size={44} />
+          <span className="font-display text-2xl font-extrabold text-ink">Saplaya</span>
+        </div>
+        <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-leaf-soft text-leaf">{icon}</div>
+        {statusCode && <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-leaf-deep">{statusCode}</p>}
+        <h1 className="mt-2 font-display text-3xl font-extrabold text-ink sm:text-4xl">{title}</h1>
+        <p className="mx-auto mt-3 max-w-md text-ink-soft">{description}</p>
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          {onPrimaryAction ? (
+            <button type="button" onClick={onPrimaryAction} className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-leaf px-6 py-3 font-extrabold text-white transition hover:bg-leaf-deep">
+              {primaryLabel}
+            </button>
+          ) : (
+            <Link href={primaryHref} className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-leaf px-6 py-3 font-extrabold text-white transition hover:bg-leaf-deep">
+              {primaryLabel}
+            </Link>
+          )}
+          <button type="button" onClick={() => window.history.back()} className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-line px-6 py-3 font-bold text-ink transition hover:bg-milk">
+            Go back
           </button>
         </div>
-
-        {/* Support */}
-        <div className="mt-12 p-4 bg-white rounded-lg border border-slate-200">
-          <p className="text-sm text-slate-600">
-            Need help?{' '}
-            <Link href="/support" className="text-blue-600 hover:text-blue-700 font-medium">
-              Contact support
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+        <p className="mt-8 text-sm text-ink-soft">
+          Need help? <Link href="/faq" className="font-bold text-leaf-deep underline">Visit our FAQ</Link>
+        </p>
+      </section>
+    </main>
   );
 }

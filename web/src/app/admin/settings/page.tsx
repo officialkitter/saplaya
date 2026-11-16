@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
@@ -47,7 +48,7 @@ function SettingsPage() {
       await saveSettings(f);
       push('Settings saved.');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save settings.', 'bad');
+      push(userFacingMessage(error, 'Could not save settings.'), 'bad');
     } finally {
       setSaving(false);
     }

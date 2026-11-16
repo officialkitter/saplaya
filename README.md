@@ -25,6 +25,44 @@ npm run dev:backend     # API
 ## Development
 Configure the Supabase and backend environment variables for the customer app and website before starting local services. Customer products and orders are loaded from the configured API and Supabase project.
 
+### Integration verification and documentation authority
+
+This README is the setup and deployment source of truth; [PesaPal setup](backend/PESAPAL.md) provides payment-specific instructions. The older integration summaries and agent-delivery guides are historical proposals, not evidence that the hosted database or their endpoints are production-ready. Do not apply `backend/db-migration.sql` over the existing marketplace schema; review and apply only the required, compatible migrations in the order below.
+
+The current public API is `https://saplaya-backend.up.railway.app`. The retired `saplaya-production-5cea.up.railway.app` hostname returns 404 and must not be used by new web or mobile builds. Set the API service's `PUBLIC_API_URL`, the website's `NEXT_PUBLIC_API_URL`, and mobile builds' `EXPO_PUBLIC_API_URL` to the current endpoint. Changing a Railway variable does not update an already-installed mobile app. Next.js public variables are embedded at build time, so rebuild the website after changing its API URL.
+
+The EAS production and preview environments use that same API endpoint and `EXPO_PUBLIC_AUTH_CALLBACK_URL=https://www.saplaya.org/auth/callback`. Preview builds therefore still target production data: do not use them for test writes. The development environment has no API URL configured; explicitly select an isolated development API before building. A new native build and distribution are required for installed apps to receive changed build-time configuration or native error-handling changes. No app-store release is performed by updating these variables.
+
+From PowerShell at the repository root, run these read-only checks after deployment:
+
+```powershell
+$env:PUBLIC_API_URL = 'https://saplaya-backend.up.railway.app'
+$env:TEAM_WEB_ORIGIN = 'https://www.saplaya.org'
+npm run verify:integration
+```
+
+The check verifies API/database readiness, the public catalog response, browser CORS, country options, TZS exchange rates, and the website's server-rendered heading. It exits unsuccessfully if any check fails. It does not create test customers, applications, orders or payments, or prove that authenticated checkout and admin operations work. Also verify the deployed website in a browser: products and farm country options must load without network errors, and retail/wholesale and currency controls must retain their behavior.
+
+Keep the existing frontend sections, styles, shopping modes and forms during SEO updates. The public website uses `https://www.saplaya.org` as its canonical host. Separate crawlable routes and structured data improve content discovery but cannot guarantee rankings or Google sitelinks.
+
+The public website has dedicated `/how-it-works`, `/fresh-today`, `/for-farmers` and `/faq` routes, with a `/help` hub for the `Home > Help > Questions` breadcrumb. Public routes have unique titles and descriptions, canonical URLs, and one H1. The homepage retains every original section. Navigation menus and the footer link to the dedicated routes; existing homepage section IDs remain valid for older links. The standalone catalog reuses the same retail/wholesale selector and basket state as the homepage. Structured data describes the organization and site search, public breadcrumbs, and the visible FAQ answers.
+
+To check the routes against a running build, set `TEST_WEB_ORIGIN` to that instance's origin and run `node --test web/test/public-routes.test.mjs`. These read-only tests check rendered content, navigation, SEO metadata, structured data, sitemap/robots output, homepage preservation and a real 404 response. Use a separate development environment before testing any forms, payments or other writes.
+
+### Search indexing after deployment
+
+After deploying the website:
+
+1. Verify `https://www.saplaya.org` loads over HTTPS and the apex `https://saplaya.org` redirects to the canonical `www` host.
+2. Check `https://www.saplaya.org/robots.txt` and `https://www.saplaya.org/sitemap.xml`. Confirm the sitemap lists only intended public URLs, uses the `www` host, and includes the priorities; robots.txt must point to that sitemap.
+3. In [Google Search Console](https://search.google.com/search-console), add and verify the domain property. Google recommends DNS verification; publish its TXT record in the domain's DNS settings, then complete verification.
+4. Open **Sitemaps**, submit `sitemap.xml`, and check that Google reports it as successfully processed.
+5. Use **URL Inspection** for the homepage and each public route (`/how-it-works`, `/fresh-today`, `/for-farmers`, `/faq`, `/help`). Confirm the inspected canonical is the matching `www` URL, then request indexing where appropriate.
+6. Validate the JSON-LD with Google's available structured-data tools and monitor Search Console's indexing and enhancement reports for errors.
+7. Recheck indexing and search performance over time. Sitemap submission and indexing requests do not guarantee crawling, indexing, rankings, or sitelinks.
+
+The website's production command, `npm start --prefix web`, uses Next.js's native `PORT` support (3000 when unset), so it works on Windows and Railway without shell-specific variable expansion. Local development remains on port 3001.
+
 The Expo web command uses `http://localhost:8081`. The production API explicitly allows that origin for development; when the app is configured to use production, orders, payments, account changes, and other writes affect real data. Use a separate development environment before testing write operations. If using a local API instead, configure its `WEB_ORIGIN` to allow `http://localhost:8081` and point `EXPO_PUBLIC_API_URL` at that API.
 
 ## Roles and restrictions

@@ -12,6 +12,7 @@
     "dev:backend": "npm run dev --prefix backend",
     "build:web": "npm run build --prefix web",
     "build:backend": "npm run build --prefix backend",
+    "verify:integration": "node scripts/verify-integration.mjs",
     "typecheck": "npm run typecheck --prefix web && npm run typecheck --prefix mobile && npx --prefix backend tsc --noEmit -p backend",
     "free-port": "node scripts/free-port.mjs"
   },

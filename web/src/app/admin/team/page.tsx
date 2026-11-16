@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
 import { Ban, Check, Minus, Pause, Play, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -58,7 +59,7 @@ function Team() {
         department_id: current.department_id || result.departments[0]?.id || '',
       }));
     } catch (error) {
-      setConfigError(error instanceof Error ? error.message : 'Could not load roles and departments.');
+      setConfigError(userFacingMessage(error, 'Could not load roles and departments.'));
     }
   }, []);
 
@@ -126,7 +127,7 @@ function Team() {
       setDepartmentForm({ name: '', description: '', theme_color: '#2E7D32' });
       await reloadRoleConfig();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not create this department.', 'bad');
+      push(userFacingMessage(error, 'Could not create this department.'), 'bad');
     } finally {
       setSavingConfig(false);
     }
@@ -148,7 +149,7 @@ function Team() {
       setRoleForm((current) => ({ ...current, name: '', permissions: ['dashboard.view'] }));
       await reloadRoleConfig();
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not create this role.', 'bad');
+      push(userFacingMessage(error, 'Could not create this role.'), 'bad');
     } finally {
       setSavingConfig(false);
     }
@@ -159,7 +160,7 @@ function Team() {
       await setMemberStatus(member.id, 'active');
       push(`${member.name} can sign in again.`);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not update this team member.', 'bad');
+      push(userFacingMessage(error, 'Could not update this team member.'), 'bad');
     }
   }
 
@@ -170,7 +171,7 @@ function Team() {
       push(`${pause.name} is paused.`, 'info');
       setPause(null);
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not pause this team member.', 'bad');
+      push(userFacingMessage(error, 'Could not pause this team member.'), 'bad');
     }
   }
 

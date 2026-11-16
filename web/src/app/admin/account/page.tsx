@@ -1,5 +1,6 @@
 'use client';
 
+import { userFacingMessage } from '@/lib/user-facing-error';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, KeyRound, Upload, UserRound } from 'lucide-react';
 import { PageHeader, Panel } from '@/components/admin/Guard';
@@ -56,13 +57,13 @@ function AccountPage() {
   useEffect(() => {
     if (!me) return;
     void fetchAdmin<WeeklyActivity>('/admin/management/my-activity').then(setActivity).catch((error: unknown) => {
-      push(error instanceof Error ? error.message : 'Could not load your weekly activity.', 'bad');
+      push(userFacingMessage(error, 'Could not load your weekly activity.'), 'bad');
     });
     if (can(me.role, 'management.view', me.permissions)) {
       void fetchAdmin<WeeklyCommission>('/admin/management/commission-summary').then((summary) => {
         setCommission(summary.members.find((entry) => entry.team_member_id === me.id) ?? null);
       }).catch((error: unknown) => {
-        push(error instanceof Error ? error.message : 'Could not load commission details.', 'bad');
+        push(userFacingMessage(error, 'Could not load commission details.'), 'bad');
       });
     }
   }, [me, push]);
@@ -78,7 +79,7 @@ function AccountPage() {
       await saveProfileName(name.trim());
       push('Your profile was updated.');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save your profile.', 'bad');
+      push(userFacingMessage(error, 'Could not save your profile.'), 'bad');
     } finally {
       setSavingProfile(false);
     }
@@ -103,7 +104,7 @@ function AccountPage() {
       push('Your password was changed.');
     } catch (error) {
       console.error('Could not change the signed-in team member password:', error);
-      push(error instanceof Error ? error.message : 'Could not change your password.', 'bad');
+      push(userFacingMessage(error, 'Could not change your password.'), 'bad');
     } finally {
       setSavingPassword(false);
     }
@@ -128,7 +129,7 @@ function AccountPage() {
       setAvatarUrl(signed.public_url);
       push('Profile photo uploaded. Save your profile to apply it.');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not upload your profile photo.', 'bad');
+      push(userFacingMessage(error, 'Could not upload your profile photo.'), 'bad');
     } finally {
       setUploadingPhoto(false);
     }
@@ -155,7 +156,7 @@ function AccountPage() {
       ]);
       push('Your personal details were updated.');
     } catch (error) {
-      push(error instanceof Error ? error.message : 'Could not save your profile.', 'bad');
+      push(userFacingMessage(error, 'Could not save your profile.'), 'bad');
     } finally {
       setSavingProfile(false);
     }

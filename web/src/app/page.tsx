@@ -2,6 +2,7 @@ import dynamic from 'next/dynamic';
 import type { Metadata } from 'next';
 import { Nav } from '@/components/landing/Nav';
 import { Hero } from '@/components/landing/Hero';
+import { serializeJsonLd } from '@/lib/json-ld';
 
 const title = 'Saplaya | Farm produce supplies and delivery';
 const description = 'Shop fresh farm produce and pantry essentials for delivery. Explore retail and wholesale options and connect with Saplaya as a supplier.';
@@ -32,12 +33,29 @@ const Footer = dynamic(() => import('@/components/landing/Footer').then((module)
 export default function Home() {
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd({
         '@context': 'https://schema.org',
-        '@type': 'Organization',
-        name: 'Saplaya',
-        url: 'https://www.saplaya.org',
-        logo: 'https://www.saplaya.org/saplaya-icon.png',
+        '@graph': [
+          {
+            '@type': 'Organization',
+            '@id': 'https://www.saplaya.org/#organization',
+            name: 'Saplaya',
+            url: 'https://www.saplaya.org/',
+            logo: 'https://www.saplaya.org/saplaya-icon.png',
+          },
+          {
+            '@type': 'WebSite',
+            '@id': 'https://www.saplaya.org/#website',
+            name: 'Saplaya',
+            url: 'https://www.saplaya.org/',
+            publisher: { '@id': 'https://www.saplaya.org/#organization' },
+            potentialAction: {
+              '@type': 'SearchAction',
+              target: 'https://www.saplaya.org/fresh-today?q={search_term_string}',
+              'query-input': 'required name=search_term_string',
+            },
+          },
+        ],
       }) }} />
       <Nav />
       <main>
