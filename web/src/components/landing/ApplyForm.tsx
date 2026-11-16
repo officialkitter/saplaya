@@ -134,10 +134,10 @@ export function ApplyForm() {
               <h3 className="font-display text-2xl font-extrabold">Apply to sell on Saplaya</h3>
               <p className="mt-1 text-ink-soft">Takes about two minutes. No fee to apply.</p>
             </div>
-            <Field label="Farm name" error={errors.farm}><Input value={f.farm} onChange={set('farm')} placeholder="Mlimani Farm" autoComplete="organization" /></Field>
+            <Field label="Farm name" error={errors.farm}><Input value={f.farm} onChange={set('farm')} placeholder="Enter the farm name" autoComplete="organization" /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Your name" error={errors.name}><Input value={f.name} onChange={set('name')} placeholder="Amina Mushi" autoComplete="name" /></Field>
-              <Field label="Phone number" error={errors.phone}><Input value={f.phone} onChange={set('phone')} placeholder="+255 7XX XXX XXX" inputMode="tel" autoComplete="tel" /></Field>
+              <Field label="Your name" error={errors.name}><Input value={f.name} onChange={set('name')} placeholder="Enter your full name" autoComplete="name" /></Field>
+              <Field label="Phone number" error={errors.phone}><Input value={f.phone} onChange={set('phone')} placeholder="Enter your phone number (include country code)" inputMode="tel" autoComplete="tel" /></Field>
             </div>
             <Field label="Email" error={errors.email}><Input type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" autoComplete="email" /></Field>
             <div className="grid gap-4 sm:grid-cols-2">

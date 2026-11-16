@@ -600,7 +600,7 @@ export default function CheckoutScreen({ navigation }: any) {
                 value={paymentPhone}
                 onChangeText={setPaymentPhone}
                 keyboardType="phone-pad"
-                placeholder={phone || '+255 7XX XXX XXX'}
+                placeholder={phone || 'Enter your phone number (include country code)'}
                 editable={!pendingVerification}
               />
               <Text style={styles.helper}>Enter your mobile-money number, or leave this blank to use your contact number. You will see the available ways to pay before confirming. Never share your PIN with Saplaya.</Text>

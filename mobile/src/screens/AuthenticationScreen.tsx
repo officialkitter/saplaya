@@ -297,7 +297,7 @@ export default function AuthenticationScreen({ navigation }: any) {
             ) : (
               <>
                 {creating && !codeSent && <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" />}
-                <Field label="Phone number" value={phone} onChangeText={(value) => { setPhone(value); setCodeSent(false); setCode(''); }} keyboardType="phone-pad" autoComplete="tel" editable={!codeSent} placeholder="+255 7XX XXX XXX" />
+                <Field label="Phone number" value={phone} onChangeText={(value) => { setPhone(value); setCodeSent(false); setCode(''); }} keyboardType="phone-pad" autoComplete="tel" editable={!codeSent} placeholder="Enter your phone number (include country code)" />
                 {codeSent && (
                   <>
                     <Field label="One-time password (OTP)" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} />

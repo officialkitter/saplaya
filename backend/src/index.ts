@@ -11,6 +11,12 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { deriveOrderMode, haversineKm, priceForQuantity, publicTierPrices, searchStorefrontProducts, selectStorefrontProducts, type OrderMode } from './storefront.js';
 import { customerOrders } from './customer-orders.js';
+import {
+  amountInMinorUnits,
+  paymentAmountsMatch,
+  quoteCurrencyAmount,
+  supportedPaymentCurrencies,
+} from './currency.js';
 import { activateTeamInvitation, claimPendingTeamInvitation, teamInvitationRedirect } from './team-auth.js';
 import {
   calculateWeeklyCommission,
@@ -55,6 +61,7 @@ const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
   realtime: { transport: realtimeTransport },
 });
+const paymentCurrencies = supportedPaymentCurrencies();
 
 const app = express();
 app.use(cors({ origin: WEB_ORIGIN === '*' ? true : WEB_ORIGIN.split(',') }));
@@ -789,42 +796,63 @@ let exchangeRateCache: {
   expiresAt: number;
 } | null = null;
 
-app.get('/exchange-rates', async (_req, res) => {
+async function loadExchangeRates() {
   if (exchangeRateCache && exchangeRateCache.expiresAt > Date.now()) {
-    res.set('Cache-Control', 'public, max-age=3600');
-    return res.json({ base: 'TZS', rates: exchangeRateCache.rates, updated_at: exchangeRateCache.updatedAt });
+    return exchangeRateCache;
   }
 
+  const response = await fetch('https://open.er-api.com/v6/latest/TZS', {
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!response.ok) throw new Error(`Exchange-rate service returned ${response.status}.`);
+  const payload: unknown = await response.json();
+  if (
+    typeof payload !== 'object'
+    || payload === null
+    || !('result' in payload) || payload.result !== 'success'
+    || !('rates' in payload) || typeof payload.rates !== 'object' || payload.rates === null
+    || !('time_last_update_utc' in payload) || typeof payload.time_last_update_utc !== 'string'
+  ) {
+    throw new Error('Exchange-rate service returned an invalid response.');
+  }
+  const rates = Object.fromEntries(
+    Object.entries(payload.rates).filter((entry): entry is [string, number] =>
+      typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0,
+    ),
+  );
+  if (rates.TZS !== 1 || typeof rates.USD !== 'number') {
+    throw new Error('Exchange-rate response is missing required currencies.');
+  }
+  exchangeRateCache = {
+    rates,
+    updatedAt: payload.time_last_update_utc,
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+  };
+  return exchangeRateCache;
+}
+
+async function paymentQuoteFor(amount: number, currency: string) {
+  if (!paymentCurrencies.includes(currency)) {
+    return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 } as const;
+  }
   try {
-    const response = await fetch('https://open.er-api.com/v6/latest/TZS', {
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!response.ok) throw new Error(`Exchange-rate service returned ${response.status}.`);
-    const payload: unknown = await response.json();
-    if (
-      typeof payload !== 'object'
-      || payload === null
-      || !('result' in payload) || payload.result !== 'success'
-      || !('rates' in payload) || typeof payload.rates !== 'object' || payload.rates === null
-      || !('time_last_update_utc' in payload) || typeof payload.time_last_update_utc !== 'string'
-    ) {
-      throw new Error('Exchange-rate service returned an invalid response.');
+    const rates = currency === 'TZS' ? { TZS: 1 } : (await loadExchangeRates()).rates;
+    const quote = quoteCurrencyAmount(amount, currency, rates, paymentCurrencies);
+    if (!quote) {
+      return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 } as const;
     }
-    const rates = Object.fromEntries(
-      Object.entries(payload.rates).filter((entry): entry is [string, number] =>
-        typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0,
-      ),
-    );
-    if (rates.TZS !== 1 || typeof rates.USD !== 'number') {
-      throw new Error('Exchange-rate response is missing required currencies.');
-    }
-    exchangeRateCache = {
-      rates,
-      updatedAt: payload.time_last_update_utc,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    };
+    return { quote } as const;
+  } catch (error) {
+    console.error(`Could not prepare ${currency} payment quote:`, error);
+    return { error: `A ${currency} payment quote is temporarily unavailable.`, status: 503 } as const;
+  }
+}
+
+app.get('/exchange-rates', async (_req, res) => {
+  try {
+    const { rates, updatedAt } = await loadExchangeRates();
     res.set('Cache-Control', 'public, max-age=3600');
-    return res.json({ base: 'TZS', rates, updated_at: exchangeRateCache.updatedAt });
+    return res.json({ base: 'TZS', rates, updated_at: updatedAt });
   } catch (error) {
     console.error('Could not load display exchange rates:', error);
     return res.status(503).json({ error: 'Display exchange rates are temporarily unavailable.' });
@@ -877,7 +905,12 @@ app.get('/checkout/options', async (_req, res) => {
     }
     onlinePayment = Boolean(data?.ipn_id);
   }
-  return res.json({ cash_on_delivery: true, online_payment: onlinePayment });
+  return res.json({
+    cash_on_delivery: true,
+    cash_currency: 'TZS',
+    online_payment: onlinePayment,
+    supported_payment_currencies: paymentCurrencies,
+  });
 });
 
 const checkoutFields = z.object({
@@ -911,6 +944,13 @@ const checkoutFields = z.object({
     phone: z.string().trim().min(5).max(32),
   }),
   payment_phone: z.string().trim().min(5).max(32).optional(),
+  currency: z.string().regex(/^[A-Za-z]{3}$/).transform((currency) => currency.toUpperCase()).default('TZS'),
+  quoted_payment_amount: z.number().positive().optional(),
+  recipient: z.object({
+    name: z.string().trim().min(1).max(120),
+    phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/),
+  }).optional(),
+  delivery_address: z.string().trim().min(1).max(500).optional(),
 });
 
 const refineDeliveryWindow = (value: { mode: OrderMode; delivery_window: string }, ctx: z.RefinementCtx) => {
@@ -933,6 +973,7 @@ const checkoutQuoteSchema = z.object({
   items: checkoutFields.shape.items,
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
+  currency: z.string().regex(/^[A-Za-z]{3}$/).transform((currency) => currency.toUpperCase()).default('TZS'),
 }).superRefine(refineDeliveryWindow);
 
 function normalizedProductName(name: string) {
@@ -942,7 +983,7 @@ function normalizedProductName(name: string) {
 app.post('/checkout/quote', requireUser, async (req, res) => {
   const parsed = checkoutQuoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { mode, delivery_window: deliveryWindow, items, lat, lng } = parsed.data;
+  const { mode, delivery_window: deliveryWindow, items, lat, lng, currency } = parsed.data;
   const { data: requestedProducts, error: requestedError } = await db
     .from('products')
     .select('id, name, catalog_product_id, wholesale_min_qty')
@@ -1060,6 +1101,12 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
   }
 
   const distanceFee = deliveryFor(distance, settings);
+  const amount = subtotal + distanceFee + speedFee;
+  const paymentQuoteResult = await paymentQuoteFor(amount, currency);
+  if ('error' in paymentQuoteResult) {
+    return res.status(paymentQuoteResult.status).json({ error: paymentQuoteResult.error });
+  }
+  const paymentQuote = paymentQuoteResult.quote;
   return res.json({
     items: quotedItems,
     subtotal,
@@ -1067,7 +1114,10 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     distance_fee: distanceFee,
     speed_fee: speedFee,
     delivery_fee: distanceFee + speedFee,
-    amount: subtotal + distanceFee + speedFee,
+    amount,
+    payment_amount: paymentQuote.payment_amount,
+    payment_currency: paymentQuote.currency,
+    exchange_rate: paymentQuote.exchange_rate,
   });
 });
 
@@ -1113,15 +1163,6 @@ function isPesapalConfigured() {
   );
 }
 
-function normalizedTanzanianPhone(phone: string): string | null {
-  const compact = phone.replace(/[\s()-]/g, '');
-  if (!/^(?:\+?255|0)?[1-9]\d{8}$/.test(compact)) return null;
-  if (compact.startsWith('+255')) return compact;
-  if (compact.startsWith('255')) return `+${compact}`;
-  if (compact.startsWith('0')) return `+255${compact.slice(1)}`;
-  return `+255${compact}`;
-}
-
 app.get('/orders', requireUser, async (req: AuthedRequest, res) => {
   if (!req.userId) return res.status(401).json({ error: 'A verified customer identity is required.' });
   const { data, error } = await customerOrders(db, req.userId);
@@ -1130,21 +1171,31 @@ app.get('/orders', requireUser, async (req: AuthedRequest, res) => {
 });
 
 app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) => {
+  const parsed = checkoutSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!paymentCurrencies.includes(parsed.data.currency)) {
+    return res.status(400).json({
+      error: `Online payments in ${parsed.data.currency} are not supported by this merchant.`,
+    });
+  }
   if (!isPesapalConfigured()) {
     return res.status(503).json({ error: 'Pesapal checkout is not configured on the server.' });
   }
-
-  const parsed = checkoutSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   if (parsed.data.client_platform === 'web' && !WEB_CHECKOUT_CALLBACK_URL) {
     return res.status(503).json({ error: 'Web payment return URL is not configured on the server.' });
   }
   const {
     client_platform: clientPlatform, mode, items, lat, lng, customer, delivery_window: deliveryWindow,
     delivery_fee_accepted: deliveryFeeAccepted, quoted_delivery_fee: quotedDeliveryFee,
+    currency, quoted_payment_amount: quotedPaymentAmount, recipient, delivery_address: deliveryAddress,
   } = parsed.data;
-  const phone = normalizedTanzanianPhone(parsed.data.payment_phone ?? customer.phone);
-  if (!phone) return res.status(400).json({ error: 'Enter a valid Tanzanian mobile number.' });
+  const phone = parsed.data.payment_phone ?? customer.phone;
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+    return res.status(400).json({ error: 'Enter a valid international phone number in E.164 format (for example, +255700000000).' });
+  }
+  if (currency !== 'TZS' && quotedPaymentAmount === undefined) {
+    return res.status(400).json({ error: 'A quoted_payment_amount is required for foreign-currency checkout.' });
+  }
 
   const { data: providerConfig, error: configError } = await db
     .from('payment_provider_config')
@@ -1225,6 +1276,20 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     return res.status(409).json({ error: 'Accept the quoted delivery charge before continuing.' });
   }
   const amount = subtotal + fee;
+  const paymentQuoteResult = await paymentQuoteFor(amount, currency);
+  if ('error' in paymentQuoteResult) {
+    return res.status(paymentQuoteResult.status).json({ error: paymentQuoteResult.error });
+  }
+  const paymentQuote = paymentQuoteResult.quote;
+  if (
+    quotedPaymentAmount !== undefined
+    && amountInMinorUnits(quotedPaymentAmount, currency)
+      !== amountInMinorUnits(paymentQuote.payment_amount, currency)
+  ) {
+    return res.status(409).json({
+      error: 'The payment currency conversion changed. Review the refreshed payment quote before continuing.',
+    });
+  }
   const transactionRef = `saplaya-${randomUUID()}`;
   const { error: paymentError } = await db.from('checkout_payments').insert({
     transaction_ref: transactionRef,
@@ -1239,10 +1304,15 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     customer_email: customer.email,
     customer_name: customer.name,
     customer_phone: customer.phone,
+    recipient_name: recipient?.name ?? null,
+    recipient_phone: recipient?.phone ?? null,
+    delivery_address: deliveryAddress ?? null,
     delivery_window: deliveryWindow,
     client_platform: clientPlatform,
     amount,
-    currency: 'TZS',
+    payment_amount: paymentQuote.payment_amount,
+    currency: paymentQuote.currency,
+    exchange_rate: paymentQuote.exchange_rate,
   });
   if (paymentError) {
     console.error('Could not create checkout payment record:', paymentError.message);
@@ -1253,12 +1323,14 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
   try {
     const order = await submitOrder({
       reference: transactionRef,
-      amount,
+      amount: paymentQuote.payment_amount,
+      currency: paymentQuote.currency,
       callbackUrl: `${PUBLIC_API_URL!.replace(/\/+$/, '')}/payments/callback`,
       ipnId: providerConfig.ipn_id,
       email: customer.email,
       phone,
       name: customer.name,
+      deliveryAddress,
     });
     orderTrackingId = order.order_tracking_id;
     if (order.merchant_reference !== transactionRef) {
@@ -1287,7 +1359,10 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
       tx_ref: transactionRef,
       order_tracking_id: orderTrackingId,
       amount,
-      currency: 'TZS',
+      base_amount: amount,
+      payment_amount: paymentQuote.payment_amount,
+      payment_currency: paymentQuote.currency,
+      exchange_rate: paymentQuote.exchange_rate,
       delivery_fee: fee,
       distance_km: Number(distance.toFixed(2)),
       subtotal,
@@ -1317,7 +1392,11 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   const {
     mode, items, lat, lng, customer, delivery_window: deliveryWindow,
     delivery_fee_accepted: deliveryFeeAccepted, quoted_delivery_fee: quotedDeliveryFee, request_key: requestKey,
+    currency, recipient, delivery_address: deliveryAddress,
   } = parsed.data;
+  if (currency !== 'TZS') {
+    return res.status(400).json({ error: 'Cash on delivery is only available in TZS.' });
+  }
 
   const { data: products, error: productError } = await db
     .from('products')
@@ -1401,6 +1480,9 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
     p_customer_name: customer.name,
     p_customer_email: customer.email,
     p_customer_phone: customer.phone,
+    p_recipient_name: recipient?.name ?? null,
+    p_recipient_phone: recipient?.phone ?? null,
+    p_delivery_address: deliveryAddress ?? null,
   });
   if (orderError || !orderId) {
     console.error('Could not place cash-on-delivery order:', orderError?.message ?? 'Order ID was not returned.');
@@ -1416,7 +1498,7 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
 
   const [{ data: savedOrder, error: savedOrderError }, { data: savedItems, error: savedItemsError }] = await Promise.all([
     db.from('orders')
-      .select('id, subtotal, delivery_fee, delivery_window, created_at')
+      .select('id, subtotal, delivery_fee, delivery_window, recipient_name, recipient_phone, delivery_address, created_at')
       .eq('id', orderId)
       .eq('customer_id', req.userId)
       .single(),
@@ -1438,6 +1520,11 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
     delivery_fee: Number(savedOrder.delivery_fee),
     amount: Number(savedOrder.subtotal) + Number(savedOrder.delivery_fee),
     delivery_window: savedOrder.delivery_window,
+    recipient: savedOrder.recipient_name ? {
+      name: savedOrder.recipient_name,
+      phone: savedOrder.recipient_phone,
+    } : null,
+    delivery_address: savedOrder.delivery_address,
     created_at: savedOrder.created_at,
     items: (savedItems ?? []).map((item) => ({
       product_id: item.product_id,
@@ -1608,7 +1695,7 @@ app.post('/payments/confirm', requireUser, async (req: AuthedRequest, res) => {
   const { tx_ref: transactionRef, order_tracking_id: orderTrackingId } = parsed.data;
   const { data: payment, error: paymentError } = await db
     .from('checkout_payments')
-    .select('amount, currency, status, order_id, gateway_transaction_id')
+    .select('payment_amount, currency, status, order_id, gateway_transaction_id')
     .eq('transaction_ref', transactionRef)
     .eq('customer_id', req.userId!)
     .maybeSingle();
@@ -1644,7 +1731,10 @@ app.post('/payments/confirm', requireUser, async (req: AuthedRequest, res) => {
       }
       return res.status(202).json({ status: 'pending', message: 'Payment has not been confirmed yet.' });
     }
-    if (Math.round(Number(verified.amount)) !== Number(payment.amount) || verified.currency !== payment.currency) {
+    if (
+      verified.currency !== payment.currency
+      || !paymentAmountsMatch(verified.amount, payment.payment_amount, payment.currency)
+    ) {
       console.error('Pesapal completed payment does not match the expected amount or currency:', transactionRef);
       return res.status(409).json({ error: 'Payment details do not match this checkout. Please contact support.' });
     }
@@ -1750,7 +1840,7 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
 
     const { data: paymentDetails, error: paymentDetailsError } = await db
       .from('checkout_payments')
-      .select('amount, currency')
+      .select('payment_amount, currency')
       .eq('transaction_ref', payment.transaction_ref)
       .maybeSingle();
     if (paymentDetailsError || !paymentDetails) {
@@ -1758,7 +1848,7 @@ app.get('/api/v1/payments/pesapal-ipn', async (req, res) => {
       return res.status(503).json(acknowledge(500));
     }
     if (
-      Math.round(Number(verified.amount)) !== Number(paymentDetails.amount)
+      !paymentAmountsMatch(verified.amount, paymentDetails.payment_amount, paymentDetails.currency)
       || verified.currency !== paymentDetails.currency
     ) {
       console.error('Pesapal notified payment amount or currency did not match:', payment.transaction_ref);

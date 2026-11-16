@@ -1,3 +1,5 @@
+import { amountInMinorUnits } from './currency.js';
+
 type PesapalError = {
   type: string;
   code: string;
@@ -163,19 +165,27 @@ export type PesapalOrder = {
 export async function submitOrder(order: {
   reference: string;
   amount: number;
+  currency: string;
   callbackUrl: string;
   ipnId: string;
   email: string;
   phone: string;
   name: string;
+  deliveryAddress?: string;
 }): Promise<PesapalOrder> {
+  if (amountInMinorUnits(order.amount, order.currency) === null || order.amount <= 0) {
+    throw new Error(`The ${order.currency} payment amount has invalid precision.`);
+  }
+  if (!/^\+[1-9]\d{7,14}$/.test(order.phone)) {
+    throw new Error('Pesapal requires a valid international E.164 phone number.');
+  }
   const token = await getAccessToken();
   const names = order.name.trim().split(/\s+/);
   const response = await request<PesapalResponse>('/api/Transactions/SubmitOrderRequest', token, {
     method: 'POST',
     body: JSON.stringify({
       id: order.reference,
-      currency: 'TZS',
+      currency: order.currency,
       amount: order.amount,
       description: 'Saplaya groceries checkout',
       callback_url: order.callbackUrl,
@@ -187,7 +197,7 @@ export async function submitOrder(order: {
         first_name: names[0],
         middle_name: '',
         last_name: names.slice(1).join(' ') || names[0],
-        line_1: '',
+        line_1: order.deliveryAddress ?? '',
         line_2: '',
         city: '',
         state: '',
