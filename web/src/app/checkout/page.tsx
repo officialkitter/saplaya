@@ -7,6 +7,7 @@ import { useStorefrontCart } from '@/lib/cart';
 import { useGlobalMarket } from '@/lib/global-market';
 import { StorefrontRequestError, storefrontRequest } from '@/lib/storefront-auth';
 import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
+import { DeliveryAddressSearch } from '@/components/DeliveryAddressSearch';
 
 type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
@@ -17,18 +18,18 @@ type CheckoutQuote = {
   distance_km: number;
   delivery_fee: number;
   amount: number;
+  payment_currency: string;
+  payment_amount: number;
+  exchange_rate: number;
 };
-type CheckoutOptions = { cash_on_delivery: boolean; online_payment: boolean };
+type CheckoutOptions = { cash_on_delivery: boolean; online_payment: boolean; payment_currencies: string[]; cash_currency: string };
 type PaymentSession = { payment_url: string };
 type OrderResult = { order_id: string; amount: number };
-
-function formatTZS(amount: number) {
-  return new Intl.NumberFormat('en-TZ', { style: 'currency', currency: 'TZS', maximumFractionDigits: 0 }).format(amount);
-}
 
 export default function CheckoutPage() {
   const { lines, setQuantity, clear, mode, preferredMode, setPreferredMode } = useStorefrontCart();
   const market = useGlobalMarket();
+  const formatTZS = market.formatPrice;
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [options, setOptions] = useState<CheckoutOptions | null>(null);
   const [deliveryWindow, setDeliveryWindow] = useState<DeliveryEta>('morning');
@@ -37,6 +38,8 @@ export default function CheckoutPage() {
   const [quoteRefreshVersion, setQuoteRefreshVersion] = useState(0);
   const [quoteError, setQuoteError] = useState('');
   const [contact, setContact] = useState({ name: '', email: '', phone: '' });
+  const [forSomeoneElse, setForSomeoneElse] = useState(false);
+  const [recipient, setRecipient] = useState({ name: '', phone: '' });
   const [paymentPhone, setPaymentPhone] = useState('');
   const [acceptedFee, setAcceptedFee] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,6 +57,7 @@ export default function CheckoutPage() {
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
     mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
+    currency: paymentMethod === 'online' ? market.currency : 'TZS',
   });
   const currentQuoteKey = useRef(quoteKey);
   currentQuoteKey.current = quoteKey;
@@ -92,28 +96,35 @@ export default function CheckoutPage() {
       items,
       lat: market.location.lat,
       lng: market.location.lng,
+      currency: paymentMethod === 'online' ? market.currency : 'TZS',
     }).then((result) => {
       if (active) setQuotedBasket({ key: quoteKey, quote: result });
     }).catch((cause: unknown) => {
       if (active) setQuoteError(userFacingMessage(cause, 'Could not prepare your delivery quote.'));
     });
     return () => { active = false; };
-  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, items, market.location, mode, deliveryWindow]);
+  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, items, market.location, market.currency, paymentMethod, mode, deliveryWindow]);
 
   useEffect(() => {
     cashRequestKey.current = null;
-  }, [quoteKey, contact.name, contact.email, contact.phone, acceptedFee]);
+  }, [quoteKey, contact.name, contact.email, contact.phone, acceptedFee, forSomeoneElse, recipient.name, recipient.phone, market.placeName]);
 
   const submit = useCallback(async () => {
     setError('');
     if (!lines.length) return setError('Add at least one product before checkout.');
-    if (!market.location) return setError('Allow precise location access to calculate farm availability and delivery.');
+    if (!market.location) return setError('Search for a delivery address or use GPS to calculate availability and delivery.');
     if (!quote) return setError(quoteError || 'Wait for the latest delivery quote before placing your order.');
     if (!contact.name.trim() || !contact.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) {
       return setError('Enter your name, a valid email address and a reachable phone number.');
     }
     if (quote.delivery_fee > 0 && !acceptedFee) return setError('Accept the quoted delivery charge to continue.');
+    if (forSomeoneElse && (!recipient.name.trim() || !/^\+[1-9]\d{7,14}$/.test(recipient.phone.trim()))) {
+      return setError('Enter the recipient’s name and phone number with country code.');
+    }
     if (paymentMethod === 'online' && !options?.online_payment) return setError('Online payment is not available for web checkout yet.');
+    if (paymentMethod === 'online' && !options?.payment_currencies.includes(market.currency)) {
+      return setError(`Online payment in ${market.currency} is not supported by this merchant. Choose a supported currency or pay on delivery in ${options?.cash_currency || 'TZS'}.`);
+    }
 
     setBusy(true);
     try {
@@ -128,6 +139,10 @@ export default function CheckoutPage() {
         lat: market.location.lat,
         lng: market.location.lng,
         customer: { name: contact.name.trim(), email: contact.email.trim(), phone: contact.phone.trim() },
+        delivery_address: market.placeName || `${market.location.lat}, ${market.location.lng}`,
+        ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
+        currency: paymentMethod === 'online' ? market.currency : 'TZS',
+        quoted_payment_amount: quote.payment_amount,
       };
       if (paymentMethod === 'online') {
         const payment = await storefrontRequest<PaymentSession>('/payments/initialize', {
@@ -156,7 +171,7 @@ export default function CheckoutPage() {
     } finally {
       setBusy(false);
     }
-  }, [lines, market.location, quote, quoteError, contact, paymentPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, quoteKey, clear]);
+  }, [lines, market.location, market.placeName, market.currency, quote, quoteError, contact, forSomeoneElse, recipient, paymentPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, quoteKey, clear]);
 
   if (orderId) {
     return (
@@ -165,7 +180,7 @@ export default function CheckoutPage() {
           <p className="text-sm font-extrabold uppercase tracking-wide text-leaf-deep">Order received</p>
           <h1 className="mt-3 font-display text-3xl font-extrabold">Thank you for ordering with Saplaya.</h1>
           <p className="mt-3 text-ink-soft">Your order reference is <strong className="break-all text-ink">{orderId}</strong>.</p>
-          <p className="mt-2 text-sm text-ink-mute">The delivery team will contact you using the details provided.</p>
+          <p className="mt-2 text-sm text-ink-mute">{forSomeoneElse ? 'The delivery team will contact the recipient using the details provided.' : 'The delivery team will contact you using the details provided.'}</p>
           <Link className="mt-6 inline-flex rounded-xl bg-leaf px-5 py-3 font-bold text-white" href="/orders">View order status</Link>
         </section>
       </main>
@@ -223,13 +238,19 @@ export default function CheckoutPage() {
 
       <aside className="h-fit rounded-3xl border border-line bg-white p-5 shadow-soft" style={{ borderColor: `${theme.accent}66` }}>
         <h2 className="font-display text-xl font-extrabold" style={{ color: theme.accent }}>Delivery and payment</h2>
+        <label className="mt-4 block text-sm font-bold">Currency
+          <select value={market.currency} onChange={(event) => market.setCurrency(event.target.value)} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
+            {market.currencies.map((code) => <option key={code}>{code}</option>)}
+          </select>
+        </label>
         {setupError && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{setupError}</p>}
         <div className="mt-4 space-y-3">
           <button type="button" onClick={market.requestLocation} className="w-full rounded-xl border border-leaf px-4 py-3 text-left font-bold text-leaf-deep">
-            {market.location ? `Precise location ready (${market.location.accuracy.toFixed(0)} m accuracy)` : 'Use my current location'}
+            Use my current location
           </button>
           {market.locationError && <p role="status" className="text-sm text-red-700">{market.locationError}</p>}
           {market.location && <p className="text-xs text-ink-mute">Coordinates are used to match farms and calculate delivery. They are not shown in the public shop.</p>}
+          <DeliveryAddressSearch />
 
           <label className="block text-sm font-bold">Order type
             <select value={preferredMode} onChange={(event) => setPreferredMode(event.target.value as 'retail' | 'wholesale')} className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5">
@@ -253,6 +274,7 @@ export default function CheckoutPage() {
             <label key={field} className="block text-sm font-bold capitalize">{field === 'phone' ? 'Phone number' : field}
               <input
                 type={field === 'email' ? 'email' : 'text'}
+                placeholder={field === 'name' ? 'Enter your full name' : field === 'email' ? 'Enter your email address' : 'Enter your phone number with country code'}
                 autoComplete={field === 'name' ? 'name' : field === 'email' ? 'email' : 'tel'}
                 value={contact[field]}
                 onChange={(event) => setContact((current) => ({ ...current, [field]: event.target.value }))}
@@ -260,6 +282,22 @@ export default function CheckoutPage() {
               />
             </label>
           ))}
+          <label className="flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox" checked={forSomeoneElse} onChange={(event) => setForSomeoneElse(event.target.checked)} />
+            I’m ordering for someone else
+          </label>
+          {forSomeoneElse && (
+            <fieldset className="space-y-3 rounded-xl border border-line p-3">
+              <legend className="px-1 text-sm font-bold">Recipient details</legend>
+              <p className="text-xs text-ink-mute">Your receipt stays with you. Delivery goes to the confirmed destination above.</p>
+              <label className="block text-sm font-bold">Recipient name
+                <input value={recipient.name} maxLength={120} placeholder="Enter the recipient’s full name" onChange={(event) => setRecipient((current) => ({ ...current, name: event.target.value }))} className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
+              </label>
+              <label className="block text-sm font-bold">Recipient phone number
+                <input type="tel" value={recipient.phone} maxLength={32} placeholder="Enter phone number with country code" onChange={(event) => setRecipient((current) => ({ ...current, phone: event.target.value }))} className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
+              </label>
+            </fieldset>
+          )}
 
           {options?.online_payment && (
             <label className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm font-bold">
@@ -292,11 +330,16 @@ export default function CheckoutPage() {
           )}
 
           {quoteError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{quoteError}</p>}
+          {paymentMethod === 'online' && options && !options.payment_currencies.includes(market.currency) && <p role="alert" className="text-sm text-red-700">
+            Online payments support {options.payment_currencies.join(', ')}. Choose a supported currency above, or pay on delivery in {options.cash_currency}.
+          </p>}
+          {paymentMethod === 'cash_on_delivery' && <p className="text-xs font-bold text-ink-mute">Payment on delivery is collected in {options?.cash_currency || 'TZS'}. Converted prices are for reference.</p>}
           {quote && (
             <div className="space-y-2 border-t border-line pt-3 text-sm">
               <p className="flex justify-between"><span>Items (server quote)</span><strong>{formatTZS(quote.subtotal)}</strong></p>
               <p className="flex justify-between"><span>Delivery</span><strong>{formatTZS(quote.delivery_fee)}</strong></p>
               <p className="flex justify-between text-base"><span>Total</span><strong>{formatTZS(quote.amount)}</strong></p>
+              <p className="flex flex-wrap justify-between gap-2 font-bold"><span>Amount to pay ({quote.payment_currency})</span><strong>{new Intl.NumberFormat(undefined, { style: 'currency', currency: quote.payment_currency }).format(quote.payment_amount)}</strong></p>
               {quote.delivery_fee > 0 && (
                 <label className="flex items-start gap-2 pt-1">
                   <input type="checkbox" checked={acceptedFee} onChange={(event) => setAcceptedFee(event.target.checked)} />

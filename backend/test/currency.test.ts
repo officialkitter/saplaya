@@ -28,6 +28,17 @@ test('unsupported currencies and missing FX rates never fall back to TZS', () =>
   assert.throws(() => supportedPaymentCurrencies('TZS,NOT'), /ISO 4217/);
 });
 
+test('cash quote conversion remains available in TZS when the merchant only enables other currencies', () => {
+  const enabled = supportedPaymentCurrencies('USD');
+  assert.deepEqual(quoteCurrencyAmount(2500, 'TZS', {}, enabled), {
+    currency: 'TZS',
+    payment_amount: 2500,
+    exchange_rate: 1,
+    fraction_digits: 2,
+  });
+  assert.equal(quoteCurrencyAmount(2500, 'USD', { USD: 0.0004 }, enabled)?.payment_amount, 1);
+});
+
 test('gateway amounts are compared at the currency minor-unit precision', () => {
   assert.equal(paymentAmountsMatch('12.34', 12.34, 'USD'), true);
   assert.equal(paymentAmountsMatch('12.35', 12.34, 'USD'), false);

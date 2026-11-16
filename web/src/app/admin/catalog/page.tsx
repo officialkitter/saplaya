@@ -7,9 +7,11 @@ import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input } from '@/components/ui/Fields';
+import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Modal } from '@/components/ui/Modal';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
-import { formatTZS, localDateTime } from '@/lib/format';
+import { localDateTime } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { useMe, useToast } from '@/lib/store';
 import { tierPrices } from '@/lib/volume';
 
@@ -59,6 +61,7 @@ const blankForm: Form = {
 };
 
 function SharedCatalog() {
+  const { formatPrice } = useGlobalMarket();
   const push = useToast((state) => state.push);
   const me = useMe();
   const [pricingPercentages, setPricingPercentages] = useState({ wholesale: 70, bulk: 65, mega_bulk: 55 });
@@ -180,7 +183,7 @@ function SharedCatalog() {
       return;
     }
     if (!Number.isInteger(retail) || retail < 2 || !Number.isInteger(wholesale) || wholesale <= 0 || wholesale >= retail) {
-      push('Set a whole retail price of at least 2 TSh.', 'bad');
+      push('Set a whole retail price of at least 2 base TZS.', 'bad');
       return;
     }
     if (!Number.isInteger(minimum) || minimum <= 0) {
@@ -260,7 +263,7 @@ function SharedCatalog() {
                   <div className="min-w-0 flex-1 basis-60">
                     <p className="break-words font-extrabold">{product?.name ?? 'Catalog item'}</p>
                     <p className="mt-1 text-sm text-ink-mute">
-                      Proposed retail {formatTZS(proposal.retail_price)} · wholesale {formatTZS(proposal.wholesale_price)}
+                      Proposed retail {formatPrice(proposal.retail_price)} · wholesale {formatPrice(proposal.wholesale_price)}
                     </p>
                     <p className="mt-1 text-xs text-ink-mute">{localDateTime(proposal.created_at)}</p>
                   </div>
@@ -325,10 +328,10 @@ function SharedCatalog() {
                   </span>
                 </div>
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-2xl bg-milk p-3 text-sm">
-                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Retail</dt><dd className="font-semibold tabular-nums">{formatTZS(item.retail_price)}</dd></div>
-                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Wholesale</dt><dd className="font-semibold tabular-nums">{formatTZS(item.wholesale_price)}</dd></div>
-                  {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Bulk</dt><dd className="font-semibold tabular-nums">{item.bulk_price == null ? 'Not set' : formatTZS(item.bulk_price)}</dd></div>}
-                  {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Mega-bulk</dt><dd className="font-semibold tabular-nums">{item.mega_bulk_price == null ? 'Not set' : formatTZS(item.mega_bulk_price)}</dd></div>}
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Retail</dt><dd className="font-semibold tabular-nums">{formatPrice(item.retail_price)}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Wholesale</dt><dd className="font-semibold tabular-nums">{formatPrice(item.wholesale_price)}</dd></div>
+                  {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Bulk</dt><dd className="font-semibold tabular-nums">{item.bulk_price == null ? 'Not set' : formatPrice(item.bulk_price)}</dd></div>}
+                  {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Mega-bulk</dt><dd className="font-semibold tabular-nums">{item.mega_bulk_price == null ? 'Not set' : formatPrice(item.mega_bulk_price)}</dd></div>}
                 </dl>
                 <Button variant="soft" size="sm" className="mt-2.5 w-full" onClick={() => startEdit(item)} icon={<Pencil size={16} />}>Edit</Button>
               </li>
@@ -354,10 +357,10 @@ function SharedCatalog() {
                       <p className="font-bold">{item.name}</p>
                       <p className="text-xs text-ink-mute">{item.category} · per {item.unit}</p>
                     </td>
-                    <td className="px-3 py-3 font-semibold">{formatTZS(item.retail_price)}</td>
-                    <td className="px-3 py-3 font-semibold">{formatTZS(item.wholesale_price)}</td>
-                    {canViewTierPricing && <td className="px-3 py-3 font-semibold">{item.bulk_price == null ? 'Not set' : formatTZS(item.bulk_price)}</td>}
-                    {canViewTierPricing && <td className="px-3 py-3 font-semibold">{item.mega_bulk_price == null ? 'Not set' : formatTZS(item.mega_bulk_price)}</td>}
+                    <td className="px-3 py-3 font-semibold">{formatPrice(item.retail_price)}</td>
+                    <td className="px-3 py-3 font-semibold">{formatPrice(item.wholesale_price)}</td>
+                    {canViewTierPricing && <td className="px-3 py-3 font-semibold">{item.bulk_price == null ? 'Not set' : formatPrice(item.bulk_price)}</td>}
+                    {canViewTierPricing && <td className="px-3 py-3 font-semibold">{item.mega_bulk_price == null ? 'Not set' : formatPrice(item.mega_bulk_price)}</td>}
                     <td className="px-3 py-3">
                       <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${item.price_approved ? 'bg-leaf-soft text-leaf-deep' : 'bg-sun-soft text-sun-deep'}`}>
                         {item.price_approved ? 'Approved' : 'Needs approval'}
@@ -378,17 +381,17 @@ function SharedCatalog() {
       <Modal open={!!editing && !!form} onClose={() => { setEditing(null); setForm(null); }} title={editing === 'new' ? 'Add catalog product' : editing ? `Edit ${editing.name}` : 'Catalog product'}>
         {form && (
           <div className="space-y-4">
-            <Field label="Product name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Tomatoes" /></Field>
+            <Field label="Product name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Enter the product name" /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Category"><Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></Field>
               <Field label="Unit"><Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} /></Field>
-              <Field label="Retail price (TZS)"><Input type="number" min="1" value={form.retail_price} onChange={(event) => setForm({ ...form, retail_price: event.target.value })} /></Field>
-              <Field label={`Wholesale · ${pricingPercentages.wholesale}% of retail`}><Input value={formatTZS(tierPrices(Number(form.retail_price), pricingPercentages).wholesale)} readOnly /></Field>
+              <Field label="Retail price" hint="Enter the selected currency. Saved amounts are converted to the accounting base."><CurrencyInput min="0" value={form.retail_price} onValueChange={(value) => setForm({ ...form, retail_price: value })} /></Field>
+              <Field label={`Wholesale · ${pricingPercentages.wholesale}% of retail (display estimate)`}><Input value={formatPrice(tierPrices(Number(form.retail_price), pricingPercentages).wholesale)} readOnly /></Field>
               <Field label="Wholesale minimum quantity"><Input type="number" min="1" value={form.wholesale_min_qty} onChange={(event) => setForm({ ...form, wholesale_min_qty: event.target.value })} /></Field>
               {canViewTierPricing && (
                 <>
-                  <Field label={`Bulk · ${pricingPercentages.bulk}% of retail`}><Input value={formatTZS(tierPrices(Number(form.retail_price), pricingPercentages).bulk)} readOnly /></Field>
-                  <Field label={`Mega-bulk · ${pricingPercentages.mega_bulk}% of retail`}><Input value={formatTZS(tierPrices(Number(form.retail_price), pricingPercentages).mega_bulk)} readOnly /></Field>
+                  <Field label={`Bulk · ${pricingPercentages.bulk}% of retail (display estimate)`}><Input value={formatPrice(tierPrices(Number(form.retail_price), pricingPercentages).bulk)} readOnly /></Field>
+                  <Field label={`Mega-bulk · ${pricingPercentages.mega_bulk}% of retail (display estimate)`}><Input value={formatPrice(tierPrices(Number(form.retail_price), pricingPercentages).mega_bulk)} readOnly /></Field>
                 </>
               )}
             </div>

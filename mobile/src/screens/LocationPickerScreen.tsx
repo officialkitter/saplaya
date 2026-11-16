@@ -1,6 +1,6 @@
 import { userFacingMessage } from '../lib/user-facing-error';
-import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { View as MotiView } from 'moti/build/components/view';
@@ -9,6 +9,9 @@ import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, volumeTheme } from '../theme';
+import { API_URL } from '../lib/supabase';
+
+type SearchPlace = { id: string; label: string; lat: number; lng: number; partial_match: boolean };
 
 export default function LocationPickerScreen({ navigation }: any) {
   const current = useDeliveryPlace();
@@ -16,7 +19,12 @@ export default function LocationPickerScreen({ navigation }: any) {
   const { addresses } = useAccount();
   const { mode } = useStore();
   const theme = volumeTheme(mode);
-  const [label, setLabel] = useState(current.label);
+  const [label, setLabel] = useState('');
+  const [results, setResults] = useState<SearchPlace[]>([]);
+  const [selected, setSelected] = useState<SearchPlace | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
+  const generation = useRef(0);
   const [busy, setBusy] = useState(false);
 
   const choose = async (place: typeof current) => {
@@ -40,19 +48,32 @@ export default function LocationPickerScreen({ navigation }: any) {
     }
   };
 
-  const saveLabel = () => {
-    if (!label.trim()) {
-      Alert.alert('Enter a delivery location', 'Add a neighborhood or delivery landmark.');
+  const search = async () => {
+    const request = ++generation.current;
+    setError('');
+    setResults([]);
+    setSelected(null);
+    if (label.trim().length < 3) {
+      setError('Enter an address with at least three characters.');
       return;
     }
-    Alert.alert(
-      'Use this delivery location?',
-      'For the most accurate delivery fee, use your current GPS location or select a saved address.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Use location', onPress: () => choose({ ...current, label: label.trim() }) },
-      ],
-    );
+    setSearching(true);
+    try {
+      const response = await fetch(`${API_URL}/location/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: label.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not search delivery addresses.');
+      if (request !== generation.current) return;
+      setResults(result.places);
+      if (!result.places.length) setError('No matching address found. Include the city and country, or use GPS.');
+    } catch (cause) {
+      if (request === generation.current) setError(userFacingMessage(cause, 'Could not search delivery addresses.'));
+    } finally {
+      if (request === generation.current) setSearching(false);
+    }
   };
 
   return (
@@ -90,22 +111,51 @@ export default function LocationPickerScreen({ navigation }: any) {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>Enter a neighborhood or landmark</Text>
+          <Text style={styles.sectionTitle}>Search for a delivery address</Text>
           <TextInput
             value={label}
-            onChangeText={setLabel}
-            placeholder="e.g. Nkuhungu, near the market"
+            onChangeText={(text) => {
+              generation.current += 1;
+              setLabel(text);
+              setResults([]);
+              setSelected(null);
+              setError('');
+              setSearching(false);
+            }}
+            placeholder="Enter a street address, city and country"
             placeholderTextColor={colors.muted}
             style={styles.input}
-            returnKeyType="done"
-            onSubmitEditing={saveLabel}
+            returnKeyType="search"
+            onSubmitEditing={() => void search()}
           />
           <Text style={styles.note}>
-            This updates your delivery label. GPS coordinates stay at the current map point until you choose a saved address or use GPS.
+            Order for yourself or someone else. Select a matching address and confirm its map location; delivery fees are recalculated for that destination.
           </Text>
-          <Pressable style={[styles.button, { backgroundColor: theme.button }]} onPress={saveLabel}>
-            <Text style={[styles.buttonText, { color: theme.buttonText }]}>Use this location</Text>
+          <Pressable accessibilityRole="button" disabled={searching} style={[styles.button, { backgroundColor: theme.button }]} onPress={() => void search()}>
+            <Text style={[styles.buttonText, { color: theme.buttonText }]}>{searching ? 'Searching…' : 'Find address'}</Text>
           </Pressable>
+          {error ? <Text accessibilityRole="alert" style={styles.note}>{error}</Text> : null}
+          {results.map((result) => (
+            <Pressable key={result.id} accessibilityRole="radio" accessibilityState={{ checked: selected?.id === result.id }} style={[styles.savedRow, { marginTop: 10 }]} onPress={() => setSelected(result)}>
+              <Ionicons name={selected?.id === result.id ? 'radio-button-on' : 'radio-button-off'} size={22} color={theme.icon} />
+              <Text style={[styles.itemTitle, { flex: 1 }]}>{result.label}{result.partial_match ? '\nPartial match — check the map carefully.' : ''}</Text>
+            </Pressable>
+          ))}
+          {selected && (
+            <>
+              <Pressable accessibilityRole="link" style={styles.button} onPress={() => {
+                void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}&query_place_id=${encodeURIComponent(selected.id)}`).catch((cause) => {
+                  Alert.alert('Could not open map', userFacingMessage(cause, 'Please try again.'));
+                });
+              }}><Text style={styles.buttonText}>Check destination on Google Maps</Text></Pressable>
+              <Pressable accessibilityRole="button" disabled={busy} style={[styles.button, { backgroundColor: theme.button }]} onPress={async () => {
+                setBusy(true);
+                await choose({ lat: selected.lat, lng: selected.lng, label: selected.label, approximate: false });
+                setBusy(false);
+              }}><Text style={[styles.buttonText, { color: theme.buttonText }]}>Confirm delivery destination</Text></Pressable>
+            </>
+          )}
+          <Text style={styles.note}>Address results by Google Maps</Text>
         </MotiView>
       </ScrollView>
     </SafeAreaView>

@@ -9,14 +9,16 @@ test('order history is scoped to the verified customer, including a guest identi
     { id: 'other-order', customer_id: 'other' },
   ];
   let customerId = '';
+  let selectedFields = '';
   const query = {
-    select() { return query; },
+    select(fields: string) { selectedFields = fields; return query; },
     eq(field: string, value: string) { assert.equal(field, 'customer_id'); customerId = value; return query; },
     order(field: string, options: { ascending: boolean }) { assert.equal(field, 'created_at'); assert.equal(options.ascending, false); return query; },
     async limit(limit: number) { assert.equal(limit, 50); return { data: rows.filter((row) => row.customer_id === customerId), error: null }; },
   };
   const db = { from(table: string) { assert.equal(table, 'orders'); return query; } } as unknown as SupabaseClient;
   assert.deepEqual((await customerOrders(db, 'guest')).data, [rows[0]]);
+  assert.match(selectedFields, /recipient_name, recipient_phone, delivery_address/);
   assert.deepEqual((await customerOrders(db, 'other')).data, [rows[1]]);
   await assert.rejects(customerOrders(db, ''), /verified customer identity/);
 });

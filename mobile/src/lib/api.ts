@@ -76,6 +76,10 @@ export type CheckoutInput = {
   lng: number;
   customer: { name: string; email: string; phone: string };
   payment_phone?: string;
+  currency?: string;
+  quoted_payment_amount?: number;
+  recipient?: { name: string; phone: string };
+  delivery_address?: string;
 };
 
 export type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
@@ -99,9 +103,13 @@ export type CheckoutQuote = {
   speed_fee: number;
   delivery_fee: number;
   amount: number;
+  payment_currency: string;
+  payment_amount: number;
+  exchange_rate: number;
 };
 
 export async function fetchCheckoutQuote(input: {
+  currency?: string;
   mode: Mode;
   delivery_window: DeliveryEta;
   items: { product_id: string; qty: number }[];
@@ -151,6 +159,9 @@ export function initializePayment(input: CheckoutInput) {
     order_tracking_id: string;
     amount: number;
     currency: string;
+    payment_currency: string;
+    payment_amount: number;
+    exchange_rate: number;
     delivery_fee: number;
     distance_km: number;
     subtotal: number;

@@ -4,6 +4,7 @@ import { userFacingMessage } from '@/lib/user-facing-error';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { storefrontRequest } from '@/lib/storefront-auth';
+import { useGlobalMarket } from '@/lib/global-market';
 
 type Order = {
   id: string;
@@ -24,11 +25,8 @@ const STATUS: Record<string, string> = {
   cancelled: 'Cancelled',
 };
 
-function formatTZS(amount: number) {
-  return new Intl.NumberFormat('en-TZ', { style: 'currency', currency: 'TZS', maximumFractionDigits: 0 }).format(amount);
-}
-
 export default function OrdersPage() {
+  const { formatPrice, currency, ratesLoading, ratesUnavailable } = useGlobalMarket();
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -61,6 +59,7 @@ export default function OrdersPage() {
       <Link href="/" className="text-sm font-bold text-leaf-deep underline">Continue browsing</Link>
       <h1 className="mt-4 font-display text-3xl font-extrabold">Your orders</h1>
       <p className="mt-2 text-sm text-ink-soft">Guest orders are available in this browser session. Keep this browser’s site data to continue tracking them.</p>
+      {ratesLoading ? <p role="status" className="mt-2 text-sm text-ink-mute">Loading exchange rates; prices may appear in TZS.</p> : ratesUnavailable ? <p role="status" className="mt-2 text-sm text-ink-mute">Some exchange rates are unavailable. Current display currency: {currency}.</p> : currency !== 'TZS' ? <p className="mt-2 text-sm text-ink-mute">Converted prices are approximate.</p> : null}
       {error && <div role="alert" className="mt-4 rounded-xl bg-red-50 p-4 text-red-800">{error} <button type="button" className="font-bold underline" onClick={() => setRefresh((value) => value + 1)}>Try again</button></div>}
       {loading && orders.length === 0 ? <p role="status" className="mt-6">Loading your orders…</p> : !error && orders.length === 0 ? (
         <p className="mt-6 rounded-2xl border border-line bg-white p-6 text-ink-soft">No orders are linked to this browser session.</p>
@@ -80,12 +79,12 @@ export default function OrdersPage() {
                 {order.order_items.map((item, index) => (
                   <li key={`${order.id}-${index}`} className="flex justify-between gap-3">
                     <span>{item.products?.name ?? 'Product'} · {item.qty} {item.products?.unit ?? ''}</span>
-                    <span>{formatTZS(item.qty * item.unit_price)}</span>
+                    <span>{formatPrice(item.qty * item.unit_price)}</span>
                   </li>
                 ))}
               </ul>
               <p className="mt-4 border-t border-line pt-3 text-right font-bold">
-                Total {formatTZS(order.subtotal + order.delivery_fee)}
+                Total {formatPrice(order.subtotal + order.delivery_fee)}
               </p>
             </li>
           ))}

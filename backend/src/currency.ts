@@ -30,10 +30,12 @@ export function supportedPaymentCurrencies(
 
 export function currencyFractionDigits(currency: string): number {
   try {
-    return new Intl.NumberFormat('en', {
+    const digits = new Intl.NumberFormat('en', {
       style: 'currency',
       currency,
     }).resolvedOptions().maximumFractionDigits;
+    if (digits === undefined) throw new Error('Currency fraction digits are unavailable.');
+    return digits;
   } catch {
     throw new Error(`Invalid ISO 4217 currency code: ${currency}`);
   }
@@ -46,14 +48,15 @@ export function quoteCurrencyAmount(
   supportedCurrencies = supportedPaymentCurrencies(),
 ): CurrencyQuote | null {
   const normalizedCurrency = currency.toUpperCase();
-  if (!supportedCurrencies.includes(normalizedCurrency)) return null;
+  if (normalizedCurrency !== 'TZS' && !supportedCurrencies.includes(normalizedCurrency)) return null;
   const exchangeRate = normalizedCurrency === 'TZS' ? 1 : rates[normalizedCurrency];
   if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
     throw new Error(`An exchange rate for ${normalizedCurrency} is unavailable.`);
   }
   const fractionDigits = currencyFractionDigits(normalizedCurrency);
   const scale = 10 ** fractionDigits;
-  const minorUnits = Math.round(baseAmount * exchangeRate * scale);
+  const scaledAmount = baseAmount * exchangeRate * scale;
+  const minorUnits = Math.round(scaledAmount + Number.EPSILON * Math.abs(scaledAmount));
   if (!Number.isSafeInteger(minorUnits) || minorUnits <= 0) {
     throw new Error(`The ${normalizedCurrency} payment amount is outside the supported range.`);
   }

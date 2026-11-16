@@ -11,6 +11,28 @@ alter table public.checkout_payments
   add column if not exists recipient_phone text,
   add column if not exists delivery_address text;
 
+create or replace function public.default_legacy_checkout_payment_quote()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.payment_amount is null or new.exchange_rate is null then
+    if new.currency is distinct from 'TZS' then
+      raise exception 'Foreign-currency checkouts require an explicit payment amount and exchange rate';
+    end if;
+    if new.payment_amount is null then new.payment_amount := new.amount; end if;
+    if new.exchange_rate is null then new.exchange_rate := 1; end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_default_legacy_checkout_payment_quote on public.checkout_payments;
+create trigger trg_default_legacy_checkout_payment_quote
+before insert on public.checkout_payments
+for each row execute function public.default_legacy_checkout_payment_quote();
+
 update public.checkout_payments
 set payment_amount = amount,
     exchange_rate = 1
@@ -28,10 +50,6 @@ alter table public.checkout_payments
   add constraint checkout_payments_currency_check check (currency ~ '^[A-Z]{3}$'),
   add constraint checkout_payments_payment_amount_check check (payment_amount > 0),
   add constraint checkout_payments_exchange_rate_check check (exchange_rate > 0);
-
-drop function if exists public.place_cash_on_delivery_order(
-  uuid, text, text, jsonb, integer, numeric, double precision, double precision, text, text, text, text
-);
 
 create or replace function public.place_cash_on_delivery_order(
   p_customer uuid,
@@ -194,6 +212,39 @@ revoke all on function public.place_cash_on_delivery_order(
 grant execute on function public.place_cash_on_delivery_order(
   uuid, text, text, jsonb, integer, numeric, double precision, double precision,
   text, text, text, text, text, text, text
+) to service_role;
+
+-- Keep the previous RPC signature callable during a rolling backend deployment.
+create or replace function public.place_cash_on_delivery_order(
+  p_customer uuid,
+  p_request_key text,
+  p_mode text,
+  p_items jsonb,
+  p_fee integer,
+  p_distance numeric,
+  p_lat double precision,
+  p_lng double precision,
+  p_delivery_window text,
+  p_customer_name text,
+  p_customer_email text,
+  p_customer_phone text
+) returns uuid
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select public.place_cash_on_delivery_order(
+    p_customer, p_request_key, p_mode, p_items, p_fee, p_distance, p_lat, p_lng,
+    p_delivery_window, p_customer_name, p_customer_email, p_customer_phone,
+    null::text, null::text, null::text
+  );
+$$;
+
+revoke all on function public.place_cash_on_delivery_order(
+  uuid, text, text, jsonb, integer, numeric, double precision, double precision, text, text, text, text
+) from public, anon, authenticated;
+grant execute on function public.place_cash_on_delivery_order(
+  uuid, text, text, jsonb, integer, numeric, double precision, double precision, text, text, text, text
 ) to service_role;
 
 create or replace function public.complete_pesapal_payment(

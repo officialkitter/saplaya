@@ -139,7 +139,7 @@ export function ApplyForm() {
               <Field label="Your name" error={errors.name}><Input value={f.name} onChange={set('name')} placeholder="Enter your full name" autoComplete="name" /></Field>
               <Field label="Phone number" error={errors.phone}><Input value={f.phone} onChange={set('phone')} placeholder="Enter your phone number (include country code)" inputMode="tel" autoComplete="tel" /></Field>
             </div>
-            <Field label="Email" error={errors.email}><Input type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" autoComplete="email" /></Field>
+            <Field label="Email" error={errors.email}><Input type="email" value={f.email} onChange={set('email')} placeholder="Enter your email address" autoComplete="email" /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Country" error={errors.countryCode}>
                 <Select value={f.countryCode} onChange={(event) => setF((current) => ({

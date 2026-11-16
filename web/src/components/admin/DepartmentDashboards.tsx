@@ -4,7 +4,7 @@ import { userFacingMessage } from '@/lib/user-facing-error';
 import { useEffect, useMemo, useState } from 'react';
 import { Panel } from '@/components/admin/Guard';
 import { Select } from '@/components/ui/Fields';
-import { formatTZS } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can } from '@/lib/roles';
 import { fetchAdmin } from '@/lib/supabase';
 import { useToast } from '@/lib/store';
@@ -55,6 +55,7 @@ function Metric({ label, value, note }: { label: string; value: string | number;
 }
 
 export function DepartmentDashboards({ member }: { member: TeamMember }) {
+  const { formatPrice } = useGlobalMarket();
   const push = useToast((state) => state.push);
   const [rangeDays, setRangeDays] = useState('14');
   const [data, setData] = useState<DashboardAnalytics | null>(null);
@@ -117,8 +118,8 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
             <Metric label="Waiting to be packed" value={data.operations.pending_orders} />
             <Metric label="In progress" value={data.operations.in_progress_orders} />
             <Metric label="Delivered" value={data.operations.delivered_orders} />
-            <Metric label="Open order value" value={formatTZS(data.operations.open_order_value)} note="Pending, packing, or in transit" />
-            <Metric label="Delivered order value" value={formatTZS(data.operations.delivered_value)} note="Operational estimate" />
+            <Metric label="Open order value" value={formatPrice(data.operations.open_order_value)} note="Pending, packing, or in transit" />
+            <Metric label="Delivered order value" value={formatPrice(data.operations.delivered_value)} note="Operational estimate" />
           </div>
         </Panel>
       )}
@@ -126,16 +127,16 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
       {data?.finance && (
         <Panel title="Finance & accounting" subtitle="Orders placed during the selected period, grouped by their current status.">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Delivered order value" value={formatTZS(data.finance.summary.delivered_value)} note={`${data.finance.summary.delivered_orders} delivered farm orders`} />
-            <Metric label="Open order value" value={formatTZS(data.finance.summary.open_order_value)} note="Pending, packing, or in transit" />
-            <Metric label="Cancelled order value" value={formatTZS(data.finance.summary.cancelled_value)} note={`${data.finance.summary.cancelled_orders} cancelled orders`} />
+            <Metric label="Delivered order value" value={formatPrice(data.finance.summary.delivered_value)} note={`${data.finance.summary.delivered_orders} delivered farm orders`} />
+            <Metric label="Open order value" value={formatPrice(data.finance.summary.open_order_value)} note="Pending, packing, or in transit" />
+            <Metric label="Cancelled order value" value={formatPrice(data.finance.summary.cancelled_value)} note={`${data.finance.summary.cancelled_orders} cancelled orders`} />
             <Metric label="Total farm orders" value={data.finance.summary.order_count} note="All statuses" />
           </div>
           <ul className="mt-4 grid gap-2 sm:grid-cols-2">
             {data.finance.payments.map((payment) => (
               <li key={payment.method} className="flex justify-between gap-3 rounded-xl border border-line p-3 text-sm">
                 <span className="font-semibold">{payment.method.replaceAll('_', ' ')}</span>
-                <span>{payment.orders} orders · {formatTZS(payment.delivered_value)} delivered</span>
+                <span>{payment.orders} orders · {formatPrice(payment.delivered_value)} delivered</span>
               </li>
             ))}
           </ul>
@@ -149,7 +150,7 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
             <Metric label="Unique customers" value={data.marketing.summary.unique_customers} />
             <Metric label="Returning customers" value={data.marketing.summary.returning_customers} note="More than one order in this period" />
             <Metric label="Delivered farm orders" value={data.marketing.summary.delivered_orders} />
-            <Metric label="Delivered order value" value={formatTZS(data.marketing.summary.delivered_value)} />
+            <Metric label="Delivered order value" value={formatPrice(data.marketing.summary.delivered_value)} />
           </div>
           <div className="mt-4 grid gap-5 lg:grid-cols-2">
             <div>
@@ -158,7 +159,7 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
                 {data.marketing.top_products.slice(0, 5).map((product) => (
                   <li key={`${product.name}:${product.category}`} className="flex justify-between gap-3 rounded-xl bg-milk p-3 text-sm">
                     <span className="font-semibold">{product.name} <span className="text-ink-mute">· {product.units} units</span></span>
-                    <span className="font-bold">{formatTZS(product.value)}</span>
+                    <span className="font-bold">{formatPrice(product.value)}</span>
                   </li>
                 ))}
                 {data.marketing.top_products.length === 0 && <li className="rounded-xl bg-milk p-3 text-sm text-ink-mute">No delivered product sales in this period.</li>}
@@ -170,7 +171,7 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
                 {data.marketing.categories.slice(0, 5).map((category) => (
                   <li key={category.category} className="flex justify-between gap-3 rounded-xl bg-milk p-3 text-sm">
                     <span className="font-semibold">{category.category}</span>
-                    <span className="font-bold">{formatTZS(category.value)}</span>
+                    <span className="font-bold">{formatPrice(category.value)}</span>
                   </li>
                 ))}
                 {data.marketing.categories.length === 0 && <li className="rounded-xl bg-milk p-3 text-sm text-ink-mute">No category sales in this period.</li>}
@@ -186,13 +187,13 @@ export function DepartmentDashboards({ member }: { member: TeamMember }) {
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="Farm orders" value={data.stores.summary.order_count} />
             <Metric label="In progress" value={data.stores.summary.in_progress_orders} />
-            <Metric label="Delivered order value" value={formatTZS(data.stores.summary.delivered_value)} />
+            <Metric label="Delivered order value" value={formatPrice(data.stores.summary.delivered_value)} />
           </div>
           <ul className="mt-4 grid gap-2 sm:grid-cols-2">
             {data.stores.farms.map((farm) => (
               <li key={farm.name} className="flex justify-between gap-3 rounded-xl border border-line p-3 text-sm">
                 <span className="font-semibold">{farm.name} · {farm.orders} orders</span>
-                <span className="font-bold">{formatTZS(farm.delivered_value)}</span>
+                <span className="font-bold">{formatPrice(farm.delivered_value)}</span>
               </li>
             ))}
             {data.stores.farms.length === 0 && <li className="text-sm text-ink-mute">No farm orders in this period.</li>}

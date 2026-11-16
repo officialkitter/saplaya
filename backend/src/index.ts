@@ -11,12 +11,14 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { deriveOrderMode, haversineKm, priceForQuantity, publicTierPrices, searchStorefrontProducts, selectStorefrontProducts, type OrderMode } from './storefront.js';
 import { customerOrders } from './customer-orders.js';
+import { orderDeliveryDetails } from './order-delivery.js';
 import {
   amountInMinorUnits,
   isE164Phone,
   paymentAmountsMatch,
   quoteCurrencyAmount,
   supportedPaymentCurrencies,
+  type CurrencyQuote,
 } from './currency.js';
 import { activateTeamInvitation, claimPendingTeamInvitation, teamInvitationRedirect } from './team-auth.js';
 import {
@@ -834,20 +836,25 @@ async function loadExchangeRates() {
   return exchangeRateCache;
 }
 
-async function paymentQuoteFor(amount: number, currency: string) {
-  if (!paymentCurrencies.includes(currency)) {
-    return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 } as const;
+async function paymentQuoteFor(
+  amount: number,
+  currency: string,
+  allowTzsQuote = false,
+): Promise<{ quote: CurrencyQuote } | { error: string; status: 400 | 503 }> {
+  if (!paymentCurrencies.includes(currency) && !(allowTzsQuote && currency === 'TZS')) {
+    return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 };
   }
   try {
     const rates = currency === 'TZS' ? { TZS: 1 } : (await loadExchangeRates()).rates;
-    const quote = quoteCurrencyAmount(amount, currency, rates, paymentCurrencies);
+    const allowedCurrencies = allowTzsQuote ? [...new Set([...paymentCurrencies, 'TZS'])] : paymentCurrencies;
+    const quote = quoteCurrencyAmount(amount, currency, rates, allowedCurrencies);
     if (!quote) {
-      return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 } as const;
+      return { error: `Online payments in ${currency} are not supported by this merchant.`, status: 400 };
     }
-    return { quote } as const;
+    return { quote };
   } catch (error) {
     console.error(`Could not prepare ${currency} payment quote:`, error);
-    return { error: `A ${currency} payment quote is temporarily unavailable.`, status: 503 } as const;
+    return { error: `A ${currency} payment quote is temporarily unavailable.`, status: 503 };
   }
 }
 
@@ -912,7 +919,7 @@ app.get('/checkout/options', async (_req, res) => {
     cash_on_delivery: true,
     cash_currency: 'TZS',
     online_payment: onlinePayment,
-    supported_payment_currencies: paymentCurrencies,
+    payment_currencies: paymentCurrencies,
   });
 });
 
@@ -1105,7 +1112,7 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
 
   const distanceFee = deliveryFor(distance, settings);
   const amount = subtotal + distanceFee + speedFee;
-  const paymentQuoteResult = await paymentQuoteFor(amount, currency);
+  const paymentQuoteResult = await paymentQuoteFor(amount, currency, true);
   if ('error' in paymentQuoteResult) {
     return res.status(paymentQuoteResult.status).json({ error: paymentQuoteResult.error });
   }
@@ -1164,6 +1171,15 @@ function isPesapalConfigured() {
     && (process.env.PESAPAL_CONSUMER_SECRET || process.env.PESAPAL_CUSTOMER_SECRET)
     && PUBLIC_API_URL,
   );
+}
+
+function normalizedTanzanianPhone(phone: string): string | null {
+  const compact = phone.replace(/[\s()-]/g, '');
+  if (!/^(?:\+?255|0)?[1-9]\d{8}$/.test(compact)) return null;
+  if (compact.startsWith('+255')) return compact;
+  if (compact.startsWith('255')) return `+${compact}`;
+  if (compact.startsWith('0')) return `+255${compact.slice(1)}`;
+  return `+255${compact}`;
 }
 
 app.get('/orders', requireUser, async (req: AuthedRequest, res) => {
@@ -1365,6 +1381,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
       base_amount: amount,
       payment_amount: paymentQuote.payment_amount,
       payment_currency: paymentQuote.currency,
+      currency: paymentQuote.currency,
       exchange_rate: paymentQuote.exchange_rate,
       delivery_fee: fee,
       distance_km: Number(distance.toFixed(2)),
@@ -2112,7 +2129,7 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db
     .from('supplier_orders')
-    .select('id, order_id, supplier_id, status, updated_at, orders!supplier_orders_order_id_fkey(id, mode, created_at, delivery_fee, dest_lat, dest_lng, customer_id, delivery_window, payment_method, contact_name, contact_phone), order_items!order_items_supplier_order_id_fkey(product_id, qty, unit_price, products(name, unit)), supplier_order_assignments(team_member_id, team_members!supplier_order_assignments_team_member_id_fkey(full_name))')
+    .select('id, order_id, supplier_id, status, updated_at, orders!supplier_orders_order_id_fkey(id, mode, created_at, delivery_fee, dest_lat, dest_lng, customer_id, delivery_window, payment_method, contact_name, contact_phone, recipient_name, recipient_phone, delivery_address), order_items!order_items_supplier_order_id_fkey(product_id, qty, unit_price, products(name, unit)), supplier_order_assignments(team_member_id, team_members!supplier_order_assignments_team_member_id_fkey(full_name))')
     .order('updated_at', { ascending: false })
     .limit(300);
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
@@ -2147,11 +2164,15 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
     const paymentContact = paymentContactByOrderId.get(row.order_id);
     const assignment = relationRecord(row.supplier_order_assignments);
     const assignee = relationRecord(assignment?.team_members);
-    const fullName = order?.contact_name || paymentContact?.customer_name || customer?.full_name || 'Customer';
-    const customerName = m.supplier_id ? fullName.split(/\s+/)[0] : fullName;
-    const area = order?.dest_lat != null && order?.dest_lng != null
-      ? `${Number(order.dest_lat).toFixed(4)}, ${Number(order.dest_lng).toFixed(4)}`
-      : 'Delivery location';
+    const delivery = orderDeliveryDetails(
+      order,
+      { name: customer?.full_name, phone: customer?.phone },
+      { name: paymentContact?.customer_name, phone: paymentContact?.customer_phone },
+      { mayViewBuyerContact: mayViewCustomerContact, supplierScoped: Boolean(m.supplier_id) },
+    );
+    const orderForResponse = order && !mayViewCustomerContact
+      ? { ...order, contact_name: null, contact_phone: null }
+      : order;
     return {
       id: row.id,
       order_id: row.order_id,
@@ -2159,10 +2180,8 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
       status: row.status,
       updated_at: row.updated_at,
       code: row.order_id.slice(0, 8).toUpperCase(),
-      order,
-      customer_name: customerName,
-      customer_phone: mayViewCustomerContact ? order?.contact_phone || paymentContact?.customer_phone || customer?.phone || '' : '',
-      area,
+      order: orderForResponse,
+      ...delivery,
       assignee_id: typeof assignment?.team_member_id === 'string' ? assignment.team_member_id : null,
       assignee_name: typeof assignee?.full_name === 'string' ? assignee.full_name : null,
       items: (row.order_items ?? []).map((item) => ({

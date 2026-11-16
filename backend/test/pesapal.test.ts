@@ -4,6 +4,7 @@ import {
   isPaymentCompleted,
   isPaymentFailed,
   ipnAcknowledgement,
+  submitOrder,
 } from '../src/pesapal.js';
 
 test('IPN acknowledgement includes the provider-required fields and status', () => {
@@ -41,4 +42,55 @@ test('failed, cancelled, and reversed statuses are non-completed', () => {
   }
   assert.equal(isPaymentFailed({ status: 'CANCELLED' }), true);
   assert.equal(isPaymentFailed({ payment_status_description: 'Failed' }), true);
+});
+
+test('Pesapal submits selected ISO currency and decimal amount without whole-unit rounding', async () => {
+  const savedFetch = globalThis.fetch;
+  const savedKey = process.env.PESAPAL_CONSUMER_KEY;
+  const savedSecret = process.env.PESAPAL_CONSUMER_SECRET;
+  const submitted: Record<string, unknown>[] = [];
+  process.env.PESAPAL_CONSUMER_KEY = 'test-key';
+  process.env.PESAPAL_CONSUMER_SECRET = 'test-secret';
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/api/Auth/RequestToken')) {
+      return Response.json({ token: 'test-token', expires_in: 3600 });
+    }
+    submitted.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Response.json({
+      order_tracking_id: 'tracking-1',
+      merchant_reference: 'saplaya-test',
+      redirect_url: 'https://cybqa.pesapal.com/pesapalv3/checkout',
+    });
+  };
+  try {
+    await submitOrder({
+      reference: 'saplaya-test',
+      amount: 12.34,
+      currency: 'USD',
+      callbackUrl: 'https://api.example.test/callback',
+      ipnId: 'ipn-1',
+      email: 'buyer@example.test',
+      phone: '+12025550123',
+      name: 'Buyer Example',
+    });
+    assert.equal(submitted[0].currency, 'USD');
+    assert.equal(submitted[0].amount, 12.34);
+    await assert.rejects(submitOrder({
+      reference: 'saplaya-test',
+      amount: 12.345,
+      currency: 'USD',
+      callbackUrl: 'https://api.example.test/callback',
+      ipnId: 'ipn-1',
+      email: 'buyer@example.test',
+      phone: '+12025550123',
+      name: 'Buyer Example',
+    }), /invalid precision/);
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (savedKey === undefined) delete process.env.PESAPAL_CONSUMER_KEY;
+    else process.env.PESAPAL_CONSUMER_KEY = savedKey;
+    if (savedSecret === undefined) delete process.env.PESAPAL_CONSUMER_SECRET;
+    else process.env.PESAPAL_CONSUMER_SECRET = savedSecret;
+  }
 });

@@ -128,8 +128,8 @@ function SidebarBody({ onNavigate, animatedPill = true }: { onNavigate?: () => v
             </select>
           </label>
           {ratesLoading && <p role="status" className="mt-1 text-xs text-ink-mute">Loading exchange rates; prices may appear in TZS.</p>}
-          {ratesUnavailable && <p role="status" className="mt-1 text-xs text-ink-mute">Exchange rates unavailable. Prices are shown in base TZS.</p>}
-          {!ratesLoading && !ratesUnavailable && currency !== 'TZS' && <p className="mt-1 text-xs text-ink-mute">Converted prices are approximate. Editing amounts uses base TZS.</p>}
+          {ratesUnavailable && <p role="status" className="mt-1 text-xs text-ink-mute">Some exchange rates are unavailable. Current display currency: {currency}.</p>}
+          {!ratesLoading && !ratesUnavailable && currency !== 'TZS' && <p className="mt-1 text-xs text-ink-mute">Enter amounts in {currency}. Values are converted to TZS for accounting.</p>}
         </div>
       </nav>
 

@@ -2,12 +2,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from './supabase';
 
-const CURRENCIES = [
-  'TZS', 'USD', 'EUR', 'GBP', 'KES', 'UGX', 'RWF', 'NGN', 'ZAR', 'CAD', 'AUD',
-  'INR', 'AED', 'JPY', 'CNY', 'NZD', 'GHS', 'SAR', 'HKD', 'SGD', 'BRL', 'MXN',
-  'EGP', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'TRY', 'PKR', 'IDR', 'PHP', 'MYR',
-  'THB', 'VND',
-];
 const REGION_CURRENCY: Record<string, string> = {
   TZ: 'TZS', US: 'USD', CA: 'CAD', AU: 'AUD', NZ: 'NZD', GB: 'GBP',
   KE: 'KES', UG: 'UGX', RW: 'RWF', NG: 'NGN', ZA: 'ZAR', GH: 'GHS',
@@ -57,7 +51,10 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocale] = useState('en-TZ');
 
   const setCurrency = useCallback((nextCurrency: string) => {
-    if (!CURRENCIES.includes(nextCurrency) || typeof rates[nextCurrency] !== 'number') return;
+    if (!/^[A-Z]{3}$/.test(nextCurrency) || typeof rates[nextCurrency] !== 'number') {
+      console.error('Cannot select a currency without an available exchange rate:', nextCurrency);
+      return;
+    }
     setCurrencyState(nextCurrency);
     void AsyncStorage.setItem(CURRENCY_KEY, nextCurrency).catch((error: unknown) => {
       console.error('Could not save display currency preference:', error);
@@ -70,19 +67,22 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     setLocale(detectedLocale);
     const initialCurrency = localeCurrency(detectedLocale);
 
-    void AsyncStorage.getItem(CURRENCY_KEY).then((saved) => {
-      if (active) setCurrencyState(saved && CURRENCIES.includes(saved) ? saved : initialCurrency);
-    }).catch((error: unknown) => {
+    const preference = AsyncStorage.getItem(CURRENCY_KEY).catch((error: unknown) => {
       console.error('Could not restore display currency preference:', error);
-      if (active) setCurrencyState(initialCurrency);
+      return null;
     });
-
-    void fetch(`${API_URL}/exchange-rates`).then(async (response) => {
+    const exchange = fetch(`${API_URL}/exchange-rates`).then(async (response) => {
       if (!response.ok) throw new Error(`Exchange-rate service returned ${response.status}.`);
       const result: unknown = await response.json();
       if (!isExchangeRates(result)) throw new Error('The exchange-rate response was invalid.');
+      return result;
+    });
+    void Promise.all([preference, exchange]).then(([saved, result]) => {
       if (active) {
+        const selected = saved && /^[A-Z]{3}$/.test(saved) ? saved : initialCurrency;
         setRates(result.rates);
+        setCurrencyState(result.rates[selected] ? selected : 'TZS');
+        setRatesUnavailable(!result.rates[selected]);
         setRatesUpdatedAt(result.updated_at);
         setRatesLoading(false);
       }
@@ -105,12 +105,12 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     if (typeof rate !== 'number' || !Number.isFinite(rate)) {
       return new Intl.NumberFormat('en-TZ', { style: 'currency', currency: 'TZS', maximumFractionDigits: 0 }).format(amountTzs);
     }
-    return new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(amountTzs * rate);
+    return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amountTzs * rate);
   }, [currency, locale, rates]);
 
   const value = useMemo<CurrencyContextValue>(() => ({
     currency,
-    currencies: CURRENCIES.filter((code) => typeof rates[code] === 'number'),
+    currencies: Object.keys(rates).sort(),
     setCurrency,
     formatPrice,
     ratesLoading,

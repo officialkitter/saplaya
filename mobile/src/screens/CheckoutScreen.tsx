@@ -14,7 +14,9 @@ import { ApiRequestError, CheckoutQuote, confirmPayment, CustomerOrder, Delivery
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, formatTZS, radius, shadow, volumeTheme } from '../theme';
+import { colors, radius, shadow, volumeTheme } from '../theme';
+import { useCurrency } from '../lib/currency';
+import CurrencySelector from '../components/CurrencySelector';
 import { verifyAfterPaymentBrowser } from '../lib/payment-confirmation';
 import { API_URL } from '../lib/supabase';
 
@@ -28,6 +30,10 @@ export default function CheckoutScreen({ navigation }: any) {
   const { profile, user, addresses, isSignedIn, selectAddress } = useAccount();
   const place = useDeliveryPlace();
   const { setPlace } = useDeliveryActions();
+  const { currency, formatPrice: formatTZS } = useCurrency();
+  const [forSomeoneElse, setForSomeoneElse] = useState(false);
+  const [recipient, setRecipient] = useState({ name: '', phone: '' });
+  const [checkoutOptions, setCheckoutOptions] = useState<{ payment_currencies: string[]; cash_currency: string } | null>(null);
   const [name, setName] = useState(profile.fullName);
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(profile.phone);
@@ -66,8 +72,9 @@ export default function CheckoutScreen({ navigation }: any) {
       lng: place.lng,
       approximate: place.approximate,
       deliveryWindow,
+      currency: checkoutPayment === 'online' ? currency : 'TZS',
     }),
-    [mode, lines, place.lat, place.lng, place.approximate, deliveryWindow],
+    [mode, lines, place.lat, place.lng, place.approximate, deliveryWindow, checkoutPayment, currency],
   );
   const quote = quotedBasket?.key === quoteKey ? quotedBasket.quote : null;
   const km = quote?.distance_km;
@@ -75,8 +82,8 @@ export default function CheckoutScreen({ navigation }: any) {
   const estimate = quote?.amount ?? 0;
   const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
   const basketKey = useMemo(
-    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment }),
-    [mode, lines, place.lat, place.lng, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment],
+    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, label: place.label, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient }),
+    [mode, lines, place.lat, place.lng, place.label, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient],
   );
   const currentBasketKey = useRef(basketKey);
   currentBasketKey.current = basketKey;
@@ -114,6 +121,7 @@ export default function CheckoutScreen({ navigation }: any) {
       items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
       lat: place.lat,
       lng: place.lng,
+      currency: checkoutPayment === 'online' ? currency : 'TZS',
     }).then((result) => {
       if (active) setQuotedBasket({ key: quoteKey, quote: result });
     }).catch((error: unknown) => {
@@ -124,7 +132,19 @@ export default function CheckoutScreen({ navigation }: any) {
     return () => {
       active = false;
     };
-  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, lines, mode, deliveryWindow, place.lat, place.lng, place.approximate]);
+  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, lines, mode, deliveryWindow, place.lat, place.lng, place.approximate, currency, checkoutPayment]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch(`${API_URL}/checkout/options`).then(async (response) => {
+      if (!response.ok) throw new Error('Could not load supported payment currencies.');
+      const options = await response.json();
+      if (active) setCheckoutOptions(options);
+    }).catch((error: unknown) => {
+      console.error('Could not load supported payment currencies:', error);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!name && profile.fullName) setName(profile.fullName);
@@ -212,6 +232,16 @@ export default function CheckoutScreen({ navigation }: any) {
     }
     if (phone.trim().length < 5) {
       Alert.alert('Check your phone number', 'Enter a phone number where the delivery team can reach you.');
+      return false;
+    }
+    if (forSomeoneElse && (!recipient.name.trim() || !/^\+[1-9]\d{7,14}$/.test(recipient.phone.trim()))) {
+      Alert.alert('Complete recipient details', 'Enter the recipient’s name and phone number including country code.');
+      return false;
+    }
+    if (checkoutPayment === 'online' && !checkoutOptions?.payment_currencies.includes(currency)) {
+      Alert.alert('Payment currency unavailable', checkoutOptions
+        ? `Online payments support ${checkoutOptions.payment_currencies.join(', ')}. Choose a supported currency or pay on delivery in ${checkoutOptions.cash_currency}.`
+        : 'Supported payment currencies could not be loaded. Please try again.');
       return false;
     }
     if (mode === 'wholesale') {
@@ -331,6 +361,9 @@ export default function CheckoutScreen({ navigation }: any) {
           lat: place.lat,
           lng: place.lng,
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+          delivery_address: place.label,
+          ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
+          currency: 'TZS',
         });
         const orderItems = quote ? buildOrderItems(result.items, quote) : null;
         const order = orderItems ? {
@@ -362,6 +395,10 @@ export default function CheckoutScreen({ navigation }: any) {
           lat: place.lat,
           lng: place.lng,
           customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+          delivery_address: place.label,
+          ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
+          currency,
+          quoted_payment_amount: quote!.payment_amount,
           payment_phone: paymentPhone.trim() || phone.trim(),
         });
         const orderItems = buildOrderItems(initialized.items, quote!);
@@ -430,10 +467,22 @@ export default function CheckoutScreen({ navigation }: any) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 230 }}>
           <Text style={styles.heading}>Delivery details</Text>
+          <CurrencySelector />
           <Text style={styles.subheading}>Who should we contact about this order?</Text>
-          <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" editable={!pendingVerification} />
-          <Field label="Email for payment receipt" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" editable={!pendingVerification} />
-          <Field label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" editable={!pendingVerification} />
+          <Field label="Full name" placeholder="Enter your full name" value={name} onChangeText={setName} autoComplete="name" editable={!pendingVerification} />
+          <Field label="Email for payment receipt" placeholder="Enter your email address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" editable={!pendingVerification} />
+          <Field label="Phone number" placeholder="Enter your phone number with country code" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" editable={!pendingVerification} />
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: forSomeoneElse }} disabled={!!pendingVerification} style={styles.acceptDelivery} onPress={() => setForSomeoneElse((value) => !value)}>
+            <Ionicons name={forSomeoneElse ? 'checkbox' : 'square-outline'} size={22} color={tierTheme.icon} />
+            <Text style={styles.choiceHint}>I’m ordering for someone else</Text>
+          </Pressable>
+          {forSomeoneElse && (
+            <View>
+              <Text style={styles.helper}>Your receipt stays with you. Delivery goes to the confirmed destination below.</Text>
+              <Field label="Recipient name" placeholder="Enter the recipient’s full name" value={recipient.name} onChangeText={(value) => setRecipient((current) => ({ ...current, name: value }))} editable={!pendingVerification} />
+              <Field label="Recipient phone number" placeholder="Enter phone number with country code" keyboardType="phone-pad" value={recipient.phone} onChangeText={(value) => setRecipient((current) => ({ ...current, phone: value }))} editable={!pendingVerification} />
+            </View>
+          )}
 
           <View style={styles.deliveryCard}>
             <View style={styles.deliveryTop}>
@@ -534,12 +583,15 @@ export default function CheckoutScreen({ navigation }: any) {
             <View style={styles.divider} />
             <SummaryRow
               label={payment ? 'Total due' : 'Estimated total'}
-              value={payment ? formatTZS(payment.amount) : quote ? formatTZS(estimate) : quoteLoading ? 'Calculating…' : 'Unavailable'}
+              value={payment ? formatTZS(payment.subtotal + payment.delivery_fee) : quote ? formatTZS(estimate) : quoteLoading ? 'Calculating…' : 'Unavailable'}
               bold
             />
+            {(payment || quote) && <SummaryRow label={`Amount to pay (${payment?.currency || quote!.payment_currency})`} value={new Intl.NumberFormat(undefined, { style: 'currency', currency: payment?.currency || quote!.payment_currency }).format(payment?.payment_amount ?? quote!.payment_amount)} bold />}
           </View>
 
           <Text style={styles.heading}>Payment method</Text>
+          {checkoutPayment === 'cash_on_delivery' && <Text style={styles.helper}>Payment on delivery is collected in {checkoutOptions?.cash_currency || 'TZS'}. Converted prices are for reference.</Text>}
+          {checkoutPayment === 'online' && checkoutOptions && !checkoutOptions.payment_currencies.includes(currency) && <Text style={styles.warning}>Online payments support {checkoutOptions.payment_currencies.join(', ')}. Choose a supported currency above or pay on delivery.</Text>}
           <View style={styles.choiceRow}>
             <Pressable
               style={[styles.choiceCard, checkoutPayment === 'online' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}

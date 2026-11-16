@@ -15,6 +15,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, glass, volumeTheme } from '../theme';
 import { Product, Promo } from '../types';
 import { useCurrency } from '../lib/currency';
+import CurrencySelector from '../components/CurrencySelector';
 
 type CatalogRow =
   | { kind: 'heading'; key: string; title: string; description: string; count: number; expanded: boolean }
@@ -31,7 +32,7 @@ function categoryGroup(category = ''): 'holisticare' | 'grains' | 'essentials' {
 export default function HomeScreen({ navigation }: any) {
   const startupData = getStartupData();
   const { mode } = useStore();
-  const { currency, currencies, setCurrency, ratesLoading, ratesUnavailable, ratesUpdatedAt } = useCurrency();
+  const { currency, ratesLoading, ratesUnavailable, ratesUpdatedAt } = useCurrency();
   const place = useDeliveryPlace();
   const productLocation = useMemo(
     () => place.approximate ? undefined : { lat: place.lat, lng: place.lng },
@@ -102,11 +103,6 @@ export default function HomeScreen({ navigation }: any) {
       return;
     }
     rootNavigation.navigate(screen);
-  };
-
-  const cycleCurrency = () => {
-    const index = currencies.indexOf(currency);
-    setCurrency(currencies[(index + 1 + currencies.length) % currencies.length] ?? 'TZS');
   };
 
   const loadMore = useCallback(async () => {
@@ -240,21 +236,14 @@ export default function HomeScreen({ navigation }: any) {
         <Pressable style={styles.accountButton} onPress={() => navigateToRoot('Account')} accessibilityRole="button" accessibilityLabel="Open your account">
           <Ionicons name="person-outline" size={23} color={tierTheme.icon} />
         </Pressable>
-        <Pressable
-          style={styles.currencyButton}
-          onPress={cycleCurrency}
-          accessibilityRole="button"
-          accessibilityLabel={`Display currency ${currency}, initially detected from device region. Tap to change currency.`}
-        >
-          <Text style={[styles.currencyText, { color: tierTheme.accent }]}>{currency}</Text>
-        </Pressable>
+        <CurrencySelector />
       </View>
       {ratesLoading && currency !== 'TZS'
-        ? <Text style={styles.marketNote}>Loading approximate {currency} display rate · orders are charged in TZS.</Text>
+        ? <Text style={styles.marketNote}>Loading {currency} exchange rate…</Text>
         : ratesUnavailable
-          ? <Text style={styles.marketNote}>Exchange rates unavailable · showing TZS. Orders are charged in TZS.</Text>
+          ? <Text style={styles.marketNote}>Exchange rates unavailable · showing TZS. Review the payment amount at checkout.</Text>
           : currency !== 'TZS'
-            ? <Text style={styles.marketNote}>Approximate {currency} display · orders are charged in TZS · rate dated {ratesUpdatedAt}</Text>
+            ? <Text style={styles.marketNote}>{currency} prices · rate dated {ratesUpdatedAt}. Review the supported payment currency at checkout.</Text>
             : null}
 
       <PromoSlider promos={promos} />

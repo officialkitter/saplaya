@@ -6,7 +6,7 @@ import { Eye, EyeOff, KeyRound, Upload, UserRound } from 'lucide-react';
 import { PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Fields';
-import { formatTZS } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can } from '@/lib/roles';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { useDB, useMe, useToast } from '@/lib/store';
@@ -23,6 +23,7 @@ type WeeklyCommission = {
 };
 
 function AccountPage() {
+  const { formatPrice } = useGlobalMarket();
   const me = useMe();
   const saveProfileName = useDB((state) => state.saveProfileName);
   const saveManagementProfile = useDB((state) => state.saveManagementProfile);
@@ -232,10 +233,10 @@ function AccountPage() {
             <div className="mt-4 rounded-2xl bg-leaf-soft p-4">
               <p className="font-bold text-leaf-deep">Commission details</p>
               <div className="mt-2 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <p>Sales <b className="block text-base">{formatTZS(commission.sales_value_tzs)}</b></p>
-                <p>Commission <b className="block text-base">{formatTZS(commission.commission_tzs)}</b></p>
-                <p>Bonus <b className="block text-base">{formatTZS(commission.bonus_tzs)}</b></p>
-                <p>Total <b className="block text-base">{formatTZS(commission.total_tzs)}</b></p>
+                <p>Sales <b className="block text-base">{formatPrice(commission.sales_value_tzs)}</b></p>
+                <p>Commission <b className="block text-base">{formatPrice(commission.commission_tzs)}</b></p>
+                <p>Bonus <b className="block text-base">{formatPrice(commission.bonus_tzs)}</b></p>
+                <p>Total <b className="block text-base">{formatPrice(commission.total_tzs)}</b></p>
               </div>
             </div>
           )}

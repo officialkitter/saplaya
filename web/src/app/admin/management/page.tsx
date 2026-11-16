@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Fields';
-import { formatTZS } from '@/lib/format';
+import { CurrencyInput } from '@/components/ui/CurrencyInput';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can } from '@/lib/roles';
 import { fetchAdmin } from '@/lib/supabase';
 import { useMe, useToast } from '@/lib/store';
@@ -83,6 +84,7 @@ function scopeFromMember(member: ManagedMember): Scope[] {
 }
 
 function Management() {
+  const { formatPrice } = useGlobalMarket();
   const me = useMe();
   const push = useToast((state) => state.push);
   const canManage = can(me?.role, 'management.manage', me?.permissions);
@@ -313,10 +315,10 @@ function Management() {
               <div className="space-y-2">
                 {policyForm.tiers.map((tier, index) => (
                   <div key={tier.id ?? index} className="grid gap-3 rounded-2xl border border-line p-3 sm:grid-cols-[1fr_1fr_auto]">
-                    <Field label={`Tier ${index + 1} · weekly delivered sales target (TZS)`}>
-                      <Input type="number" min={1} step={1000} value={tier.target_sales_tzs} onChange={(event) => setPolicyForm((current) => ({
+                    <Field label={`Tier ${index + 1} · weekly delivered sales target`}>
+                      <CurrencyInput min={0} value={tier.target_sales_tzs} onValueChange={(value) => setPolicyForm((current) => ({
                         ...current,
-                        tiers: current.tiers.map((item, itemIndex) => itemIndex === index ? { ...item, target_sales_tzs: Number(event.target.value) } : item),
+                        tiers: current.tiers.map((item, itemIndex) => itemIndex === index ? { ...item, target_sales_tzs: Number(value) } : item),
                       }))} />
                     </Field>
                     <Field label="Commission rate (% of margin pool)">
@@ -461,14 +463,14 @@ function Management() {
                     <p className="break-words font-bold">{member.full_name}</p>
                     <p className="break-all text-sm text-ink-mute">{member.email}</p>
                   </div>
-                  <p className="shrink-0 whitespace-nowrap font-extrabold tabular-nums">{formatTZS(member.total_tzs)}</p>
+                  <p className="shrink-0 font-extrabold tabular-nums">{formatPrice(member.total_tzs)}</p>
                 </div>
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-2xl bg-milk p-3 text-sm">
                   <div className="min-w-0"><dt className="text-xs text-ink-mute">Delivered orders</dt><dd className="font-semibold">{member.delivered_supplier_orders}</dd></div>
-                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Eligible sales</dt><dd className="font-semibold tabular-nums">{formatTZS(member.sales_value_tzs)}</dd></div>
-                  <div className="col-span-2 min-w-0"><dt className="text-xs text-ink-mute">Tier</dt><dd className="break-words font-semibold">{member.target_sales_tzs ? `${formatTZS(member.target_sales_tzs)} · ${member.commission_rate_pct}%` : 'Not reached'}</dd></div>
-                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Commission</dt><dd className="font-semibold tabular-nums">{formatTZS(member.commission_tzs)}</dd></div>
-                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Bonus</dt><dd className="font-semibold tabular-nums">{formatTZS(member.bonus_tzs)}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Eligible sales</dt><dd className="font-semibold tabular-nums">{formatPrice(member.sales_value_tzs)}</dd></div>
+                  <div className="col-span-2 min-w-0"><dt className="text-xs text-ink-mute">Tier</dt><dd className="break-words font-semibold">{member.target_sales_tzs ? `${formatPrice(member.target_sales_tzs)} · ${member.commission_rate_pct}%` : 'Not reached'}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Commission</dt><dd className="font-semibold tabular-nums">{formatPrice(member.commission_tzs)}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Bonus</dt><dd className="font-semibold tabular-nums">{formatPrice(member.bonus_tzs)}</dd></div>
                 </dl>
               </li>
             ))}
@@ -480,11 +482,11 @@ function Management() {
                 <tr key={member.team_member_id} className="border-b border-line last:border-0">
                   <td className="p-3"><b>{member.full_name}</b><span className="block text-sm text-ink-mute">{member.email}</span></td>
                   <td className="p-3">{member.delivered_supplier_orders}</td>
-                  <td className="p-3">{formatTZS(member.sales_value_tzs)}</td>
-                  <td className="p-3">{member.target_sales_tzs ? `${formatTZS(member.target_sales_tzs)} · ${member.commission_rate_pct}%` : 'Not reached'}</td>
-                  <td className="p-3">{formatTZS(member.commission_tzs)}</td>
-                  <td className="p-3">{formatTZS(member.bonus_tzs)}</td>
-                  <td className="p-3 font-extrabold">{formatTZS(member.total_tzs)}</td>
+                  <td className="p-3">{formatPrice(member.sales_value_tzs)}</td>
+                  <td className="p-3">{member.target_sales_tzs ? `${formatPrice(member.target_sales_tzs)} · ${member.commission_rate_pct}%` : 'Not reached'}</td>
+                  <td className="p-3">{formatPrice(member.commission_tzs)}</td>
+                  <td className="p-3">{formatPrice(member.bonus_tzs)}</td>
+                  <td className="p-3 font-extrabold">{formatPrice(member.total_tzs)}</td>
                 </tr>
               ))}</tbody>
             </table>

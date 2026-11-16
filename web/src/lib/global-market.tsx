@@ -11,6 +11,7 @@ type MarketContextValue = {
   locationError: string;
   requestLocation: () => void;
   clearLocation: () => void;
+  setDeliveryLocation: (place: { lat: number; lng: number; label: string }) => void;
   countryName: string | null;
   marketAccent: string;
   currency: string;
@@ -20,14 +21,9 @@ type MarketContextValue = {
   exchangeUpdatedAt: string | null;
   ratesLoading: boolean;
   ratesUnavailable: boolean;
+  exchangeRate: number | null;
 };
 
-const CURRENCIES = [
-  'TZS', 'USD', 'EUR', 'GBP', 'KES', 'UGX', 'RWF', 'NGN', 'ZAR', 'CAD', 'AUD',
-  'INR', 'AED', 'JPY', 'CNY', 'NZD', 'GHS', 'SAR', 'HKD', 'SGD', 'BRL', 'MXN',
-  'EGP', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'TRY', 'PKR', 'IDR', 'PHP', 'MYR',
-  'THB', 'VND',
-];
 const REGION_CURRENCY: Record<string, string> = {
   TZ: 'TZS', US: 'USD', CA: 'CAD', AU: 'AUD', NZ: 'NZD', GB: 'GBP',
   KE: 'KES', UG: 'UGX', RW: 'RWF', NG: 'NGN', ZA: 'ZAR', GH: 'GHS',
@@ -140,8 +136,21 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
   const [countryCode, setCountryCode] = useState<string | null>(null);
   const locationRequestId = useRef(0);
 
+  const setDeliveryLocation = useCallback((place: { lat: number; lng: number; label: string }) => {
+    locationRequestId.current += 1;
+    setLocation({ lat: place.lat, lng: place.lng, accuracy: 0 });
+    setPlaceName(place.label);
+    setPlaceNameStatus('ready');
+    setLocationError('');
+    setCountryName(null);
+    setCountryCode(null);
+  }, []);
+
   const setCurrency = useCallback((nextCurrency: string) => {
-    if (!CURRENCIES.includes(nextCurrency) || typeof rates[nextCurrency] !== 'number') return;
+    if (!/^[A-Z]{3}$/.test(nextCurrency) || typeof rates[nextCurrency] !== 'number') {
+      console.error('Cannot select a currency without an available exchange rate:', nextCurrency);
+      return;
+    }
     setCurrencyState(nextCurrency);
     try {
       window.localStorage.setItem(CURRENCY_KEY, nextCurrency);
@@ -238,7 +247,7 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Could not restore market preferences:', error);
     }
-    const initialCurrency = savedCurrency && CURRENCIES.includes(savedCurrency)
+    const initialCurrency = savedCurrency && /^[A-Z]{3}$/.test(savedCurrency)
       ? savedCurrency
       : localeCurrency(detectedLocale);
     setCurrencyState(initialCurrency);
@@ -246,8 +255,14 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     void loadExchangeRates().then((result) => {
       if (!active) return;
       setRates(result.rates);
+      if (!result.rates[initialCurrency]) {
+        console.error('No exchange rate is available for the saved currency:', initialCurrency);
+        setCurrencyState('TZS');
+        setRatesUnavailable(true);
+      } else {
+        setRatesUnavailable(false);
+      }
       setExchangeUpdatedAt(result.updated_at);
-      setRatesUnavailable(false);
       setRatesLoading(false);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -262,12 +277,22 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     };
   }, [requestLocation]);
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CURRENCY_KEY && event.newValue && rates[event.newValue]) {
+        setCurrencyState(event.newValue);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [rates]);
+
   const formatPrice = useCallback((amountTzs: number) => {
     const rate = rates[currency];
     if (typeof rate !== 'number' || !Number.isFinite(rate)) {
       return new Intl.NumberFormat('en-TZ', { style: 'currency', currency: 'TZS', maximumFractionDigits: 0 }).format(amountTzs);
     }
-    return new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(amountTzs * rate);
+    return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amountTzs * rate);
   }, [currency, locale, rates]);
 
   const value = useMemo<MarketContextValue>(() => ({
@@ -277,16 +302,18 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     locationError,
     requestLocation,
     clearLocation,
+    setDeliveryLocation,
     countryName,
     marketAccent: countryCode ? regionAccent(countryCode) : localeAccent(locale),
     currency,
     setCurrency,
-    currencies: CURRENCIES.filter((code) => typeof rates[code] === 'number'),
+    currencies: Object.keys(rates).sort(),
     formatPrice,
     exchangeUpdatedAt,
     ratesLoading,
     ratesUnavailable,
-  }), [location, placeName, placeNameStatus, locationError, requestLocation, clearLocation, countryName, countryCode, locale, currency, setCurrency, rates, formatPrice, exchangeUpdatedAt, ratesLoading, ratesUnavailable]);
+    exchangeRate: rates[currency] ?? null,
+  }), [location, placeName, placeNameStatus, locationError, requestLocation, clearLocation, setDeliveryLocation, countryName, countryCode, locale, currency, setCurrency, rates, formatPrice, exchangeUpdatedAt, ratesLoading, ratesUnavailable]);
 
   return <MarketContext.Provider value={value}>{children}</MarketContext.Provider>;
 }

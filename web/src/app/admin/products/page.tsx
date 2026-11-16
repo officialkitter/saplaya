@@ -9,9 +9,11 @@ import { RestockModal } from '@/components/admin/RestockModal';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input, Select } from '@/components/ui/Fields';
+import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Modal } from '@/components/ui/Modal';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { cn, formatNum, formatTZS } from '@/lib/format';
+import { cn, formatNum } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can } from '@/lib/roles';
 import { isLow } from '@/lib/stats';
 import { fetchAdmin } from '@/lib/supabase';
@@ -53,6 +55,7 @@ type StockableListing = {
 type StockableCatalogResponse = { items: StockableCatalogItem[]; listings: StockableListing[] };
 
 function Products() {
+  const { formatPrice } = useGlobalMarket();
   const { me, farmId, suppliers, products } = useScope();
   const addProduct = useDB((s) => s.addProduct);
   const updateProduct = useDB((s) => s.updateProduct);
@@ -227,7 +230,7 @@ function Products() {
     const retail = Number(form.retail);
     const wholesale = tierPrices(retail, pricingPercentages).wholesale;
     if (form.name.trim().length < 2) err.name = 'Give the product a name.';
-    if (!Number.isSafeInteger(retail) || retail < 2) err.retail = 'Enter a whole TSh retail price of at least 2.';
+    if (!Number.isSafeInteger(retail) || retail < 2) err.retail = 'Enter a whole base TZS retail price of at least 2.';
     if (!(Number(form.min) > 0)) err.min = 'Enter the smallest bulk order.';
     setErrors(err);
     if (Object.keys(err).length || !me || !farmId) return;
@@ -317,7 +320,7 @@ function Products() {
                     <SmartImage src={item.image_url ?? ''} alt={item.name} emoji={EMOJI[item.category] ?? '🥬'} className="h-14 w-14 shrink-0 rounded-xl text-xl" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-bold">{item.name}</p>
-                      <p className="text-sm text-ink-mute">{item.category} · {formatTZS(item.retail_price)}/{item.unit}</p>
+                      <p className="text-sm text-ink-mute">{item.category} · {formatPrice(item.retail_price)}/{item.unit}</p>
                       {stocked && <p className="text-xs font-bold text-leaf-deep">Already stocked: {formatNum(Number(listing?.stock))} {item.unit}</p>}
                       {stocked && !available && <p className="text-xs font-bold text-[#8A5A00]">Hidden from the shop</p>}
                     </div>
@@ -397,22 +400,22 @@ function Products() {
                   <dl className="mt-3 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
                     <div className="rounded-2xl bg-leaf-soft p-3">
                       <dt className="text-xs font-semibold text-leaf-deep">Shop price</dt>
-                      <dd className="font-extrabold text-leaf-deep">{formatTZS(p.retailPrice)}<span className="text-xs font-medium">/{p.unit}</span></dd>
+                      <dd className="font-extrabold text-leaf-deep">{formatPrice(p.retailPrice)}<span className="text-xs font-medium">/{p.unit}</span></dd>
                     </div>
                     <div className="rounded-2xl bg-sun-soft p-3">
                       <dt className="text-xs font-semibold text-[#8A5A00]">Bulk price (min {p.wholesaleMinQty})</dt>
-                      <dd className="font-extrabold text-[#6B4A12]">{formatTZS(p.wholesalePrice)}<span className="text-xs font-medium">/{p.unit}</span></dd>
+                      <dd className="font-extrabold text-[#6B4A12]">{formatPrice(p.wholesalePrice)}<span className="text-xs font-medium">/{p.unit}</span></dd>
                     </div>
                   </dl>
                   {(p.bulkPrice !== null || p.megaBulkPrice !== null) && (
                     <dl className="mt-3 grid grid-cols-1 gap-3 rounded-2xl min-[400px]:grid-cols-2 border border-dashed border-leaf/40 bg-leaf-soft/40 p-3">
                       <div>
                         <dt className="text-xs font-semibold text-leaf-deep">Confidential bulk price</dt>
-                        <dd className="font-extrabold text-leaf-deep">{p.bulkPrice === null ? 'Not configured' : `${formatTZS(p.bulkPrice)}/${p.unit}`}</dd>
+                        <dd className="font-extrabold text-leaf-deep">{p.bulkPrice === null ? 'Not configured' : `${formatPrice(p.bulkPrice)}/${p.unit}`}</dd>
                       </div>
                       <div>
                         <dt className="text-xs font-semibold text-leaf-deep">Confidential mega-bulk price</dt>
-                        <dd className="font-extrabold text-leaf-deep">{p.megaBulkPrice === null ? 'Not configured' : `${formatTZS(p.megaBulkPrice)}/${p.unit}`}</dd>
+                        <dd className="font-extrabold text-leaf-deep">{p.megaBulkPrice === null ? 'Not configured' : `${formatPrice(p.megaBulkPrice)}/${p.unit}`}</dd>
                       </div>
                     </dl>
                   )}
@@ -460,23 +463,23 @@ function Products() {
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add a product' : 'Edit product'} wide>
         <div className="space-y-4">
-          <Field label="Product name" error={errors.name}><Input value={form.name} onChange={set('name')} placeholder="Vine Tomatoes" /></Field>
+          <Field label="Product name" error={errors.name}><Input value={form.name} onChange={set('name')} placeholder="Enter the product name" /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Type"><Select value={form.category} onChange={set('category')}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
             <Field label="Sold by"><Select value={form.unit} onChange={set('unit')}>{UNITS.map((c) => <option key={c}>{c}</option>)}</Select></Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Suggested retail price (TSh)" error={errors.retail} hint="Shared customer prices require owner approval">
-              <Input type="number" inputMode="numeric" min="2" value={form.retail} onChange={set('retail')} />
+            <Field label="Suggested retail price" error={errors.retail} hint="Enter the selected currency. Shared customer prices require owner approval.">
+              <CurrencyInput inputMode="decimal" min="0" value={form.retail} onValueChange={(value) => setForm((current) => ({ ...current, retail: value }))} />
             </Field>
-            <Field label={`Calculated wholesale · ${pricingPercentages.wholesale}% of retail`}>
-              <Input value={form.retail ? formatTZS(tierPrices(Number(form.retail), pricingPercentages).wholesale) : 'Enter a retail price'} readOnly />
+            <Field label={`Calculated wholesale · ${pricingPercentages.wholesale}% of retail (display estimate)`}>
+              <Input value={form.retail ? formatPrice(tierPrices(Number(form.retail), pricingPercentages).wholesale) : 'Enter a retail price'} readOnly />
             </Field>
           </div>
           <div className="grid gap-3 rounded-2xl bg-leaf-soft p-4 text-sm sm:grid-cols-2">
-            <p className="font-semibold text-leaf-deep">Bulk · {pricingPercentages.bulk}%: {form.retail ? formatTZS(tierPrices(Number(form.retail), pricingPercentages).bulk) : '—'}</p>
-            <p className="font-semibold text-leaf-deep">Mega-bulk · {pricingPercentages.mega_bulk}%: {form.retail ? formatTZS(tierPrices(Number(form.retail), pricingPercentages).mega_bulk) : '—'}</p>
-            <p className="text-ink-soft sm:col-span-2">The owner controls these percentages. All suggested tiers are calculated from retail and submitted for approval together.</p>
+            <p className="font-semibold text-leaf-deep">Bulk · {pricingPercentages.bulk}%: {form.retail ? formatPrice(tierPrices(Number(form.retail), pricingPercentages).bulk) : '—'}</p>
+            <p className="font-semibold text-leaf-deep">Mega-bulk · {pricingPercentages.mega_bulk}%: {form.retail ? formatPrice(tierPrices(Number(form.retail), pricingPercentages).mega_bulk) : '—'}</p>
+            <p className="text-ink-soft sm:col-span-2">The owner controls these percentages. Displayed tier prices are estimates; the base TZS tiers are calculated from retail and submitted for approval together.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Smallest bulk order" error={errors.min}><Input type="number" inputMode="numeric" value={form.min} onChange={set('min')} /></Field>

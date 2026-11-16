@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input, Select } from '@/components/ui/Fields';
 import { Modal } from '@/components/ui/Modal';
-import { cn, formatTZS, timeAgo } from '@/lib/format';
+import { cn, timeAgo } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can } from '@/lib/roles';
 import { countsAsSale, orderTotal } from '@/lib/stats';
 import { useDB, useScope, useToast } from '@/lib/store';
@@ -37,6 +38,7 @@ function applicationLocation(application: Application) {
 }
 
 function Farms() {
+  const { formatPrice } = useGlobalMarket();
   const { me, suppliers, products, orders } = useScope();
   const applications = useDB((s) => s.applications);
   const decide = useDB((s) => s.decideApplication);
@@ -364,7 +366,7 @@ function Farms() {
                               <dl className="mt-4 grid grid-cols-3 gap-2 text-center sm:gap-3">
                                 <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="font-display text-lg font-extrabold sm:text-xl">{st.products}</dd><dt className="text-xs font-semibold text-ink-mute">Products</dt></div>
                                 <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="font-display text-lg font-extrabold sm:text-xl">{st.open}</dd><dt className="text-xs font-semibold text-ink-mute">Open orders</dt></div>
-                                <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="whitespace-nowrap font-display text-[13px] font-extrabold leading-7 tabular-nums sm:text-base">{formatTZS(st.sales)}</dd><dt className="text-xs font-semibold text-ink-mute">Sales, 14 days</dt></div>
+                                <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="break-words font-display text-[13px] font-extrabold leading-7 tabular-nums sm:text-base">{formatPrice(st.sales)}</dd><dt className="text-xs font-semibold text-ink-mute">Sales, 14 days</dt></div>
                 </dl>
                               <div className="mt-4 min-w-0 space-y-1 text-[15px] text-ink-soft">
                                 <p className="break-words font-semibold text-ink">{s.contactName}</p>
@@ -578,8 +580,8 @@ function Farms() {
       <Modal open={!!locationEditing} onClose={() => setLocationEditing(null)} title={`Farm GPS${locationEditing ? ` · ${locationEditing.name}` : ''}`}>
         <div className="space-y-4">
           <p className="text-sm text-ink-soft">Enter the farm’s verified decimal coordinates. The customer app uses them for nearest-farm matching and delivery distance; farm identity remains private.</p>
-          <Field label="Latitude"><Input type="number" step="any" value={coordinates.latitude} onChange={(event) => setCoordinates((current) => ({ ...current, latitude: event.target.value }))} placeholder="-6.1630" /></Field>
-          <Field label="Longitude"><Input type="number" step="any" value={coordinates.longitude} onChange={(event) => setCoordinates((current) => ({ ...current, longitude: event.target.value }))} placeholder="35.7516" /></Field>
+          <Field label="Latitude"><Input type="number" step="any" value={coordinates.latitude} onChange={(event) => setCoordinates((current) => ({ ...current, latitude: event.target.value }))} placeholder="Enter latitude" /></Field>
+          <Field label="Longitude"><Input type="number" step="any" value={coordinates.longitude} onChange={(event) => setCoordinates((current) => ({ ...current, longitude: event.target.value }))} placeholder="Enter longitude" /></Field>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setLocationEditing(null)}>Cancel</Button>
             <Button onClick={() => { void saveCoordinates(); }}>Save GPS</Button>

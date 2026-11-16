@@ -221,8 +221,8 @@ function Team() {
           <div className="grid min-w-0 gap-6 xl:grid-cols-2">
             <Panel title="Create a department" subtitle="Departments organize access and receive their own dashboard views.">
               <div className="space-y-3">
-                <Field label="Department name"><Input value={departmentForm.name} onChange={(event) => setDepartmentForm((current) => ({ ...current, name: event.target.value }))} placeholder="Customer care" /></Field>
-                <Field label="Description"><Input value={departmentForm.description} onChange={(event) => setDepartmentForm((current) => ({ ...current, description: event.target.value }))} placeholder="Customer support and service" /></Field>
+                <Field label="Department name"><Input value={departmentForm.name} onChange={(event) => setDepartmentForm((current) => ({ ...current, name: event.target.value }))} placeholder="Enter the department name" /></Field>
+                <Field label="Description"><Input value={departmentForm.description} onChange={(event) => setDepartmentForm((current) => ({ ...current, description: event.target.value }))} placeholder="Describe the department's responsibilities" /></Field>
                 <Field label="Department theme">
                   <input type="color" value={departmentForm.theme_color} onChange={(event) => setDepartmentForm((current) => ({ ...current, theme_color: event.target.value }))} className="h-11 w-full rounded-xl border border-line bg-white p-1" />
                 </Field>
@@ -239,7 +239,7 @@ function Team() {
 
             <Panel title="Create a configurable role" subtitle="A role can grant only permissions you already hold. Assigned users inherit its department dashboard and theme.">
               <div className="space-y-3">
-                <Field label="Role name"><Input value={roleForm.name} onChange={(event) => setRoleForm((current) => ({ ...current, name: event.target.value }))} placeholder="Customer care officer" /></Field>
+                <Field label="Role name"><Input value={roleForm.name} onChange={(event) => setRoleForm((current) => ({ ...current, name: event.target.value }))} placeholder="Enter the role name" /></Field>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Department">
                     <Select value={roleForm.department_id} onChange={(event) => setRoleForm((current) => ({ ...current, department_id: event.target.value }))}>

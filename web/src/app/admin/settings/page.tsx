@@ -6,12 +6,14 @@ import { useEffect, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Fields';
-import { formatTZS } from '@/lib/format';
+import { CurrencyInput } from '@/components/ui/CurrencyInput';
+import { useGlobalMarket } from '@/lib/global-market';
 import { deliveryFee } from '@/lib/stats';
 import { useDB, useToast } from '@/lib/store';
 import { DELIVERY_ETAS, type DeliveryEta } from '@/lib/types';
 
 function SettingsPage() {
+  const { formatPrice } = useGlobalMarket();
   const saved = useDB((s) => s.settings);
   const saveSettings = useDB((s) => s.saveSettings);
   const push = useToast((s) => s.push);
@@ -93,8 +95,8 @@ function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Free delivery up to (km)"><Input type="number" min={0} value={f.freeRadiusKm} onChange={num('freeRadiusKm')} /></Field>
             <Field label="Standard delivery up to (km)" error={f.midRadiusKm <= f.freeRadiusKm ? 'Must be larger than the free distance.' : undefined}><Input type="number" min={0} value={f.midRadiusKm} onChange={num('midRadiusKm')} /></Field>
-            <Field label="Standard delivery price (TSh)"><Input type="number" min={0} value={f.midFee} onChange={num('midFee')} /></Field>
-            <Field label="Far delivery price (TSh)" error={f.farFee < f.midFee ? 'Should not be less than the standard price.' : undefined}><Input type="number" min={0} value={f.farFee} onChange={num('farFee')} /></Field>
+            <Field label="Standard delivery price"><CurrencyInput min={0} value={f.midFee} onValueChange={(value) => setF((current) => ({ ...current, midFee: Number(value) }))} /></Field>
+            <Field label="Far delivery price" error={f.farFee < f.midFee ? 'Should not be less than the standard price.' : undefined}><CurrencyInput min={0} value={f.farFee} onValueChange={(value) => setF((current) => ({ ...current, farFee: Number(value) }))} /></Field>
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <Field label="Saplaya keeps (% of each sale)" error={f.commissionPct > 40 ? 'Keep this under 40%.' : undefined}><Input type="number" min={0} max={40} value={f.commissionPct} onChange={num('commissionPct')} /></Field>
@@ -108,13 +110,11 @@ function SettingsPage() {
         <Panel title="Bulk delivery timeframes" subtitle="Configure timeframes for bulk and mega-bulk orders.">
           <div className="grid gap-4 sm:grid-cols-2">
             {DELIVERY_ETAS.filter((option) => option.value !== 'morning' && option.value !== 'evening').map((option) => (
-              <Field key={option.value} label={`${option.title} surcharge (TZS)`}>
-                <Input
-                  type="number"
+              <Field key={option.value} label={`${option.title} surcharge`}>
+                <CurrencyInput
                   min={0}
-                  step={1}
                   value={f.deliveryOptionFees[option.value] ?? ''}
-                  onChange={(event) => setDeliveryFee(option.value, event.target.value)}
+                  onValueChange={(value) => setDeliveryFee(option.value, value)}
                   placeholder="Not available"
                 />
               </Field>
@@ -130,7 +130,7 @@ function SettingsPage() {
             <input type="range" min={0} max={15} step={0.5} value={km} onChange={(e) => setKm(Number(e.target.value))} aria-label="Distance in kilometres" className="h-3 w-full accent-[#2E7D32]" />
             <div className="mt-3 flex items-baseline justify-between">
               <p className="font-display text-2xl font-extrabold">{km} km</p>
-              <p className={`font-display text-2xl font-extrabold ${fee === 0 ? 'text-leaf' : 'text-ink'}`}>{fee === 0 ? 'Free delivery' : formatTZS(fee)}</p>
+              <p className={`font-display text-2xl font-extrabold ${fee === 0 ? 'text-leaf' : 'text-ink'}`}>{fee === 0 ? 'Free delivery' : formatPrice(fee)}</p>
             </div>
             <p className="mt-2 text-sm text-ink-mute">{fee === 0 ? 'The customer sees the cheerful scooter banner in their basket.' : 'The customer sees this price before they order.'}</p>
           </Panel>

@@ -10,7 +10,8 @@ import { EmptyState, StatusPill } from '@/components/ui/Bits';
 import { Field, Input, Select } from '@/components/ui/Fields';
 import { Drawer, Modal } from '@/components/ui/Modal';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { cn, formatNum, formatTZS, nextStatus, STATUS, STATUS_ALL, STATUS_FLOW, timeAgo } from '@/lib/format';
+import { cn, formatNum, nextStatus, STATUS, STATUS_ALL, STATUS_FLOW, timeAgo } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can, isFarmRole } from '@/lib/roles';
 import { customerLabel, customerPhone, orderTotal } from '@/lib/stats';
 import { useDB, useScope, useToast } from '@/lib/store';
@@ -74,6 +75,7 @@ function Pipeline({ status }: { status: OrderStatus }) {
 }
 
 function Orders() {
+  const { formatPrice } = useGlobalMarket();
   const { me, farmId, suppliers, products, orders } = useScope();
   const setOrderStatus = useDB((s) => s.setOrderStatus);
   const push = useToast((s) => s.push);
@@ -221,7 +223,7 @@ function Orders() {
                 </button>
                 <p className="hidden text-ink-soft md:block">{o.items.length} item{o.items.length === 1 ? '' : 's'}: {o.items.map((it) => byId.get(it.productId)?.name).filter(Boolean).slice(0, 2).join(', ')}{o.items.length > 2 ? '…' : ''}</p>
                 <div className="flex items-center justify-between gap-3 md:block md:text-right">
-                  <p className="font-extrabold">{formatTZS(orderTotal(o))}</p>
+                  <p className="font-extrabold">{formatPrice(orderTotal(o))}</p>
                   <StatusPill status={o.status} className="md:mt-1" />
                 </div>
                 <ActionButtons o={o} />
@@ -270,14 +272,14 @@ function Orders() {
                       <SmartImage src={p?.image} alt={p?.name ?? 'Item'} emoji={p?.emoji} className="h-14 w-14 shrink-0 rounded-2xl text-xl" />
                       <div className="min-w-0 flex-1">
                         <p className="font-bold">{p?.name ?? 'Item'}</p>
-                        <p className="text-sm text-ink-mute">{formatNum(it.qty)} {p?.unit} at {formatTZS(it.unitPrice)}</p>
+                        <p className="text-sm text-ink-mute">{formatNum(it.qty)} {p?.unit} at {formatPrice(it.unitPrice)}</p>
                       </div>
-                      <p className="break-words text-right font-extrabold">{formatTZS(it.qty * it.unitPrice)}</p>
+                      <p className="break-words text-right font-extrabold">{formatPrice(it.qty * it.unitPrice)}</p>
                     </li>
                   );
                 })}
                 <li className="flex items-center justify-between py-3 font-display text-lg font-extrabold">
-                  <span>Total</span><span>{formatTZS(orderTotal(open))}</span>
+                  <span>Total</span><span>{formatPrice(orderTotal(open))}</span>
                 </li>
               </ul>
             </div>
