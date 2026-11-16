@@ -194,20 +194,22 @@ function Team() {
                 const st = STATUS[m.status];
                 const manage = canManageMember(me, m);
                 return (
-                  <motion.li key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5">
-                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-leaf-soft font-extrabold text-leaf-deep">{initials(m.name)}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold">{m.name}{m.id === me.id && <span className="ml-2 text-sm font-semibold text-ink-mute">(you)</span>}</p>
-                      <p className="truncate text-sm text-ink-mute">{m.email}</p>
+                  <motion.li key={m.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.03, duration: 0.2 }} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 py-4 first:pt-1 last:pb-1 sm:gap-x-4 md:grid-cols-[auto_minmax(0,1fr)_auto]">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-leaf-soft font-extrabold text-leaf-deep sm:h-12 sm:w-12">{initials(m.name)}</span>
+                    <div className="min-w-0">
+                      <p className="truncate font-bold">{m.name}{m.id === me.id && <span className="ml-2 text-sm font-semibold text-ink-mute">(you)</span>}</p>
+                      <p className="truncate text-sm text-ink-mute" title={m.email}>{m.email}</p>
                     </div>
-                    <span className={cn('rounded-full px-3 py-1 text-sm font-bold', info.badge)}>{info.label}</span>
-                    <span className="rounded-full bg-milk px-3 py-1 text-xs font-bold text-ink-soft">{m.department ?? info.scope}</span>
-                    <span className={cn('rounded-full px-3 py-1 text-sm font-bold', st.cls)}>{st.label}</span>
-                    {manage && (
-                      <Button size="sm" variant={m.status === 'suspended' ? 'soft' : 'ghost'} icon={m.status === 'suspended' ? <Play size={16} /> : <Pause size={16} />} onClick={() => (m.status === 'suspended' ? void resumeMember(m) : setPause(m))}>
-                        {m.status === 'suspended' ? 'Turn back on' : 'Pause'}
-                      </Button>
-                    )}
+                    <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-2 md:col-span-1 md:justify-end">
+                      <span className={cn('max-w-full truncate rounded-full px-3 py-1 text-sm font-bold', info.badge)}>{info.label}</span>
+                      <span className="max-w-full truncate rounded-full bg-milk px-3 py-1 text-xs font-bold capitalize text-ink-soft">{m.department ?? info.scope}</span>
+                      <span className={cn('rounded-full px-3 py-1 text-sm font-bold', st.cls)}>{st.label}</span>
+                      {manage && (
+                        <Button size="sm" className="ml-auto md:ml-0" variant={m.status === 'suspended' ? 'soft' : 'ghost'} icon={m.status === 'suspended' ? <Play size={16} /> : <Pause size={16} />} onClick={() => (m.status === 'suspended' ? void resumeMember(m) : setPause(m))}>
+                          {m.status === 'suspended' ? 'Turn back on' : 'Pause'}
+                        </Button>
+                      )}
+                    </div>
                   </motion.li>
                 );
               })}
@@ -216,7 +218,7 @@ function Team() {
         ))}
 
         {roleConfig?.can_manage_roles && (
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-6 xl:grid-cols-2">
             <Panel title="Create a department" subtitle="Departments organize access and receive their own dashboard views.">
               <div className="space-y-3">
                 <Field label="Department name"><Input value={departmentForm.name} onChange={(event) => setDepartmentForm((current) => ({ ...current, name: event.target.value }))} placeholder="Customer care" /></Field>
@@ -224,7 +226,7 @@ function Team() {
                 <Field label="Department theme">
                   <input type="color" value={departmentForm.theme_color} onChange={(event) => setDepartmentForm((current) => ({ ...current, theme_color: event.target.value }))} className="h-11 w-full rounded-xl border border-line bg-white p-1" />
                 </Field>
-                <Button disabled={savingConfig} onClick={() => { void createDepartment(); }}>Create department</Button>
+                <Button className="w-full sm:w-auto" disabled={savingConfig} onClick={() => { void createDepartment(); }}>Create department</Button>
               </div>
               {roleConfig.departments.length > 0 && (
                 <ul className="mt-4 flex flex-wrap gap-2">
@@ -251,10 +253,10 @@ function Team() {
                     </Select>
                   </Field>
                 </div>
-                <fieldset className="max-h-60 space-y-2 overflow-y-auto rounded-2xl border border-line p-3">
+                <fieldset className="max-h-60 min-w-0 space-y-1 overflow-y-auto overscroll-contain rounded-2xl border border-line p-3">
                   <legend className="px-1 text-sm font-bold">Permissions</legend>
                   {PERM_ROWS.filter((row) => me.permissions?.includes(row.perm)).map((row) => (
-                    <label key={row.perm} className="flex items-start gap-2 text-sm">
+                    <label key={row.perm} className="flex cursor-pointer items-start gap-3 rounded-xl px-1 py-1.5 text-sm hover:bg-milk">
                       <input
                         type="checkbox"
                         checked={roleForm.permissions.includes(row.perm)}
@@ -269,14 +271,14 @@ function Team() {
                             ])]
                             : current.permissions.filter((permission) => permission !== row.perm),
                         }))}
-                        className="mt-0.5 accent-leaf"
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-leaf"
                       />
-                      <span>{row.label}</span>
+                      <span className="min-w-0">{row.label}</span>
                     </label>
                   ))}
                 </fieldset>
                 {dashboardRequired && <p className="text-sm text-ink-mute">Department analytics require the home dashboard permission so the assigned person can open their dashboard.</p>}
-                <Button disabled={savingConfig || !roleConfig.departments.length} onClick={() => { void createRole(); }}>Create role</Button>
+                <Button className="w-full sm:w-auto" disabled={savingConfig || !roleConfig.departments.length} onClick={() => { void createRole(); }}>Create role</Button>
               </div>
             </Panel>
           </div>
@@ -285,15 +287,15 @@ function Team() {
         {configError && <p role="alert" className="rounded-2xl bg-[#FFEBEE] p-4 font-semibold text-[#B71C1C]">{configError}</p>}
 
         <Panel title="Assignable role permissions" subtitle="Only roles whose permissions fit within your own access are shown. The system enforces these permissions on the server.">
-          <div className="-mx-2 overflow-x-auto px-2">
+          <div className="-mx-4 overflow-x-auto overscroll-x-contain px-4 sm:-mx-2 sm:px-2">
             {options.length ? (
-              <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
+              <table className="w-full border-separate border-spacing-0 text-left text-sm sm:text-base">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 bg-white p-3" />
+                    <th className="sticky left-0 z-10 min-w-[9.5rem] bg-white p-2 sm:min-w-[13rem] sm:p-3"><span className="sr-only">Permission</span></th>
                     {options.map((role) => (
-                      <th key={role.role_key} className="p-3 text-center align-bottom">
-                        <span className={cn('inline-block rounded-full px-3 py-1 text-sm font-bold', 'bg-[#E3F2FD] text-[#0D47A1]', role.role_key === me.role && 'ring-2 ring-ink ring-offset-2')}>{role.name}</span>
+                      <th key={role.role_key} className="min-w-[6.5rem] p-2 text-center align-bottom sm:p-3">
+                        <span className={cn('inline-block rounded-full px-2.5 py-1 text-xs font-bold sm:px-3 sm:text-sm', 'bg-[#E3F2FD] text-[#0D47A1]', role.role_key === me.role && 'ring-2 ring-ink ring-offset-2')}>{role.name}</span>
                         <span className="mt-1 block text-xs font-medium text-ink-mute">{roleConfig?.departments.find((department) => department.id === role.department_id)?.name ?? role.department_id}</span>
                       </th>
                     ))}
@@ -302,12 +304,12 @@ function Team() {
                 <tbody>
                   {PERM_ROWS.map((row) => (
                     <tr key={row.perm}>
-                      <td className="sticky left-0 border-t border-line bg-white p-3 font-semibold">{row.label}</td>
+                      <td className="sticky left-0 z-10 border-t border-line bg-white p-2 font-semibold shadow-[6px_0_8px_-8px_rgba(21,38,26,0.35)] sm:p-3">{row.label}</td>
                       {options.map((role) => (
-                        <td key={role.role_key} className="border-t border-line p-3 text-center">
+                        <td key={role.role_key} className="border-t border-line p-2 text-center sm:p-3">
                           {role.permissions.includes(row.perm)
-                            ? <span className="mx-auto grid h-8 w-8 place-items-center rounded-full bg-leaf text-white"><Check size={17} strokeWidth={3} /></span>
-                            : <span className="mx-auto grid h-8 w-8 place-items-center rounded-full text-ink-mute/60"><Minus size={17} /></span>}
+                            ? <span className="mx-auto grid h-7 w-7 place-items-center rounded-full bg-leaf text-white sm:h-8 sm:w-8" aria-label="Allowed"><Check size={16} strokeWidth={3} /></span>
+                            : <span className="mx-auto grid h-7 w-7 place-items-center rounded-full text-ink-mute/60 sm:h-8 sm:w-8" aria-label="Not allowed"><Minus size={16} /></span>}
                         </td>
                       ))}
                     </tr>
@@ -316,6 +318,7 @@ function Team() {
               </table>
             ) : <p className="p-3 text-sm text-ink-mute">No roles are available within your permission scope.</p>}
           </div>
+          {options.length > 2 && <p className="mt-2 text-xs text-ink-mute md:hidden">Swipe the table sideways to see every role.</p>}
         </Panel>
 
         <Panel title="Limits that always apply">
@@ -328,7 +331,7 @@ function Team() {
               'Pausing a person or a farm blocks sign in straight away. Past orders and stock history stay.',
               'Every stock change is written to the stock history with who did it.',
             ].map((t) => (
-              <li key={t} className="flex items-start gap-3 rounded-2xl bg-milk p-4 text-[15px]">
+              <li key={t} className="flex items-start gap-3 rounded-2xl bg-milk p-3.5 text-[15px] sm:p-4">
                 <Ban size={18} className="mt-0.5 shrink-0 text-sun-deep" />{t}
               </li>
             ))}
@@ -361,7 +364,7 @@ function Team() {
               ))}
             </ul>
           </div>
-          <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setInviting(false)}>Cancel</Button><Button onClick={send}>Send invitation</Button></div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => setInviting(false)}>Cancel</Button><Button onClick={send}>Send invitation</Button></div>
         </div>
       </Modal>
 
@@ -369,7 +372,7 @@ function Team() {
         {pause && (
           <div className="space-y-4">
             <p className="text-lg text-ink-soft"><b className="text-ink">{pause.name}</b> will not be able to sign in until you turn them back on. Their past work stays in the history.</p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => setPause(null)}>Not now</Button>
               <Button variant="danger" onClick={() => { void pauseMember(); }}>Yes, pause</Button>
             </div>

@@ -171,7 +171,7 @@ function Orders() {
               role="tab"
               aria-selected={active}
               onClick={() => { setFilter(t); setLimit(15); }}
-              className={cn('flex items-center gap-2 rounded-full border-2 px-4 py-2 text-[15px] font-bold transition', active ? 'border-transparent text-white' : 'border-line bg-white text-ink-soft hover:border-sprout')}
+              className={cn('flex min-h-10 items-center gap-2 rounded-full border-2 px-4 py-2 text-[15px] font-bold transition', active ? 'border-transparent text-white' : 'border-line bg-white text-ink-soft hover:border-sprout')}
               style={active ? { backgroundColor: color, color: t === 'pending' ? '#15261A' : '#fff' } : undefined}
             >
               {t !== 'all' && !active && <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
@@ -208,14 +208,14 @@ function Orders() {
               className="rounded-3xl border border-line bg-white p-4 shadow-soft"
             >
               <div className="grid items-center gap-3 md:grid-cols-[auto_1.3fr_1fr_auto_auto]">
-                <button onClick={() => setOpenId(o.id)} className="flex -space-x-3 text-left" aria-label={`Open order ${o.code}`}>
+                <button onClick={() => setOpenId(o.id)} className="flex min-h-14 -space-x-3 text-left" aria-label={`Open order ${o.code}`}>
                   {o.items.slice(0, 3).map((it) => {
                     const p = byId.get(it.productId);
                     return <SmartImage key={it.productId} src={p?.image} alt={p?.name ?? 'Item'} emoji={p?.emoji} className="h-14 w-14 rounded-2xl text-xl ring-2 ring-white" />;
                   })}
                 </button>
                 <button onClick={() => setOpenId(o.id)} className="min-w-0 text-left">
-                  <p className="font-display text-lg font-extrabold">{o.code}{!farmId && <span className="ml-2 text-[15px] font-semibold text-leaf">{farmName.get(o.supplierId)}</span>}</p>
+                  <p className="break-words font-display text-lg font-extrabold">{o.code}{!farmId && <span className="ml-2 text-[15px] font-semibold text-leaf">{farmName.get(o.supplierId)}</span>}</p>
                   <p className="truncate text-ink-soft">{customerLabel(o, me.role, me.roleScope)} · {o.area} · {o.mode === 'wholesale' ? 'Wholesale' : 'Retail'}</p>
                   <p className="text-sm text-ink-mute">{timeAgo(o.placedAt)}</p>
                 </button>
@@ -238,9 +238,9 @@ function Orders() {
       <Drawer open={!!open} onClose={() => setOpenId(null)} title={open ? `Order ${open.code}` : 'Order'}>
         {open && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <StatusPill status={open.status} />
-              <p className="text-ink-mute">{timeAgo(open.placedAt)}</p>
+              <p className="break-words text-right text-ink-mute">{timeAgo(open.placedAt)}</p>
             </div>
             <div className="overflow-x-auto rounded-3xl bg-white p-5 shadow-soft"><div className="min-w-[288px]"><Pipeline status={open.status} /></div></div>
 
@@ -272,7 +272,7 @@ function Orders() {
                         <p className="font-bold">{p?.name ?? 'Item'}</p>
                         <p className="text-sm text-ink-mute">{formatNum(it.qty)} {p?.unit} at {formatTZS(it.unitPrice)}</p>
                       </div>
-                      <p className="font-extrabold">{formatTZS(it.qty * it.unitPrice)}</p>
+                      <p className="break-words text-right font-extrabold">{formatTZS(it.qty * it.unitPrice)}</p>
                     </li>
                   );
                 })}
@@ -292,7 +292,7 @@ function Orders() {
             <p className="text-lg text-ink-soft">
               Order <b className="text-ink">{cancelling.code}</b> will be cancelled and the customer is told. The items go back into your stock.
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" disabled={busyOrderId !== null} onClick={() => setCancelId(null)}>Keep order</Button>
               <Button variant="danger" disabled={busyOrderId !== null} onClick={() => { void cancelOrder(); }}>{busyOrderId ? 'Cancelling…' : 'Yes, cancel it'}</Button>
             </div>

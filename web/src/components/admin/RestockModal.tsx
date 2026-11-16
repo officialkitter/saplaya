@@ -60,7 +60,7 @@ export function RestockModal({
         {product && (
           <div className="flex items-center gap-3 rounded-2xl bg-milk p-3">
             <SmartImage src={product.image} alt={product.name} emoji={product.emoji} className="h-14 w-14 rounded-xl text-xl" />
-            <p className="text-ink-soft">
+            <p className="min-w-0 break-words text-ink-soft">
               {productFarm && !me?.supplierId ? <>{productFarm}<br /></> : null}
               In stock now: <b className="text-ink">{formatNum(product.stock)} {product.unit}</b>
             </p>
@@ -69,12 +69,12 @@ export function RestockModal({
         <Field label={`How much did you add${product ? ` (${product.unit})` : ''}?`}>
           <div className="flex items-center gap-2">
             <button type="button" aria-label="Less" onClick={() => setQty(String(Math.max(1, n - 5)))} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-leaf-soft text-leaf-deep hover:bg-[#d7ecd9]"><Minus size={20} /></button>
-            <Input type="number" inputMode="decimal" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className="text-center text-xl font-extrabold" />
+            <Input type="number" inputMode="decimal" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className="min-w-0 flex-1 text-center text-xl font-extrabold" />
             <button type="button" aria-label="More" onClick={() => setQty(String((Number.isFinite(n) ? n : 0) + 5))} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-leaf-soft text-leaf-deep hover:bg-[#d7ecd9]"><Plus size={20} /></button>
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             {[10, 25, 50, 100].map((q) => (
-              <button key={q} type="button" onClick={() => setQty(String(q))} className="rounded-full border-2 border-line px-3.5 py-1 text-sm font-bold text-ink-soft hover:border-sprout">+{q}</button>
+              <button key={q} type="button" onClick={() => setQty(String(q))} className="min-h-10 rounded-full border-2 border-line px-3.5 py-1 text-sm font-bold text-ink-soft hover:border-sprout">+{q}</button>
             ))}
           </div>
         </Field>
@@ -83,7 +83,7 @@ export function RestockModal({
             After this you will have {formatNum(product.stock + n)} {product.unit}.
           </p>
         )}
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={() => { void save(); }} disabled={!valid}>Add stock</Button>
         </div>

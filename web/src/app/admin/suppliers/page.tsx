@@ -313,7 +313,7 @@ function Farms() {
 
       <div className="mb-6 inline-flex rounded-full bg-white p-1.5 shadow-soft ring-1 ring-line" role="tablist">
         {([['farms', `Farms (${suppliers.length})`], ['applications', 'Applications']] as const).map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('relative rounded-full px-5 py-2.5 text-[15px] font-bold transition', tab === id ? 'text-white' : 'text-ink-soft')}>
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('relative rounded-full px-4 py-2.5 text-[15px] font-bold transition sm:px-5', tab === id ? 'text-white' : 'text-ink-soft')}>
             {tab === id && <motion.span layoutId="farm-tab" className="absolute inset-0 rounded-full bg-leaf" transition={{ type: 'spring', damping: 26, stiffness: 340 }} />}
             <span className="relative flex items-center gap-2">
               {label}
@@ -324,14 +324,14 @@ function Farms() {
       </div>
 
       {tab === 'farms' && duplicateGroups.length > 0 && (
-        <section className="mb-6 rounded-3xl border border-amber-300 bg-amber-50 p-5" aria-labelledby="duplicate-farms-title">
+        <section className="mb-6 rounded-3xl border border-amber-300 bg-amber-50 p-4 sm:p-5" aria-labelledby="duplicate-farms-title">
           <h2 id="duplicate-farms-title" className="font-display text-xl font-extrabold">Possible duplicate farms</h2>
           <p className="mt-1 text-sm text-ink-soft">These names and locations match. Review their contacts and records before taking action; no farms have been merged or removed.</p>
           <ul className="mt-3 space-y-3">
             {duplicateGroups.map((group) => (
-              <li key={group[0].id} className="rounded-2xl bg-white p-3">
-                <p className="font-bold">{group[0].name} · {group[0].region}</p>
-                <ul className="mt-2 space-y-1 text-sm text-ink-soft">
+              <li key={group[0].id} className="min-w-0 rounded-2xl bg-white p-3">
+                <p className="break-words font-bold">{group[0].name} · {group[0].region}</p>
+                <ul className="mt-2 space-y-1 break-words text-sm text-ink-soft">
                   {group.map((farm) => (
                     <li key={farm.id}>
                       <a href={`#farm-${farm.id}`} className="font-semibold text-leaf-deep underline">{farm.contactName || 'View farm'}</a>
@@ -351,29 +351,29 @@ function Farms() {
             const meta = FARM_STATUS[s.status];
             const merged = Boolean(s.mergedIntoSupplierId);
             return (
-              <motion.article id={`farm-${s.id}`} key={s.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-[1.75rem] border border-line bg-white p-5 shadow-soft">
-                <div className="flex items-start gap-4">
-                  <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl bg-leaf-soft text-3xl">{s.emoji}</span>
+              <motion.article id={`farm-${s.id}`} key={s.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}               transition={{ delay: Math.min(i, 8) * 0.05 }} className="min-w-0 rounded-[1.75rem] border border-line bg-white p-4 shadow-soft sm:p-5">
+                              <div className="flex items-start gap-3 sm:gap-4">
+                                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-leaf-soft text-2xl sm:h-16 sm:w-16 sm:rounded-3xl sm:text-3xl">{s.emoji}</span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-display text-xl font-extrabold">{s.name}</h3>
-                    <p className="flex items-center gap-1.5 text-ink-mute"><MapPin size={15} /> {supplierLocation(s)}</p>
+                                  <h3 className="break-words font-display text-lg font-extrabold leading-snug sm:text-xl">{s.name}</h3>
+                                  <p className="flex items-start gap-1.5 text-sm text-ink-mute sm:text-base"><MapPin size={15} className="mt-0.5 shrink-0" /> <span className="min-w-0 break-words">{supplierLocation(s)}</span></p>
                   </div>
-                  <span className={cn('rounded-full px-3 py-1 text-sm font-bold', merged ? 'bg-ink/10 text-ink-mute' : meta.cls)}>{merged ? 'Merged' : meta.label}</span>
+                                <span className={cn('shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold sm:px-3 sm:text-sm', merged ? 'bg-ink/10 text-ink-mute' : meta.cls)}>{merged ? 'Merged' : meta.label}</span>
                 </div>
                 {merged && <p className="mt-2 text-sm font-semibold text-ink-mute">Merged into {suppliers.find((farm) => farm.id === s.mergedIntoSupplierId)?.name ?? 'another farm'} · historical records retained</p>}
-                <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
-                  <div className="rounded-2xl bg-milk p-3"><dd className="font-display text-xl font-extrabold">{st.products}</dd><dt className="text-xs font-semibold text-ink-mute">Products</dt></div>
-                  <div className="rounded-2xl bg-milk p-3"><dd className="font-display text-xl font-extrabold">{st.open}</dd><dt className="text-xs font-semibold text-ink-mute">Open orders</dt></div>
-                  <div className="rounded-2xl bg-milk p-3"><dd className="font-display text-base font-extrabold leading-7">{formatTZS(st.sales)}</dd><dt className="text-xs font-semibold text-ink-mute">Sales, 14 days</dt></div>
+                              <dl className="mt-4 grid grid-cols-3 gap-2 text-center sm:gap-3">
+                                <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="font-display text-lg font-extrabold sm:text-xl">{st.products}</dd><dt className="text-xs font-semibold text-ink-mute">Products</dt></div>
+                                <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="font-display text-lg font-extrabold sm:text-xl">{st.open}</dd><dt className="text-xs font-semibold text-ink-mute">Open orders</dt></div>
+                                <div className="min-w-0 rounded-2xl bg-milk px-1.5 py-2.5 sm:p-3"><dd className="whitespace-nowrap font-display text-[13px] font-extrabold leading-7 tabular-nums sm:text-base">{formatTZS(st.sales)}</dd><dt className="text-xs font-semibold text-ink-mute">Sales, 14 days</dt></div>
                 </dl>
-                <div className="mt-4 space-y-1 text-[15px] text-ink-soft">
-                  <p className="font-semibold text-ink">{s.contactName}</p>
-                  <p className="flex items-center gap-2"><Phone size={15} /> {s.contactPhone}</p>
-                  <p className="flex items-center gap-2"><Mail size={15} /> {s.contactEmail}</p>
+                              <div className="mt-4 min-w-0 space-y-1 text-[15px] text-ink-soft">
+                                <p className="break-words font-semibold text-ink">{s.contactName}</p>
+                                <p className="flex items-center gap-2"><Phone size={15} className="shrink-0" /> {s.contactPhone}</p>
+                                <p className="flex items-center gap-2"><Mail size={15} className="shrink-0" /> <span className="min-w-0 break-all">{s.contactEmail}</span></p>
                 </div>
                 {canManage && !merged && (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <p className="mb-2 text-sm text-ink-mute">
+                                  <p className="mb-1 basis-full text-sm text-ink-mute">
                       GPS: {s.latitude === null || s.longitude === null ? 'Not configured — products remain visible but are not location-prioritized' : `${s.latitude.toFixed(5)}, ${s.longitude.toFixed(5)}`}
                     </p>
                     <Button
@@ -441,17 +441,17 @@ function Farms() {
         <ul className="space-y-3">
           <AnimatePresence initial={false}>
             {sorted.map((a) => (
-              <motion.li key={a.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={cn('rounded-3xl border bg-white p-5 shadow-soft', a.status === 'new' ? 'border-sun-deep/50' : 'border-line')}>
+              <motion.li key={a.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}               className={cn('rounded-3xl border bg-white p-4 shadow-soft sm:p-5', a.status === 'new' ? 'border-sun-deep/50' : 'border-line')}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-display text-xl font-extrabold">{a.farmName}</h3>
-                    <p className="text-ink-soft">{a.contactName} · {applicationLocation(a)} · {a.farmSize}</p>
-                    <p className="mt-1 text-ink-soft">Grows: <b className="text-ink">{a.produce}</b></p>
-                    <p className="mt-1 text-sm text-ink-mute">{a.phone} · {a.email} · applied {timeAgo(a.at)}</p>
+                                <div className="min-w-0 flex-1 basis-64">
+                                  <h3 className="break-words font-display text-lg font-extrabold sm:text-xl">{a.farmName}</h3>
+                                  <p className="break-words text-ink-soft">{a.contactName} · {applicationLocation(a)} · {a.farmSize}</p>
+                                  <p className="mt-1 break-words text-ink-soft">Grows: <b className="text-ink">{a.produce}</b></p>
+                                  <p className="mt-1 break-all text-sm text-ink-mute">{a.phone} · {a.email} · applied {timeAgo(a.at)}</p>
                   </div>
                   {a.status === 'new' ? (
                     canManage && (
-                      <div className="flex gap-2">
+                                    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
                         <Button variant="danger" size="sm" icon={<X size={17} />} onClick={() => { void decideApplication(a.id, 'rejected', a.farmName, a.email); }}>Decline</Button>
                         <Button size="sm" icon={<Check size={17} />} onClick={() => { void decideApplication(a.id, 'approved', a.farmName, a.email); }}>Approve</Button>
                       </div>

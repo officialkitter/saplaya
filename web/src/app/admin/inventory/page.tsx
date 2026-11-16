@@ -75,7 +75,7 @@ function Inventory() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={flow} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2}>
               <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" vertical={false} />
-              <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval={1} />
+              <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
               <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} />
               <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={{ borderRadius: 14, border: '1px solid #E3EBE0', fontWeight: 600 }} />
               <Legend iconType="circle" wrapperStyle={{ fontWeight: 600, fontSize: 14 }} />
@@ -86,19 +86,19 @@ function Inventory() {
         </div>
       </Panel>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 grid gap-3 sm:flex sm:flex-wrap sm:items-center">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Type of change">
           {TABS.map((t) => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => { setTab(t.id); setLimit(20); }} className={cn('rounded-full border-2 px-4 py-2 text-[15px] font-bold transition', tab === t.id ? 'border-leaf bg-leaf text-white' : 'border-line bg-white text-ink-soft hover:border-sprout')}>
+            <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => { setTab(t.id); setLimit(20); }} className={cn('min-h-10 rounded-full border-2 px-4 py-2 text-[15px] font-bold transition', tab === t.id ? 'border-leaf bg-leaf text-white' : 'border-line bg-white text-ink-soft hover:border-sprout')}>
               {t.label}
             </button>
           ))}
         </div>
-        <div className="ml-auto flex flex-wrap gap-2">
+        <div className="grid min-w-0 grid-cols-1 gap-2 min-[480px]:grid-cols-2 sm:ml-auto sm:flex sm:flex-wrap">
           {!farmId && (
-            <div className="w-52"><Select value={farm} onChange={(e) => { setFarm(e.target.value); setProduct('all'); }} aria-label="Filter by farm"><option value="all">All farms</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></div>
+            <div className="min-w-0 sm:w-52"><Select value={farm} onChange={(e) => { setFarm(e.target.value); setProduct('all'); }} aria-label="Filter by farm"><option value="all">All farms</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></div>
           )}
-          <div className="w-52"><Select value={product} onChange={(e) => setProduct(e.target.value)} aria-label="Filter by product"><option value="all">All products</option>{productOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></div>
+          <div className="min-w-0 sm:w-52"><Select value={product} onChange={(e) => setProduct(e.target.value)} aria-label="Filter by product"><option value="all">All products</option>{productOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></div>
         </div>
       </div>
 
@@ -110,15 +110,16 @@ function Inventory() {
             const p = byId.get(m.productId);
             const plus = m.qtyChange > 0;
             return (
-              <motion.li key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 10) * 0.02 }} className="flex flex-wrap items-center gap-x-4 gap-y-1 p-4">
-                <SmartImage src={p?.image} alt={p?.name ?? 'Item'} emoji={p?.emoji} className="h-12 w-12 shrink-0 rounded-2xl text-lg" />
+              <motion.li key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 10) * 0.02 }}               className="flex items-center gap-x-3 gap-y-1 px-3.5 py-3.5 sm:gap-x-4 sm:p-4">
+                              <SmartImage src={p?.image} alt={p?.name ?? 'Item'} emoji={p?.emoji} className="h-11 w-11 shrink-0 rounded-2xl text-lg sm:h-12 sm:w-12" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold">{p?.name ?? 'Item'}{!farmId && <span className="font-medium text-ink-mute"> · {farmName.get(m.supplierId)}</span>}</p>
-                  <p className="text-sm text-ink-mute">{timeAgo(m.at)}{m.orderCode ? ` · order ${m.orderCode}` : ''}{m.by ? ` · ${m.by}` : ''}</p>
+                                <p className="truncate font-bold">{p?.name ?? 'Item'}</p>
+                                {!farmId && <p className="truncate text-sm font-medium text-ink-mute">{farmName.get(m.supplierId)}</p>}
+                  <p className="break-words text-sm text-ink-mute">{timeAgo(m.at)}{m.orderCode ? ` · order ${m.orderCode}` : ''}{m.by ? ` · ${m.by}` : ''}</p>
                 </div>
                 <span className={cn('hidden rounded-full px-3 py-1 text-sm font-bold sm:inline-block', KIND[m.kind].chip)}>{KIND[m.kind].label}</span>
-                <div className="text-right">
-                  <p className={cn('inline-flex items-center gap-1 font-display text-lg font-extrabold', plus ? 'text-leaf' : 'text-[#0277BD]')}>
+                <div className="shrink-0 text-right">
+                  <p className={cn('inline-flex items-center gap-1 whitespace-nowrap font-display text-base font-extrabold sm:text-lg', plus ? 'text-leaf' : 'text-[#0277BD]')}>
                     {m.kind === 'cancel_return' ? <RotateCcw size={16} /> : plus ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
                     {plus ? '+' : ''}{formatNum(m.qtyChange)} {p?.unit}
                   </p>

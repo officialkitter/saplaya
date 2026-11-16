@@ -256,15 +256,15 @@ function SharedCatalog() {
             {proposals.map((proposal) => {
               const product = items.find((item) => item.id === proposal.catalog_product_id);
               return (
-                <div key={proposal.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line p-4">
-                  <div>
-                    <p className="font-extrabold">{product?.name ?? 'Catalog item'}</p>
+                <div key={proposal.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line p-3.5 sm:gap-4 sm:p-4">
+                  <div className="min-w-0 flex-1 basis-60">
+                    <p className="break-words font-extrabold">{product?.name ?? 'Catalog item'}</p>
                     <p className="mt-1 text-sm text-ink-mute">
                       Proposed retail {formatTZS(proposal.retail_price)} · wholesale {formatTZS(proposal.wholesale_price)}
                     </p>
                     <p className="mt-1 text-xs text-ink-mute">{localDateTime(proposal.created_at)}</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-2 sm:flex sm:w-auto">
                     <Button variant="soft" disabled={saving} onClick={() => void review(proposal, false)} icon={<X size={17} />}>Decline</Button>
                     <Button disabled={saving} onClick={() => void review(proposal, true)} icon={<Check size={17} />}>Approve shared price</Button>
                   </div>
@@ -311,7 +311,30 @@ function SharedCatalog() {
             hint={query ? 'Try another product name or category.' : 'Products in the other approval section are kept separate.'}
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <ul className="divide-y divide-line md:hidden">
+            {visible.map((item) => (
+              <li key={item.id} className="py-3.5 first:pt-1 last:pb-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words font-bold">{item.name}</p>
+                    <p className="text-xs text-ink-mute">{item.category} · per {item.unit}</p>
+                  </div>
+                  <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-extrabold ${item.price_approved ? 'bg-leaf-soft text-leaf-deep' : 'bg-sun-soft text-sun-deep'}`}>
+                    {item.price_approved ? 'Approved' : 'Needs approval'}
+                  </span>
+                </div>
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-2xl bg-milk p-3 text-sm">
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Retail</dt><dd className="font-semibold tabular-nums">{formatTZS(item.retail_price)}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Wholesale</dt><dd className="font-semibold tabular-nums">{formatTZS(item.wholesale_price)}</dd></div>
+                  {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Bulk</dt><dd className="font-semibold tabular-nums">{item.bulk_price == null ? 'Not set' : formatTZS(item.bulk_price)}</dd></div>}
+                  {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Mega-bulk</dt><dd className="font-semibold tabular-nums">{item.mega_bulk_price == null ? 'Not set' : formatTZS(item.mega_bulk_price)}</dd></div>}
+                </dl>
+                <Button variant="soft" size="sm" className="mt-2.5 w-full" onClick={() => startEdit(item)} icon={<Pencil size={16} />}>Edit</Button>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[740px] text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-mute">
@@ -348,6 +371,7 @@ function SharedCatalog() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Panel>
 

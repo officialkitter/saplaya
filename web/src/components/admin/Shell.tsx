@@ -1,14 +1,14 @@
 'use client';
 
 import { userFacingMessage } from '@/lib/user-facing-error';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon, UserRound,
   Tractor, Users, Warehouse, X, Tags, BriefcaseBusiness,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Logo, LogoMark } from '@/components/ui/Logo';
 import { cn, initials } from '@/lib/format';
 import { can, isFarmRole, roleInfo } from '@/lib/roles';
@@ -32,7 +32,7 @@ function navFor(farm: boolean): NavItem[] {
   ];
 }
 
-function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarBody({ onNavigate, animatedPill = true }: { onNavigate?: () => void; animatedPill?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { me, farmId, suppliers, orders } = useScope();
@@ -83,9 +83,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
               href={it.href}
               onClick={onNavigate}
               aria-current={active ? 'page' : undefined}
-              className={cn('relative flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-[17px] font-bold transition-colors', active ? 'text-white' : 'text-ink-soft hover:bg-leaf-soft')}
+              className={cn(
+                'relative flex items-center gap-3.5 rounded-2xl px-4 py-3.5 text-[17px] font-bold transition-colors',
+                active ? 'text-white' : 'text-ink-soft hover:bg-leaf-soft',
+                active && !animatedPill && 'bg-leaf shadow-soft',
+              )}
             >
-              {active && (
+              {/* Shared-layout animation is desktop-only: inside the exiting mobile drawer it can stall AnimatePresence. */}
+              {active && animatedPill && (
                 <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-2xl bg-leaf shadow-soft" transition={{ type: 'spring', damping: 26, stiffness: 340 }} />
               )}
               <Icon size={23} className="relative" />
@@ -152,11 +157,32 @@ export function Shell({ children }: { children: ReactNode }) {
   const bootError = useBoot((s) => s.error);
   const retry = useBoot((s) => s.retry);
   const me = useMe();
+  const pathname = usePathname();
   const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    menuRef.current?.toggleAttribute('inert', !menu);
+  }, [menu, ready, me, bootError]);
 
   useEffect(() => {
     if (ready && !me && !bootError) router.replace('/login');
   }, [ready, me, bootError, router]);
+
+  useEffect(() => { setMenu(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const onResize = () => { if (desktop.matches) setMenu(false); };
+    window.addEventListener('keydown', close);
+    desktop.addEventListener('change', onResize);
+    return () => {
+      window.removeEventListener('keydown', close);
+      desktop.removeEventListener('change', onResize);
+    };
+  }, [menu]);
 
   if (!ready || !me || bootError) return <BootScreen error={bootError} retry={retry} />;
 
@@ -166,33 +192,39 @@ export function Shell({ children }: { children: ReactNode }) {
         <SidebarBody />
       </aside>
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-line bg-white/90 px-4 backdrop-blur lg:hidden">
-        <Logo />
-        <button onClick={() => setMenu(true)} aria-label="Open menu" className="grid h-11 w-11 place-items-center rounded-xl hover:bg-leaf-soft">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-line bg-white px-4 lg:hidden">
+        <Link href="/admin" aria-label="Saplaya home"><Logo /></Link>
+        <button type="button" onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu} className="grid h-11 w-11 place-items-center rounded-xl hover:bg-leaf-soft">
           <Menu size={26} />
         </button>
       </header>
 
-      <AnimatePresence>
-        {menu && (
-          <div className="fixed inset-0 z-50 lg:hidden">
-            <motion.div className="absolute inset-0 bg-ink/40" onClick={() => setMenu(false)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-            <motion.div
-              className="absolute inset-y-0 left-0 w-[300px] max-w-[88vw] bg-white shadow-lift"
-              initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-            >
-              <button onClick={() => setMenu(false)} aria-label="Close menu" className="absolute right-3 top-4 z-10 grid h-10 w-10 place-items-center rounded-xl hover:bg-leaf-soft">
-                <X size={22} />
-              </button>
-              <SidebarBody onNavigate={() => setMenu(false)} />
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Always mounted and toggled with CSS: an exit animation can never leave an invisible layer that swallows taps. */}
+      <div
+        ref={menuRef}
+        aria-hidden={!menu}
+        className={cn('fixed inset-0 z-50 overscroll-contain lg:hidden', menu ? 'visible' : 'pointer-events-none invisible transition-[visibility] delay-200')}
+      >
+        <div
+          className={cn('absolute inset-0 bg-ink/40 transition-opacity duration-200', menu ? 'opacity-100' : 'opacity-0')}
+          onClick={() => setMenu(false)}
+        />
+        <div
+          role="dialog" aria-modal="true" aria-label="Admin menu"
+          className={cn(
+            'absolute inset-y-0 left-0 w-[300px] max-w-[88vw] overflow-y-auto overscroll-contain bg-white shadow-lift transition-transform duration-200 ease-out will-change-transform',
+            menu ? 'translate-x-0' : '-translate-x-full',
+          )}
+        >
+          <button type="button" onClick={() => setMenu(false)} aria-label="Close menu" className="absolute right-3 top-4 z-10 grid h-10 w-10 place-items-center rounded-xl hover:bg-leaf-soft">
+            <X size={22} />
+          </button>
+          <SidebarBody onNavigate={() => setMenu(false)} animatedPill={false} />
+        </div>
+      </div>
 
-      <main className="min-w-0 lg:pl-72">
-        <div className="mx-auto min-w-0 max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">{children}</div>
+      <main className="min-w-0 overflow-x-clip lg:pl-72">
+        <div className="mx-auto min-w-0 max-w-7xl px-3.5 py-6 sm:px-6 sm:py-7 lg:px-8 lg:py-10">{children}</div>
       </main>
     </div>
   );

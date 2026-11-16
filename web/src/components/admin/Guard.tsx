@@ -33,26 +33,26 @@ export function Guarded({ perm, children }: { perm: Perm; children: ReactNode })
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
-    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h1>
-        {subtitle && <p className="mt-1 max-w-2xl text-lg text-ink-soft">{subtitle}</p>}
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 sm:mb-7">
+      <div className="min-w-0 max-w-full">
+        <h1 className="break-words font-display text-[1.75rem] font-extrabold leading-tight tracking-tight sm:text-4xl">{title}</h1>
+        {subtitle && <p className="mt-1 max-w-2xl text-base text-ink-soft sm:text-lg">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto [&>*]:max-w-full">{actions}</div>}
     </div>
   );
 }
 
 export function Panel({ title, subtitle, children, className, action }: { title?: string; subtitle?: string; children: ReactNode; className?: string; action?: ReactNode }) {
   return (
-    <section className={`glass-surface rounded-[1.75rem] p-5 sm:p-6 ${className ?? ''}`}>
+    <section className={`glass-surface min-w-0 rounded-[1.5rem] p-4 sm:rounded-[1.75rem] sm:p-6 ${className ?? ''}`}>
       {(title || action) && (
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            {title && <h2 className="font-display text-xl font-extrabold">{title}</h2>}
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 basis-56">
+            {title && <h2 className="break-words font-display text-lg font-extrabold sm:text-xl">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-[15px] text-ink-mute">{subtitle}</p>}
           </div>
-          {action}
+          {action && <div className="max-w-full shrink-0">{action}</div>}
         </div>
       )}
       {children}

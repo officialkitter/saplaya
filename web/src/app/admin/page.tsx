@@ -88,9 +88,9 @@ function Dashboard() {
 
       {/* One strip, not four cards */}
       <section className="glass-surface grid grid-cols-2 divide-line rounded-[1.75rem] lg:grid-cols-4 lg:divide-x">
-        <div className="p-5">
+        <div className="min-w-0 p-4 sm:p-5">
           <p className="text-[15px] font-semibold text-ink-mute">{platform ? 'Sales through Saplaya' : 'Your sales'}, 14 days</p>
-          <p className="mt-1 font-display text-3xl font-extrabold"><CountUp value={total14} prefix="TSh " /></p>
+          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={total14} prefix="TSh " /></p>
           {change !== null && (
             <p className={`mt-1 inline-flex items-center gap-1 text-sm font-bold ${change >= 0 ? 'text-leaf' : 'text-[#C62828]'}`}>
               {change >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
@@ -98,19 +98,19 @@ function Dashboard() {
             </p>
           )}
         </div>
-        <div className="border-l border-line p-5 lg:border-l-0">
+        <div className="min-w-0 border-l border-line p-4 sm:p-5 lg:border-l-0">
           <p className="text-[15px] font-semibold text-ink-mute">Orders</p>
-          <p className="mt-1 font-display text-3xl font-extrabold"><CountUp value={orders.length} /></p>
+          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={orders.length} /></p>
           <p className="mt-1 text-sm text-ink-mute">{pending} waiting to be packed</p>
         </div>
-        <div className="border-t border-line p-5 lg:border-t-0">
+        <div className="min-w-0 border-t border-line p-4 sm:p-5 lg:border-t-0">
           <p className="text-[15px] font-semibold text-ink-mute">Delivered</p>
-          <p className="mt-1 font-display text-3xl font-extrabold"><CountUp value={delivered} /></p>
+          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={delivered} /></p>
           <p className="mt-1 text-sm text-ink-mute">{done ? Math.round((delivered / done) * 100) : 0}% of orders so far</p>
         </div>
-        <div className="border-l border-t border-line p-5 lg:border-t-0">
+        <div className="min-w-0 border-l border-t border-line p-4 sm:p-5 lg:border-t-0">
           <p className="text-[15px] font-semibold text-ink-mute">Average order</p>
-          <p className="mt-1 font-display text-3xl font-extrabold"><CountUp value={avg} prefix="TSh " /></p>
+          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={avg} prefix="TSh " /></p>
           <p className="mt-1 text-sm text-ink-mute">{platform ? `${suppliers.filter((s) => s.status === 'active').length} farms selling` : `${products.filter((p) => p.active).length} products in the shop`}</p>
         </div>
       </section>
@@ -118,7 +118,7 @@ function Dashboard() {
       <DepartmentDashboards member={me} />
 
       {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[1.6fr_1fr]">
         <Panel title="Sales each day" subtitle="Goods sales from up to 300 recently updated orders, excluding cancelled orders">
           <div role="group" aria-label="Sales chart period" className="mb-4 inline-flex max-w-full flex-wrap gap-1 rounded-2xl border border-[#E6DCCE] bg-[#FAF6EF] p-1 shadow-inner">
             {([7, 14, 30] as const).map((days) => (
@@ -133,7 +133,7 @@ function Dashboard() {
               </button>
             ))}
           </div>
-          <div className="h-72">
+          <div className="min-w-0 h-56 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={sales} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
@@ -143,7 +143,7 @@ function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" vertical={false} />
-                <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval={1} />
+                <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
                 <YAxis tick={AXIS} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
                 <Tooltip contentStyle={TIP} formatter={(v: unknown) => [formatTZS(Number(v)), 'Sales']} />
                 <Area type="monotone" dataKey="sales" stroke="#2E7D32" strokeWidth={3} fill="url(#sales)" animationDuration={1200} />
@@ -183,9 +183,9 @@ function Dashboard() {
         </Panel>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
         <Panel title={platform ? 'Which farms sell the most' : 'Your best sellers'} subtitle="Money earned in 14 days">
-          <div className="h-72">
+          <div className="min-w-0 h-56 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={platform ? byFarm : top} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" horizontal={false} />
@@ -210,7 +210,7 @@ function Dashboard() {
                   <li key={p.id} className="flex items-center gap-3">
                     <SmartImage src={p.image} alt={p.name} emoji={p.emoji} className="h-12 w-12 shrink-0 rounded-2xl text-lg" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
                         <p className="truncate font-bold">{p.name}</p>
                         <p className={`shrink-0 text-sm font-extrabold ${critical ? 'text-[#C62828]' : 'text-[#8A5A00]'}`}>{formatNum(p.stock)} {p.unit} left</p>
                       </div>
@@ -227,13 +227,13 @@ function Dashboard() {
         </Panel>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[1.6fr_1fr]">
         <Panel title="Retail and wholesale" subtitle="Who is buying each day">
-          <div className="h-64">
+          <div className="min-w-0 h-52 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={split} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" vertical={false} />
-                <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval={1} />
+                <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
                 <YAxis tick={AXIS} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
                 <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={TIP} formatter={(v: unknown, n: unknown) => [formatTZS(Number(v)), n === 'retail' ? 'Retail' : 'Wholesale']} />
                 <Bar dataKey="retail" stackId="a" fill="#4CAF50" radius={[0, 0, 0, 0]} animationDuration={1000} />
@@ -248,7 +248,7 @@ function Dashboard() {
         </Panel>
 
         <Panel title="What sells" subtitle="Share of money by product type">
-          <div className="h-48">
+          <div className="min-w-0 h-44 sm:h-48">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={categories} dataKey="sales" nameKey="name" outerRadius={84} paddingAngle={2} stroke="none" animationDuration={1000}>
@@ -266,13 +266,13 @@ function Dashboard() {
         </Panel>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
         <Panel title="Busiest hours" subtitle={peakHour && peakHour.count > 0 ? `Most orders come in around ${peakHour.hour}` : 'When customers order'}>
-          <div className="h-60">
+          <div className="min-w-0 h-52 sm:h-60">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hours} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" vertical={false} />
-                <XAxis dataKey="hour" tick={AXIS} tickLine={false} axisLine={false} interval={1} />
+                <XAxis dataKey="hour" tick={AXIS} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
                 <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={TIP} formatter={(v: unknown) => [String(v), 'Orders']} />
                 <Bar dataKey="count" radius={[8, 8, 0, 0]} animationDuration={1000}>
@@ -284,7 +284,7 @@ function Dashboard() {
         </Panel>
 
         <Panel title="Where orders go" subtitle="Delivery areas with the most orders">
-          <div className="h-60">
+          <div className="min-w-0 h-52 sm:h-60">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={areas} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" horizontal={false} />
@@ -301,7 +301,7 @@ function Dashboard() {
       <Panel title="Latest orders" action={<Link href="/admin/orders" className="inline-flex items-center gap-1 font-bold text-leaf hover:underline">See all <ArrowRight size={18} /></Link>}>
         <ul className="divide-y divide-line">
           {orders.slice(0, 6).map((o) => (
-            <li key={o.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5">
+            <li key={o.id} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 py-3.5 md:grid-cols-[auto_minmax(0,1fr)_auto]">
               <div className="flex -space-x-3">
                 {o.items.slice(0, 3).map((it) => {
                   const p = photoByProduct.get(it.productId);
@@ -309,11 +309,11 @@ function Dashboard() {
                 })}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-bold">{o.code} <span className="font-medium text-ink-mute">· {customerLabel(o, me.role, me.roleScope)}, {o.area}</span></p>
+                <p className="truncate font-bold">{o.code} <span className="font-medium text-ink-mute">· {customerLabel(o, me.role, me.roleScope)}, {o.area}</span></p>
                 <p className="text-sm text-ink-mute">{timeAgo(o.placedAt)}</p>
               </div>
-              <p className="font-extrabold">{formatTZS(orderTotal(o))}</p>
-              <StatusPill status={o.status} />
+              <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 md:col-span-1 md:justify-end"><p className="font-extrabold tabular-nums">{formatTZS(orderTotal(o))}</p>
+              <StatusPill status={o.status} /></div>
             </li>
           ))}
         </ul>

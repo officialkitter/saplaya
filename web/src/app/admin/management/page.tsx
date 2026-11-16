@@ -325,29 +325,29 @@ function Management() {
                         tiers: current.tiers.map((item, itemIndex) => itemIndex === index ? { ...item, commission_rate_pct: Number(event.target.value) } : item),
                       }))} />
                     </Field>
-                    <Button className="self-end" variant="ghost" aria-label="Remove target tier" onClick={() => setPolicyForm((current) => ({ ...current, tiers: current.tiers.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 size={18} /></Button>
+                    <Button className="justify-self-end self-end" variant="ghost" aria-label="Remove target tier" onClick={() => setPolicyForm((current) => ({ ...current, tiers: current.tiers.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 size={18} /></Button>
                   </div>
                 ))}
               </div>
             </div>
             <div className="mt-4 flex justify-end">
-              <Button icon={<Save size={18} />} disabled={savingPolicy} onClick={() => { void savePolicy(); }}>{savingPolicy ? 'Saving…' : 'Save commission policy'}</Button>
+              <Button className="w-full sm:w-auto" icon={<Save size={18} />} disabled={savingPolicy} onClick={() => { void savePolicy(); }}>{savingPolicy ? 'Saving…' : 'Save commission policy'}</Button>
             </div>
           </Panel>
 
           <Panel title="Employee profiles and operation areas" subtitle="Country and administrative-region access is enforced by the API on farm and order lists and updates.">
             {members.length === 0 ? <p className="rounded-2xl bg-milk p-4 text-ink-soft">Invite employees and grant the “View employee activities and commission details” permission to manage their profiles here.</p> : (
-              <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.75fr)_1.5fr]">
-                <div className="space-y-2">
+              <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(220px,0.75fr)_1.5fr]">
+                <div className="max-h-72 min-w-0 space-y-2 overflow-y-auto overscroll-contain lg:max-h-none lg:overflow-visible">
                   {members.map((member) => (
-                    <button key={member.id} type="button" onClick={() => setSelectedMemberId(member.id)} className={`w-full rounded-2xl border p-3 text-left ${selectedMemberId === member.id ? 'border-leaf bg-leaf-soft' : 'border-line hover:bg-milk'}`}>
-                      <span className="block font-bold">{member.full_name}</span>
-                      <span className="block text-sm text-ink-mute">{member.job_title || member.role_label} · {member.status}</span>
+                    <button key={member.id} type="button" onClick={() => setSelectedMemberId(member.id)} aria-pressed={selectedMemberId === member.id} className={`w-full min-w-0 rounded-2xl border p-3 text-left ${selectedMemberId === member.id ? 'border-leaf bg-leaf-soft' : 'border-line hover:bg-milk'}`}>
+                      <span className="block break-words font-bold">{member.full_name}</span>
+                      <span className="block break-words text-sm text-ink-mute">{member.job_title || member.role_label} · {member.status}</span>
                     </button>
                   ))}
                 </div>
                 {selectedMember && (
-                  <div className="space-y-4">
+                  <div className="min-w-0 space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field label="Phone (optional)"><Input value={draftProfile.phone} onChange={(event) => setDraftProfile((current) => ({ ...current, phone: event.target.value }))} /></Field>
                       <Field label="Age (optional)"><Input type="number" min={16} max={120} value={draftProfile.age} onChange={(event) => setDraftProfile((current) => ({ ...current, age: event.target.value }))} /></Field>
@@ -361,7 +361,7 @@ function Management() {
                     </div>
                     <Field label="Profile summary"><textarea value={draftProfile.bio} onChange={(event) => setDraftProfile((current) => ({ ...current, bio: event.target.value }))} rows={2} maxLength={1000} className="w-full rounded-xl border border-line bg-white px-3 py-2 text-ink outline-none focus:border-leaf" /></Field>
                     {draftProfile.operation_scope_mode === 'restricted' && (
-                      <div className="space-y-3 rounded-2xl bg-milk p-4">
+                      <div className="space-y-3 rounded-2xl bg-milk p-3 sm:p-4">
                         <div className="grid gap-3 sm:grid-cols-3">
                           <Field label="Country">
                             <Select value={newScope.country_code} onChange={(event) => setNewScope({ country_code: event.target.value, region_code: '', region_name: '', district_code: '', district_name: '' })}>
@@ -406,15 +406,15 @@ function Management() {
                         <Button variant="soft" icon={<Plus size={18} />} disabled={!selectedCountry || !newScope.region_code} onClick={addScope}>Add operation area</Button>
                         <ul className="flex flex-wrap gap-2">
                           {draftScopes.map((scope, index) => (
-                            <li key={`${scope.country_code}-${scope.region_code}-${scope.district_code ?? 'all'}-${index}`} className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm font-semibold">
-                              {scope.country_name} · {scope.region_name}{scope.district_name ? ` · ${scope.district_name}` : ' · all districts'}
-                              <button type="button" aria-label="Remove operation area" onClick={() => setDraftScopes((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>
+                            <li key={`${scope.country_code}-${scope.region_code}-${scope.district_code ?? 'all'}-${index}`} className="flex min-w-0 max-w-full items-center gap-1 rounded-full bg-white py-1 pl-3 pr-1 text-sm font-semibold">
+                              <span className="min-w-0 break-words">{scope.country_name} · {scope.region_name}{scope.district_name ? ` · ${scope.district_name}` : ' · all districts'}</span>
+                              <button type="button" aria-label="Remove operation area" className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-milk" onClick={() => setDraftScopes((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>
                             </li>
                           ))}
                         </ul>
                       </div>
                     )}
-                    <div className="flex justify-end"><Button icon={<Save size={18} />} disabled={savingMember} onClick={() => { void saveMember(); }}>{savingMember ? 'Saving…' : 'Save employee profile and access'}</Button></div>
+                    <div className="flex justify-end"><Button className="w-full sm:w-auto" icon={<Save size={18} />} disabled={savingMember} onClick={() => { void saveMember(); }}>{savingMember ? 'Saving…' : 'Save employee profile and access'}</Button></div>
                   </div>
                 )}
               </div>
@@ -432,10 +432,10 @@ function Management() {
                       && (scope.district_code === null || scope.district_code === order.district_code))
                   ));
                   return (
-                    <div key={order.id} className="grid gap-2 rounded-2xl border border-line p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                      <div>
-                        <p className="font-bold">{order.code} · {order.supplier_name}</p>
-                        <p className="text-sm text-ink-mute">{[order.country_name, order.region_name, order.district_name].filter(Boolean).join(' · ') || 'Farm location not set'} · {order.status.replace('_', ' ')}</p>
+                    <div key={order.id} className="grid min-w-0 gap-2 rounded-2xl border border-line p-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center">
+                      <div className="min-w-0">
+                        <p className="break-words font-bold">{order.code} · {order.supplier_name}</p>
+                        <p className="break-words text-sm text-ink-mute">{[order.country_name, order.region_name, order.district_name].filter(Boolean).join(' · ') || 'Farm location not set'} · {order.status.replace('_', ' ')}</p>
                       </div>
                       <Select value={order.team_member_id ?? ''} disabled={busyOrderId === order.id} onChange={(event) => { void assignOrder(order, event.target.value); }}>
                         <option value="">Unassigned</option>
@@ -452,7 +452,28 @@ function Management() {
 
       <Panel title="Weekly employee performance" subtitle={summary ? `${new Date(summary.period.start).toLocaleDateString()} – ${new Date(summary.period.end).toLocaleDateString()} (UTC)` : 'Loading weekly performance…'}>
         {summary?.members.length ? (
-          <div className="overflow-x-auto">
+          <>
+          <ul className="space-y-3 md:hidden">
+            {summary.members.map((member) => (
+              <li key={member.team_member_id} className="rounded-2xl border border-line p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words font-bold">{member.full_name}</p>
+                    <p className="break-all text-sm text-ink-mute">{member.email}</p>
+                  </div>
+                  <p className="shrink-0 whitespace-nowrap font-extrabold tabular-nums">{formatTZS(member.total_tzs)}</p>
+                </div>
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-2xl bg-milk p-3 text-sm">
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Delivered orders</dt><dd className="font-semibold">{member.delivered_supplier_orders}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Eligible sales</dt><dd className="font-semibold tabular-nums">{formatTZS(member.sales_value_tzs)}</dd></div>
+                  <div className="col-span-2 min-w-0"><dt className="text-xs text-ink-mute">Tier</dt><dd className="break-words font-semibold">{member.target_sales_tzs ? `${formatTZS(member.target_sales_tzs)} · ${member.commission_rate_pct}%` : 'Not reached'}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Commission</dt><dd className="font-semibold tabular-nums">{formatTZS(member.commission_tzs)}</dd></div>
+                  <div className="min-w-0"><dt className="text-xs text-ink-mute">Bonus</dt><dd className="font-semibold tabular-nums">{formatTZS(member.bonus_tzs)}</dd></div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[760px] text-left">
               <thead><tr className="border-b border-line text-sm text-ink-mute"><th className="p-3">Employee</th><th className="p-3">Delivered orders</th><th className="p-3">Eligible sales</th><th className="p-3">Tier</th><th className="p-3">Commission</th><th className="p-3">Bonus</th><th className="p-3">Total</th></tr></thead>
               <tbody>{summary.members.map((member) => (
@@ -468,6 +489,7 @@ function Management() {
               ))}</tbody>
             </table>
           </div>
+          </>
         ) : <p className="rounded-2xl bg-milk p-4 text-ink-soft">No assigned delivered sales have been recorded for this week.</p>}
       </Panel>
       {policy && <p className="text-sm text-ink-mute">Commission is calculated from assigned, delivered supplier orders. The configured bonus activates only after the employee reaches a weekly target.</p>}

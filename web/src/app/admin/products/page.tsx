@@ -313,7 +313,7 @@ function Products() {
                 const stocked = Number(listing?.stock ?? 0) > 0;
                 const available = stocked && listing?.active === true && item.price_approved;
                 return (
-                  <li key={item.id} className="flex items-center gap-3 rounded-2xl border border-line p-3">
+                  <li key={item.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line p-3">
                     <SmartImage src={item.image_url ?? ''} alt={item.name} emoji={EMOJI[item.category] ?? '🥬'} className="h-14 w-14 shrink-0 rounded-xl text-xl" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-bold">{item.name}</p>
@@ -324,13 +324,13 @@ function Products() {
                     {available ? (
                       <span className="shrink-0 rounded-full bg-leaf-soft px-3 py-1.5 text-xs font-extrabold text-leaf-deep">Stocked</span>
                     ) : stocked && item.price_approved ? (
-                      <Button size="sm" variant="soft" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void publishSharedProduct(item); }}>
+                      <Button size="sm" variant="soft" className="min-h-10" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void publishSharedProduct(item); }}>
                         {stockCatalogBusyId === item.id ? 'Saving…' : 'Show in shop'}
                       </Button>
                     ) : !item.price_approved ? (
-                      <Button size="sm" variant="soft" disabled>Price review</Button>
+                      <Button size="sm" variant="soft" className="min-h-10" disabled>Price review</Button>
                     ) : (
-                      <Button size="sm" variant="soft" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void addSharedStock(item); }}>
+                      <Button size="sm" variant="soft" className="min-h-10" disabled={stockCatalogBusyId === item.id || stockCatalogLoading} onClick={() => { void addSharedStock(item); }}>
                         {stockCatalogBusyId === item.id ? 'Adding…' : 'Add stock'}
                       </Button>
                     )}
@@ -350,7 +350,7 @@ function Products() {
           </div>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {pendingApproval.map((product) => (
-              <li key={product.id} className="flex items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-white p-3">
+              <li key={product.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-white p-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <SmartImage src={product.image} alt={product.name} emoji={product.emoji} className="h-14 w-14 shrink-0 rounded-xl text-xl" />
                   <div className="min-w-0">
@@ -394,7 +394,7 @@ function Products() {
                       <p className="text-sm text-ink-mute">{p.category}{!farmId && ` · ${farmName.get(p.supplierId)}`}</p>
                     </div>
                   </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-3">
+                  <dl className="mt-3 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
                     <div className="rounded-2xl bg-leaf-soft p-3">
                       <dt className="text-xs font-semibold text-leaf-deep">Shop price</dt>
                       <dd className="font-extrabold text-leaf-deep">{formatTZS(p.retailPrice)}<span className="text-xs font-medium">/{p.unit}</span></dd>
@@ -405,7 +405,7 @@ function Products() {
                     </div>
                   </dl>
                   {(p.bulkPrice !== null || p.megaBulkPrice !== null) && (
-                    <dl className="mt-3 grid grid-cols-2 gap-3 rounded-2xl border border-dashed border-leaf/40 bg-leaf-soft/40 p-3">
+                    <dl className="mt-3 grid grid-cols-1 gap-3 rounded-2xl min-[400px]:grid-cols-2 border border-dashed border-leaf/40 bg-leaf-soft/40 p-3">
                       <div>
                         <dt className="text-xs font-semibold text-leaf-deep">Confidential bulk price</dt>
                         <dd className="font-extrabold text-leaf-deep">{p.bulkPrice === null ? 'Not configured' : `${formatTZS(p.bulkPrice)}/${p.unit}`}</dd>
@@ -426,14 +426,15 @@ function Products() {
                     </div>
                   </div>
                   {(canEdit || canStock || canManageRecords) && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {canStock && <Button size="sm" variant="soft" className="flex-1" icon={<PackagePlus size={17} />} onClick={() => setRestockId(p.id)}>Add stock</Button>}
-                      {canEdit && <Button size="sm" variant="ghost" className="flex-1" icon={<Pencil size={17} />} onClick={() => openForm(p)}>Edit</Button>}
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                      {canStock && <Button size="sm" variant="soft" className="min-h-10 flex-1" icon={<PackagePlus size={17} />} onClick={() => setRestockId(p.id)}>Add stock</Button>}
+                      {canEdit && <Button size="sm" variant="ghost" className="min-h-10 flex-1" icon={<Pencil size={17} />} onClick={() => openForm(p)}>Edit</Button>}
                       {canManageRecords && (
                         <>
                           <Button
                             size="sm"
                             variant="soft"
+                            className="min-h-10"
                             icon={<GitMerge size={17} />}
                             onClick={() => {
                               setMergeSource(p);
@@ -442,7 +443,7 @@ function Products() {
                           >
                             Merge
                           </Button>
-                          <Button size="sm" variant="danger" icon={<Trash2 size={17} />} onClick={() => setRemovingProduct(p)}>
+                          <Button size="sm" variant="danger" className="min-h-10" icon={<Trash2 size={17} />} onClick={() => setRemovingProduct(p)}>
                             Remove
                           </Button>
                         </>
@@ -487,7 +488,7 @@ function Products() {
             <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="h-6 w-6 accent-[#2E7D32]" />
             <span className="font-semibold">Show this product in the Saplaya shop</span>
           </label>
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
             <Button disabled={!pricingPolicyReady} onClick={() => { void save(); }}>{editing === 'new' ? 'Add product' : 'Save changes'}</Button>
           </div>
@@ -507,7 +508,7 @@ function Products() {
               ))}
             </Select>
           </Field>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button variant="ghost" disabled={productActionBusy} onClick={() => setMergeSource(null)}>Cancel</Button>
             <Button icon={<GitMerge size={17} />} disabled={!mergeTargetId || productActionBusy} onClick={() => { void mergeFarmProductRecords(); }}>
               {productActionBusy ? 'Merging…' : 'Merge products'}
@@ -521,7 +522,7 @@ function Products() {
           <p className="text-sm text-ink-soft">
             {removingProduct?.name} will be removed from the shop. If orders or inventory movements reference it, the record will be archived instead of permanently deleted.
           </p>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button variant="ghost" disabled={productActionBusy} onClick={() => setRemovingProduct(null)}>Cancel</Button>
             <Button variant="danger" icon={<Trash2 size={17} />} disabled={productActionBusy} onClick={() => { void removeFarmProduct(); }}>
               {productActionBusy ? 'Removing…' : 'Remove product'}
