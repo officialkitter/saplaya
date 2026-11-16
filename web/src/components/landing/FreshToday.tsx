@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, ShoppingBasket, Sprout, X } from 'lucide-react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { Grid2X2, LayoutGrid, Search, ShoppingBasket, Sprout, X } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { localDayPeriod, type LocalDayPeriod } from '@/lib/format';
@@ -12,9 +12,11 @@ import { useStorefrontCart } from '@/lib/cart';
 import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
 import { ModeSlide } from './ModeSlide';
 
-function ProductCard({ product, fresh, onAdded }: {
+function ProductCard({ product, fresh, compact, fillRow, onAdded }: {
   product: StorefrontProduct;
   fresh: boolean;
+  compact: boolean;
+  fillRow: boolean;
   onAdded: (product: StorefrontProduct) => void;
 }) {
   const [pinned, setPinned] = useState(false);
@@ -30,7 +32,7 @@ function ProductCard({ product, fresh, onAdded }: {
 
   return (
     <article
-      className="relative min-h-[15rem] overflow-hidden rounded-[1.75rem] bg-line shadow-soft"
+      className={`group relative overflow-hidden rounded-[1.5rem] bg-line shadow-soft transition-shadow hover:shadow-lift motion-reduce:transition-none ${fillRow ? compact ? 'col-span-2 sm:col-span-1' : 'min-[400px]:col-span-2 lg:col-span-1' : ''}`}
       onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHovered(true); }}
       onPointerLeave={(event) => {
         if (event.pointerType !== 'mouse') return;
@@ -43,13 +45,13 @@ function ProductCard({ product, fresh, onAdded }: {
         aria-label={`${pinned ? 'Hide' : 'Show'} details for ${product.name}`}
         aria-expanded={revealed}
         onClick={() => setPinned((value) => !value)}
-        className="relative block aspect-[4/3] min-h-[15rem] w-full overflow-hidden focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-[-4px] focus-visible:outline-leaf"
+        className={`relative block aspect-[4/3] w-full overflow-hidden focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-[-4px] focus-visible:outline-leaf ${compact ? 'min-h-[10rem]' : 'min-h-[13rem]'} ${fillRow ? compact ? 'aspect-[2/1] sm:aspect-[4/3]' : 'min-[400px]:aspect-[2/1] lg:aspect-[4/3]' : ''}`}
       >
         <SmartImage
           src={product.image_url ?? undefined}
           alt={product.name}
           className="absolute inset-0 text-6xl"
-          imgClassName="motion-safe:transition motion-safe:duration-700 motion-safe:hover:scale-105"
+          imgClassName="motion-safe:transition motion-safe:duration-700 motion-safe:group-hover:scale-105"
         />
       </button>
       {revealed && (
@@ -57,7 +59,7 @@ function ProductCard({ product, fresh, onAdded }: {
           initial={reduceMotion ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: reduceMotion ? 0 : 0.2 }}
-          className="absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-2xl border-t border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-md sm:p-4"
+          className="absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-2xl border-t border-white/80 bg-white/95 p-3 shadow-lg backdrop-blur-md"
         >
           <div className="flex items-start gap-2">
             <h4 className="min-w-0 flex-1 break-words font-display text-lg font-extrabold leading-6 text-ink" title={product.name}>{product.name}</h4>
@@ -65,6 +67,7 @@ function ProductCard({ product, fresh, onAdded }: {
               <X size={18} aria-hidden />
             </button>
           </div>
+          <p className="text-xs font-semibold text-ink-soft">{product.category} · sold per {product.unit}</p>
           {fresh && <p className="flex items-center gap-1 text-xs font-bold text-leaf-deep"><Sprout size={14} aria-hidden /> Harvested within 24 hours</p>}
           <p className="mt-1 flex flex-wrap items-baseline gap-x-1 font-bold" style={{ color: theme.accent }}>
             <span>{price === null ? 'Price confirmed at checkout' : market.formatPrice(price)}</span> <span className="text-sm font-medium text-ink-mute">per {product.unit}</span>
@@ -72,16 +75,19 @@ function ProductCard({ product, fresh, onAdded }: {
           {typeof product.farm_distance_km === 'number' && <p className="mt-1 text-xs font-semibold text-ink-mute">{product.farm_distance_km.toFixed(1)} km away</p>}
           {tier !== 'retail' && <p className="mt-1 text-xs font-bold" style={{ color: theme.accent }}>{tier === 'mega_bulk' ? 'Mega-bulk' : tier === 'bulk' ? 'Bulk' : 'Wholesale'} price</p>}
           {qty > 0 && <p className="mt-1 text-sm font-semibold text-ink-soft">{qty} {product.unit} in your basket</p>}
-          <button
+          <motion.button
             type="button"
             disabled={product.stock < 1 || qty >= Math.min(product.stock, 10000)}
             onClick={() => { add(product); onAdded(product); }}
-            className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-extrabold shadow-sm transition-transform active:scale-[0.98] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+            className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-extrabold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             style={{ backgroundColor: theme.button, color: theme.buttonText }}
           >
-            <ShoppingBasket size={18} aria-hidden />
+            <motion.span key={qty} initial={reduceMotion ? false : { scale: 0.75 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 400, damping: 14 }}>
+              <ShoppingBasket size={18} aria-hidden />
+            </motion.span>
             {product.stock < 1 ? 'Currently unavailable' : qty >= Math.min(product.stock, 10000) ? 'Maximum available in basket' : qty ? 'Add another' : 'Add to basket'}
-          </button>
+          </motion.button>
         </motion.div>
       )}
     </article>
@@ -100,6 +106,8 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
   const [fresh, setFresh] = useState(false);
   const [filters, setFilters] = useState<StorefrontFilters>({});
   const [basketNotice, setBasketNotice] = useState<{ id: string; name: string; unit: string } | null>(null);
+  const [compact, setCompact] = useState(false);
+  const reduceMotion = useReducedMotion();
   const { products, loading, error, retry, hasMore, categories, loadMore } = useStorefrontProducts(40, market.location, filters);
   const searching = Boolean(filters.query?.trim() || filters.category || filters.fresh);
 
@@ -115,6 +123,12 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
     }, 300);
     return () => clearTimeout(timer);
   }, [query, category, fresh]);
+
+  useEffect(() => {
+    if (!basketNotice) return;
+    const timer = setTimeout(() => setBasketNotice(null), 3500);
+    return () => clearTimeout(timer);
+  }, [basketNotice]);
 
   const sections = searching ? [{
     key: 'results', title: 'Search results', description: 'Products matching your selected filters.',
@@ -142,7 +156,7 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
     });
     return {
       ...section,
-      products: expandedSections[section.key] ? matches : matches.slice(0, 6),
+      products: expandedSections[section.key] ? matches : matches.slice(0, 3),
       total: matches.length,
     };
   }).filter((section) => section.total > 0);
@@ -158,13 +172,13 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
   }, []);
 
   return (
-    <section id="fresh" className="py-20 lg:py-28" style={{ backgroundColor: theme.background }}>
+    <section id="fresh" className="py-12 sm:py-16" style={{ backgroundColor: theme.background }}>
       <div className="mx-auto max-w-7xl px-5">
         <h2 className="max-w-xl font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
           On the shelf {localPeriod ? `this ${localPeriod}` : 'today'}.
         </h2>
         <p className="mt-4 max-w-xl text-lg text-ink-soft">
-          Explore farm produce and pantry essentials. Allow location access to prioritize nearby stocked farms.
+          Find ingredients for everyday meals or stock up for your business, with produce from farms and pantry essentials in one place.
         </p>
         {showShoppingMode && (
           <div className="mt-6">
@@ -175,10 +189,10 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
         {market.location && (
           <p className="mt-2 text-sm font-semibold text-leaf-deep">
             {market.placeNameStatus === 'ready'
-              ? <>Showing nearby farms in {market.placeName} · Google Maps. Your coordinates are not displayed.</>
+              ? <>Discover stocked farms near {market.placeName} · Google Maps.</>
               : market.placeNameStatus === 'loading'
-                ? 'Finding the place name for your current location…'
-                : 'Nearby farms are prioritized using your current location. The place name is unavailable.'}
+                ? 'Finding where you are…'
+                : 'Nearby farms are prioritized. Your place name is unavailable.'}
           </p>
         )}
         {market.ratesLoading && market.currency !== 'TZS' ? (
@@ -215,6 +229,13 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
               <button key={value || 'all'} type="button" aria-pressed={category === value} onClick={() => setCategory(value)} className="shrink-0 rounded-full border px-3 py-2 text-sm font-bold" style={category === value ? { color: theme.accent, backgroundColor: theme.soft, borderColor: theme.accent } : undefined}>{value || 'All'}</button>
             ))}
           </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-ink-soft">Choose a view that suits you.</p>
+            <div role="group" aria-label="Product grid size" className="inline-flex rounded-2xl border border-white/80 bg-white/80 p-1 shadow-soft backdrop-blur-sm">
+              <button type="button" aria-pressed={!compact} onClick={() => setCompact(false)} className={`flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-bold ${!compact ? 'bg-leaf text-white' : 'text-ink-soft hover:bg-leaf-soft'}`}><Grid2X2 size={17} aria-hidden /> Large</button>
+              <button type="button" aria-pressed={compact} onClick={() => setCompact(true)} className={`flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-bold ${compact ? 'bg-leaf text-white' : 'text-ink-soft hover:bg-leaf-soft'}`}><LayoutGrid size={17} aria-hidden /> Compact</button>
+            </div>
+          </div>
         </div>
 
         {loading ? (
@@ -234,7 +255,7 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
             <p className="mt-2">{searching ? 'Try another search or change your filters.' : 'New listings will appear here as farms add approved prices and available stock.'}</p>
           </div>
         ) : (
-          <div className="mt-12 space-y-12">
+          <div className="mt-8 space-y-9">
             {sections.map((section) => (
               <div key={section.key}>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -242,48 +263,50 @@ export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: bo
                     <h3 className="font-display text-xl font-extrabold sm:text-2xl">{section.title}</h3>
                     <p className="mt-1 text-sm text-ink-soft">{section.description}</p>
                   </div>
-                  {!searching && section.total > 6 && (
+                  {!searching && section.total > 3 && (
                     <button
                       type="button"
+                      aria-expanded={Boolean(expandedSections[section.key])}
+                      aria-controls={`section-products-${section.key}`}
                       onClick={() => setExpandedSections((current) => ({ ...current, [section.key]: !current[section.key] }))}
-                      className="font-bold text-leaf-deep underline"
+                      className="min-h-11 rounded-xl px-2 font-bold text-leaf-deep underline"
                     >
                       {expandedSections[section.key] ? 'See less' : 'See more'}
                     </button>
                   )}
                 </div>
-                <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                  {section.products.map((product) => (
+                <div id={`section-products-${section.key}`} className={`grid gap-3 sm:gap-4 ${compact ? `grid-cols-2 sm:grid-cols-3 ${section.products.length > 3 ? 'xl:grid-cols-4' : ''}` : 'grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-3'}`}>
+                  {section.products.map((product, index) => (
                     <ProductCard
                       key={product.id}
                       product={product}
                       fresh={section.key === 'fresh'}
+                      compact={compact}
+                      fillRow={index === section.products.length - 1 && section.products.length % 2 === 1}
                       onAdded={(item) => setBasketNotice({ id: item.id, name: item.name, unit: item.unit })}
                     />
                   ))}
-                  {hasMore && <button type="button" onClick={() => void loadMore()} className="font-bold text-leaf-deep underline">Load more products</button>}
                 </div>
               </div>
             ))}
+            {hasMore && <button type="button" onClick={() => void loadMore()} className="min-h-11 rounded-xl px-3 font-bold text-leaf-deep underline">Load more products</button>}
           </div>
         )}
       </div>
       <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {basketNotice && `${basketNotice.name} added. ${lines.find((line) => line.product.id === basketNotice.id)?.qty ?? 0} ${basketNotice.unit} in your basket.`}
       </span>
-      {basketNotice && (
-        <div className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-line bg-white p-4 shadow-lift">
-          <p aria-hidden="true" className="min-w-0 flex-1 break-words text-sm font-bold text-ink">
-            {basketNotice.name} added. {lines.find((line) => line.product.id === basketNotice.id)?.qty ?? 0} {basketNotice.unit} in your basket.
-          </p>
-          <Link href="/checkout" className="shrink-0 rounded-xl px-3 py-2 text-sm font-extrabold" style={{ backgroundColor: theme.button, color: theme.buttonText }}>
-            View basket
-          </Link>
-          <button type="button" onClick={() => setBasketNotice(null)} aria-label="Dismiss basket notification" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl text-ink-soft">
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
-      )}
+      <AnimatePresence>
+        {basketNotice && (
+          <motion.div initial={reduceMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduceMotion ? 0 : 16 }} className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-md items-center gap-2 rounded-2xl border border-white/80 bg-white/95 px-3 py-2 shadow-lift backdrop-blur-md">
+            <p aria-hidden="true" className="min-w-0 flex-1 break-words text-sm font-bold text-ink">
+              {basketNotice.name} added · {lines.find((line) => line.product.id === basketNotice.id)?.qty ?? 0} {basketNotice.unit}
+            </p>
+            <Link href="/checkout" className="shrink-0 rounded-xl px-3 py-2 text-sm font-extrabold" style={{ backgroundColor: theme.button, color: theme.buttonText }}>Basket</Link>
+            <button type="button" onClick={() => setBasketNotice(null)} aria-label="Dismiss basket notification" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl text-ink-soft"><span aria-hidden="true">×</span></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

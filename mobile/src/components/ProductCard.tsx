@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
@@ -6,13 +6,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useReducedMotion } from 'react-native-reanimated';
 import { Product } from '../types';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow, volumeTheme } from '../theme';
+import { colors, glass, radius, shadow, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 import { quickAddQuantity } from '../lib/volume';
+import { useFly } from '../store/FlyContext';
 
-export default function ProductCard({ product, index, onPress }: { product: Product; index: number; onPress: () => void }) {
+export default function ProductCard({ product, index, wide, onPress }: { product: Product; index: number; wide?: boolean; onPress: () => void }) {
   const [revealed, setRevealed] = useState(false);
+  const buttonRef = useRef<View>(null);
   const reduceMotion = useReducedMotion();
+  const { fly } = useFly();
   const { mode, baseMode, priceOf, lines, add } = useStore();
   const tierTheme = volumeTheme(mode);
   const { formatPrice } = useCurrency();
@@ -35,9 +38,9 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
           style={({ pressed }) => pressed && !reduceMotion ? { transform: [{ scale: 0.98 }] } : undefined}
         >
           {product.image_url ? (
-            <Image source={{ uri: product.image_url }} style={styles.img} contentFit="cover" transition={reduceMotion ? 0 : 250} />
+            <Image source={{ uri: product.image_url }} style={[styles.img, wide && styles.wideImage]} contentFit="cover" transition={reduceMotion ? 0 : 250} />
           ) : (
-            <View style={[styles.img, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
+            <View style={[styles.img, wide && styles.wideImage, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
               <Ionicons name="leaf-outline" size={42} color={tierTheme.icon} />
             </View>
           )}
@@ -50,6 +53,7 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
             style={styles.body}
           >
             <Text numberOfLines={2} style={styles.name}>{product.name}</Text>
+            <Text style={styles.description}>{product.category} · sold per {product.unit}</Text>
             <Text style={[styles.price, { color: tierTheme.accent }]}>
               {price === null ? 'Confirmed at checkout' : formatPrice(price)}
               <Text style={styles.unit}> / {product.unit}</Text>
@@ -58,8 +62,11 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
             {typeof product.farm_distance_km === 'number' && <Text style={styles.distance}>{product.farm_distance_km.toFixed(1)} km away</Text>}
             {qty > 0 && <Text accessibilityLiveRegion="polite" style={styles.distance}>{qty} {product.unit} in your basket</Text>}
             <Pressable
+              ref={buttonRef}
+              collapsable={false}
               onPress={() => {
                 if (!increment) return;
+                if (!reduceMotion) buttonRef.current?.measureInWindow((x, y, width, height) => fly({ x: x + width / 2, y: y + height / 2 }));
                 add(product, increment);
                 AccessibilityInfo.announceForAccessibility(`${product.name} added to your basket`);
               }}
@@ -67,7 +74,7 @@ export default function ProductCard({ product, index, onPress }: { product: Prod
               accessibilityRole="button"
               accessibilityLabel={`Add ${product.name} to basket`}
               accessibilityState={{ disabled: !increment }}
-              style={[styles.add, { backgroundColor: tierTheme.button }, !increment && styles.disabled]}
+              style={({ pressed }) => [styles.add, { backgroundColor: tierTheme.button }, !increment && styles.disabled, pressed && !reduceMotion && styles.pressed]}
             >
               <Ionicons name="basket-outline" size={18} color={tierTheme.buttonText} />
               <Text style={[styles.addText, { color: tierTheme.buttonText }]}>{increment ? 'Add to basket' : 'Unavailable'}</Text>
@@ -86,9 +93,11 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, padding: 6 },
   card: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden' },
   img: { width: '100%', aspectRatio: 1, backgroundColor: colors.line },
+  wideImage: { aspectRatio: 2 },
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 12 },
+  body: { ...glass, padding: 12 },
   name: { fontSize: 16, fontWeight: '700', color: colors.ink },
+  description: { marginTop: 3, fontSize: 12, color: colors.muted },
   price: { fontSize: 17, fontWeight: '800', color: colors.green, marginTop: 4 },
   unit: { fontSize: 13, fontWeight: '500', color: colors.muted },
   min: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.yellowDeep },
@@ -96,6 +105,7 @@ const styles = StyleSheet.create({
   add: { minHeight: 44, marginTop: 10, paddingHorizontal: 8, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   addText: { flexShrink: 1, fontSize: 13, fontWeight: '800', textAlign: 'center' },
   disabled: { opacity: 0.55 },
+  pressed: { transform: [{ scale: 0.96 }] },
   details: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   detailsText: { fontSize: 13, fontWeight: '800', textDecorationLine: 'underline' },
 });

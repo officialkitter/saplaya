@@ -10,14 +10,14 @@ export const metadata: Metadata = {
 
 export default function HelpPage() {
   return (
-    <PublicPage pathname="/help" title="Help" description="Find the right information for your next order or farm application.">
+    <PublicPage pathname="/help" title="Help" description="Whether you are planning an order or bringing your harvest to customers, find the answers and support you need to get started.">
       <div className="mx-auto grid max-w-7xl gap-6 px-5 pb-20 sm:grid-cols-3">
         {[
           { href: '/faq', title: 'Questions', text: 'Answers about delivery, payments, privacy and wholesale shopping.' },
           { href: '/how-it-works', title: 'How it works', text: 'The four steps from selecting produce to receiving your delivery.' },
           { href: '/for-farmers', title: 'For farmers', text: 'Farm tools, supplier benefits and the application form.' },
         ].map((item) => (
-          <section key={item.href} className="rounded-3xl border border-line bg-white p-6 shadow-soft">
+          <section key={item.href} className="glass-surface rounded-3xl p-6">
             <h2 className="font-display text-xl font-extrabold"><Link href={item.href} className="text-leaf-deep hover:underline">{item.title}</Link></h2>
             <p className="mt-3 text-ink-soft">{item.text}</p>
           </section>

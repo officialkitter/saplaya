@@ -12,7 +12,7 @@ const STEPS = ['Send the form', 'We call you within 2 working days', 'You get a 
 
 export function Farmers() {
   return (
-    <section id="farmers" className="relative overflow-hidden bg-leaf-deep py-20 text-white lg:py-28">
+    <section id="farmers" className="relative overflow-hidden bg-leaf-deep py-12 text-white sm:py-16">
       <div className="field-lines absolute inset-0" aria-hidden />
       <div className="relative mx-auto grid max-w-7xl gap-12 px-5 lg:grid-cols-[1fr_0.9fr]">
         <div>
@@ -27,7 +27,7 @@ export function Farmers() {
             {CONTROL.map((c) => {
               const Icon = c.icon;
               return (
-                <li key={c.title} className="rounded-3xl bg-white/10 p-5 ring-1 ring-white/15">
+                <li key={c.title} className="rounded-3xl bg-white/10 p-5 ring-1 ring-white/20 backdrop-blur-sm">
                   <span className="grid h-11 w-11 place-items-center rounded-2xl bg-sun text-ink"><Icon size={22} /></span>
                   <h3 className="mt-3 font-display text-lg font-extrabold">{c.title}</h3>
                   <p className="mt-1 text-[15px] text-white/75">{c.text}</p>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { colors, glass } from '../theme';
 
 export default function ScreenHeader({
   title,
@@ -25,7 +25,7 @@ export default function ScreenHeader({
 
 const styles = StyleSheet.create({
   row: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  back: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  back: { ...glass, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, color: colors.ink, fontSize: 22, fontWeight: '900' },
   trailing: { minWidth: 42, alignItems: 'flex-end' },
 });

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function FreshTodayPage() {
   return (
-    <PublicPage pathname="/fresh-today" title="Fresh today" description="Search live farm stock, explore product categories and use your location to prioritize nearby farms.">
+    <PublicPage pathname="/fresh-today" title="Fresh today" description="From everyday meals to business orders, discover farm produce and pantry essentials in one place. Find nearby stock and shop in quantities that suit you.">
       <FreshToday showShoppingMode />
     </PublicPage>
   );

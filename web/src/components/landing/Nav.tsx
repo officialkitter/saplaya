@@ -36,7 +36,7 @@ export function Nav() {
         type="button"
         onClick={location ? clearLocation : requestLocation}
         className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-white px-3 py-2 text-sm font-bold text-ink-soft transition hover:bg-leaf-soft"
-        aria-label={location ? `Current location: ${placeName ?? 'name unavailable'}. Clear location.` : 'Use my current location to find nearby farms'}
+        aria-label={location ? `Nearby farms: ${placeNameStatus === 'ready' ? placeName : placeNameStatus === 'loading' ? 'finding place name' : 'place name unavailable'}. Clear location.` : 'Use my current location to find nearby farms'}
         title={placeName ?? undefined}
       >
         <MapPin size={16} className="shrink-0" aria-hidden />

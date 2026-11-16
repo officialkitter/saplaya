@@ -13,7 +13,7 @@ const STEPS = [
 /** The same four stages, in the same colours, that customers see in the app. */
 export function Pipeline() {
   return (
-    <section id="how" className="bg-white py-20 lg:py-28">
+    <section id="how" className="bg-white/70 py-12 sm:py-16">
       <div className="mx-auto max-w-7xl px-5">
         <h2 className="max-w-2xl font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
           From nearby farm stock to your delivery address.
@@ -26,7 +26,7 @@ export function Pipeline() {
           initial="off"
           whileInView="on"
           viewport={{ once: true, margin: '-120px' }}
-          className="mt-14 grid gap-10 md:grid-cols-4 md:gap-0"
+          className="mt-10 grid gap-8 md:grid-cols-4 md:gap-0"
         >
           {STEPS.map((s, i) => {
             const Icon = s.icon;

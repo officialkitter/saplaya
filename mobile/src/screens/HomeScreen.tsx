@@ -12,7 +12,7 @@ import { ModeBackdrop, ModeToggle } from '../components/ModeToggle';
 import PromoSlider from '../components/PromoSlider';
 import ProductCard from '../components/ProductCard';
 import { useStore } from '../store/StoreContext';
-import { colors, volumeTheme } from '../theme';
+import { colors, glass, volumeTheme } from '../theme';
 import { Product, Promo } from '../types';
 import { useCurrency } from '../lib/currency';
 
@@ -46,6 +46,7 @@ export default function HomeScreen({ navigation }: any) {
   const [error, setError] = useState<string | null>(null);
   const [promoError, setPromoError] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [columns, setColumns] = useState<1 | 2>(2);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
   const [fresh, setFresh] = useState(false);
@@ -61,8 +62,8 @@ export default function HomeScreen({ navigation }: any) {
     if (searching) {
       return items.length ? [
         { kind: 'heading', key: 'heading-results', title: 'Search results', description: 'Products matching your selected filters.', count: 0, expanded: true },
-        ...Array.from({ length: Math.ceil(items.length / 2) }, (_, index) => ({
-          kind: 'products' as const, key: `results-${index}`, products: items.slice(index * 2, index * 2 + 2),
+        ...Array.from({ length: Math.ceil(items.length / columns) }, (_, index) => ({
+          kind: 'products' as const, key: `results-${items[index * columns].id}`, products: items.slice(index * columns, index * columns + columns),
         })),
       ] : [];
     }
@@ -82,17 +83,17 @@ export default function HomeScreen({ navigation }: any) {
       });
       if (!products.length) return [];
       const expanded = expandedSections[key] ?? false;
-      const visibleProducts = expanded ? products : products.slice(0, 6);
+      const visibleProducts = expanded ? products : products.slice(0, 3);
       return [
         { kind: 'heading' as const, key: `heading-${key}`, title, description, count: products.length, expanded },
-        ...Array.from({ length: Math.ceil(visibleProducts.length / 2) }, (_, index) => ({
+        ...Array.from({ length: Math.ceil(visibleProducts.length / columns) }, (_, index) => ({
           kind: 'products' as const,
-          key: `${key}-${index}`,
-          products: visibleProducts.slice(index * 2, index * 2 + 2),
+          key: `${key}-${visibleProducts[index * columns].id}`,
+          products: visibleProducts.slice(index * columns, index * columns + columns),
         })),
       ];
     });
-  }, [items, expandedSections, searching]);
+  }, [items, expandedSections, searching, columns]);
 
   const navigateToRoot = (screen: 'Account' | 'LocationPicker') => {
     const rootNavigation = navigation.getParent('RootStack');
@@ -263,6 +264,7 @@ export default function HomeScreen({ navigation }: any) {
       <ModeToggle />
 
       <Text style={[styles.section, { color: tierTheme.accent }]}>Shop by category</Text>
+      <Text style={styles.intro}>Find farm produce and pantry essentials for your home or business, all in one place.</Text>
       <View style={styles.searchPanel}>
         <View style={[styles.searchBar, { borderColor: tierTheme.button, backgroundColor: tierTheme.surface }]}>
           <Ionicons name="search" size={20} color={tierTheme.icon} />
@@ -279,6 +281,17 @@ export default function HomeScreen({ navigation }: any) {
             </Pressable>
           ))}
         </ScrollView>
+        <View style={styles.gridControls}>
+          <Text style={styles.gridLabel}>Your view</Text>
+          <View style={styles.gridOptions} accessibilityRole="radiogroup" accessibilityLabel="Product grid size">
+            {([1, 2] as const).map((value) => (
+              <Pressable key={value} onPress={() => setColumns(value)} accessibilityRole="radio" accessibilityState={{ checked: columns === value }} style={[styles.gridOption, columns === value && { backgroundColor: tierTheme.button }]}>
+                <Ionicons name={value === 1 ? 'square-outline' : 'grid-outline'} size={16} color={columns === value ? tierTheme.buttonText : colors.ink} />
+                <Text style={[styles.gridOptionText, columns === value && { color: tierTheme.buttonText }]}>{value === 1 ? 'Large' : 'Compact'}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -295,10 +308,12 @@ export default function HomeScreen({ navigation }: any) {
               <Text style={styles.categoryTitle}>{item.title}</Text>
               <Text style={styles.categoryDescription}>{item.description}</Text>
             </View>
-            {item.count > 6 && (
+            {item.count > 3 && (
               <Pressable
                 onPress={() => setExpandedSections((sections) => ({ ...sections, [item.key.replace('heading-', '')]: !item.expanded }))}
                 accessibilityRole="button"
+                accessibilityState={{ expanded: item.expanded }}
+                style={styles.seeMoreButton}
               >
                 <Text style={[styles.seeMore, { color: tierTheme.accent }]}>{item.expanded ? 'See less' : 'See more'}</Text>
               </Pressable>
@@ -307,9 +322,8 @@ export default function HomeScreen({ navigation }: any) {
         ) : (
           <View style={styles.productRow}>
             {item.products.map((product, productIndex) => (
-              <ProductCard key={product.id} product={product} index={index + productIndex} onPress={() => navigation.navigate('Product', { product })} />
+              <ProductCard key={product.id} product={product} index={index + productIndex} wide={columns === 2 && item.products.length === 1} onPress={() => navigation.navigate('Product', { product })} />
             ))}
-            {item.products.length === 1 && <View style={styles.productSpacer} />}
           </View>
         )}
         ListHeaderComponent={header}
@@ -351,21 +365,22 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 8 },
   loc: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingLeft: 6, gap: 12 },
   van: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
-  accountButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line },
-  currencyButton: { minWidth: 52, height: 42, borderRadius: 14, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line, paddingHorizontal: 6 },
+  accountButton: { ...glass, width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  currencyButton: { ...glass, minWidth: 52, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   currencyText: { color: colors.green, fontWeight: '900', fontSize: 12 },
   marketNote: { color: colors.muted, fontSize: 11, marginHorizontal: 20, marginTop: 4 },
   locSmall: { fontSize: 12, color: colors.muted },
   locBig: { fontSize: 18, fontWeight: '800', color: colors.ink },
   q: { fontSize: 20, fontWeight: '800', color: colors.ink, marginHorizontal: 20, marginTop: 22, marginBottom: 10 },
   section: { fontSize: 22, fontWeight: '900', color: colors.green, marginHorizontal: 20, marginTop: 22, marginBottom: 6 },
+  intro: { marginHorizontal: 20, color: colors.muted, fontSize: 14, lineHeight: 20 },
   categoryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 },
   categoryTitle: { fontSize: 20, fontWeight: '900', color: colors.ink },
   categoryDescription: { marginTop: 3, marginRight: 8, color: colors.muted, fontSize: 12 },
   seeMore: { color: colors.green, fontWeight: '800' },
+  seeMoreButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   seeMoreFooter: { color: colors.green, fontWeight: '800', textAlign: 'center', padding: 20 },
   productRow: { flexDirection: 'row', paddingHorizontal: 14 },
-  productSpacer: { flex: 1, padding: 6 },
   err: { textAlign: 'center', color: '#D32F2F', padding: 20, fontWeight: '700' },
   empty: { alignItems: 'center', paddingHorizontal: 28, paddingVertical: 36 },
   emptyTitle: { marginTop: 12, fontSize: 17, fontWeight: '800', color: colors.ink, textAlign: 'center' },
@@ -376,4 +391,9 @@ const styles = StyleSheet.create({
   filterChips: { paddingTop: 10 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.line, marginRight: 6 },
   chipText: { color: colors.ink, fontWeight: '600' },
+  gridControls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  gridLabel: { color: colors.muted, fontSize: 13, fontWeight: '700' },
+  gridOptions: { ...glass, flexDirection: 'row', borderRadius: 16, padding: 3 },
+  gridOption: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 10, borderRadius: 13 },
+  gridOptionText: { color: colors.ink, fontSize: 12, fontWeight: '800' },
 });

@@ -45,7 +45,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 export function Panel({ title, subtitle, children, className, action }: { title?: string; subtitle?: string; children: ReactNode; className?: string; action?: ReactNode }) {
   return (
-    <section className={`rounded-[1.75rem] border border-line bg-white p-5 shadow-soft sm:p-6 ${className ?? ''}`}>
+    <section className={`glass-surface rounded-[1.75rem] p-5 sm:p-6 ${className ?? ''}`}>
       {(title || action) && (
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

@@ -25,7 +25,7 @@ export default function QuestionsPage() {
           })),
         }) }}
       />
-      <PublicPage pathname="/faq" title="Questions" description="Get help with shopping, delivery, payments and supplying produce on Saplaya." parents={[{ href: '/help', label: 'Help' }]}>
+      <PublicPage pathname="/faq" title="Questions" description="Shop with confidence and find clear answers about deliveries, payments, wholesale orders and joining Saplaya as a farmer." parents={[{ href: '/help', label: 'Help' }]}>
       <Faq />
       </PublicPage>
     </>

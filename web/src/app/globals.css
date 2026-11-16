@@ -27,6 +27,20 @@ body {
   color: #15261a;
 }
 
+.glass-surface {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 12px 32px -20px rgba(27, 94, 32, 0.35), inset 0 1px rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(14px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-surface {
+    background: #fff;
+    backdrop-filter: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

@@ -49,6 +49,12 @@ export const statusLabel: Record<OrderStatus, string> = {
 
 export const radius = { sm: 10, md: 16, lg: 24, xl: 32 };
 
+export const glass = {
+  backgroundColor: 'rgba(255,255,255,0.94)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.85)',
+};
+
 export const shadow = {
   shadowColor: '#1B5E20',
   shadowOpacity: 0.12,

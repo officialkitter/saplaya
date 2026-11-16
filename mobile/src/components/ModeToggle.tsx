@@ -4,7 +4,7 @@ import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, volumeTheme } from '../theme';
+import { colors, glass, radius, volumeTheme } from '../theme';
 import Atmosphere from './Atmosphere';
 
 const H = 64;
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     height: H,
     marginHorizontal: 20,
     borderRadius: radius.xl,
-    backgroundColor: colors.white,
+    ...glass,
     borderWidth: 2,
     borderColor: colors.line,
     flexDirection: 'row',

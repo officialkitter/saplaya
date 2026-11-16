@@ -34,7 +34,7 @@ export function PublicPage({
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbData) }} />
       <Nav />
       <main>
-        <header className="mx-auto max-w-7xl px-5 pb-10 pt-10 sm:pt-14">
+        <header className="mx-auto max-w-7xl px-5 pb-6 pt-8 sm:pt-12">
           <nav aria-label="Breadcrumb" className="mb-6 text-sm font-semibold text-ink-soft">
             <ol className="flex flex-wrap items-center gap-2">
               {breadcrumbItems.slice(0, -1).map((item) => (

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <PublicPage pathname="/how-it-works" title="How it works" description="Choose fresh produce, review the delivery details and follow your order from the farm to your door.">
+    <PublicPage pathname="/how-it-works" title="How it works" description="Enjoy a simpler way to shop from farms. Choose what you need, see your delivery options and follow your order from preparation to your door.">
       <Pipeline />
       <section className="mx-auto max-w-7xl px-5 py-12">
         <h2 className="font-display text-2xl font-extrabold">Delivery that fits your day</h2>

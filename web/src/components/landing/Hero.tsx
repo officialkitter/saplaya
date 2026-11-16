@@ -126,7 +126,9 @@ export function Hero() {
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
             Saplaya connects customers with farm produce for retail and wholesale.{' '}
             {market.location
-              ? `Showing stocked farms near ${market.placeName ?? 'your current location'}. Buy a little for your kitchen or a lot for your shop.`
+              ? market.placeNameStatus === 'ready'
+                ? `Discover stocked farms near ${market.placeName}. Buy a little for your kitchen or a lot for your shop.`
+                : 'Discover stocked farms near you. Buy a little for your kitchen or a lot for your shop.'
               : 'Allow location access to prioritize nearby stocked farms, or browse without it. Buy a little for your kitchen or a lot for your shop.'}
           </p>
 

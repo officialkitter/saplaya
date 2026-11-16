@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function ForFarmersPage() {
   return (
-    <PublicPage pathname="/for-farmers" title="For farmers" description="Bring your harvest to Saplaya customers. Learn about farm tools, privacy and the supplier application process.">
+    <PublicPage pathname="/for-farmers" title="For farmers" description="Bring your harvest to more customers while managing your own stock and orders. Explore the tools, privacy protections and steps to join Saplaya.">
       <Farmers />
     </PublicPage>
   );

@@ -9,10 +9,10 @@ import { FAQ_ITEMS } from '@/lib/faq-content';
 export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="py-20 lg:py-28">
+    <section id="faq" className="py-12 sm:py-16">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 lg:grid-cols-[0.8fr_1.2fr]">
         <h2 className="font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">Questions people ask us.</h2>
-        <div className="divide-y divide-line rounded-[2rem] bg-white px-6 shadow-soft">
+        <div className="glass-surface divide-y divide-line rounded-[2rem] px-6">
           {FAQ_ITEMS.map((item, i) => {
             const isOpen = open === i;
             return (
