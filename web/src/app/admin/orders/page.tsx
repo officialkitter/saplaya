@@ -3,7 +3,7 @@
 import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
 import { Ban, ClipboardList, DoorOpen, Lock, Search, ShoppingBag, Truck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, StatusPill } from '@/components/ui/Bits';
@@ -84,6 +84,8 @@ function Orders() {
   const [limit, setLimit] = useState(15);
   const [openId, setOpenId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const busyOrder = useRef<string | null>(null);
 
   useEffect(() => {
     const h = window.location.hash.replace('#', '');
@@ -111,23 +113,33 @@ function Orders() {
 
   async function advance(o: SupplierOrder) {
     const a = actionsFor(me!.role, o.status, me!.permissions);
-    if (!a.next) return;
+    if (!a.next || busyOrder.current) return;
+    busyOrder.current = o.id;
+    setBusyOrderId(o.id);
     try {
       await setOrderStatus(o.id, a.next);
       push(`${o.code} is now ${STATUS[a.next].label.toLowerCase()}. The customer sees this in their app.`);
     } catch (error) {
       push(userFacingMessage(error, 'Could not update the order.'), 'bad');
+    } finally {
+      busyOrder.current = null;
+      setBusyOrderId(null);
     }
   }
 
   async function cancelOrder() {
-    if (!cancelling) return;
+    if (!cancelling || busyOrder.current) return;
+    busyOrder.current = cancelling.id;
+    setBusyOrderId(cancelling.id);
     try {
       await setOrderStatus(cancelling.id, 'cancelled');
       push(`${cancelling.code} was cancelled and the stock was returned.`, 'info');
       setCancelId(null);
     } catch (error) {
       push(userFacingMessage(error, 'Could not cancel the order.'), 'bad');
+    } finally {
+      busyOrder.current = null;
+      setBusyOrderId(null);
     }
   }
 
@@ -136,8 +148,8 @@ function Orders() {
     if (!a.next && !a.cancel) return null;
     return (
       <div className="flex flex-wrap gap-2">
-        {a.next && <Button size={size} variant={a.next === 'delivered' ? 'primary' : 'sun'} onClick={() => { void advance(o); }}>{STATUS[o.status].verb}</Button>}
-        {a.cancel && <Button size={size} variant="danger" onClick={() => setCancelId(o.id)}>Cancel</Button>}
+        {a.next && <Button size={size} className="min-h-11" disabled={busyOrderId !== null} variant={a.next === 'delivered' ? 'primary' : 'sun'} onClick={() => { void advance(o); }}>{busyOrderId === o.id ? 'Updating…' : STATUS[o.status].verb}</Button>}
+        {a.cancel && <Button size={size} className="min-h-11" disabled={busyOrderId !== null} variant="danger" onClick={() => setCancelId(o.id)}>Cancel</Button>}
       </div>
     );
   }
@@ -232,7 +244,7 @@ function Orders() {
             </div>
             <div className="overflow-x-auto rounded-3xl bg-white p-5 shadow-soft"><div className="min-w-[288px]"><Pipeline status={open.status} /></div></div>
 
-            <div className="grid grid-cols-2 gap-3 text-[15px]">
+            <div className="grid grid-cols-1 gap-3 text-[15px] min-[400px]:grid-cols-2">
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Customer</p><p className="font-bold">{customerLabel(open, me.role, me.roleScope)}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Delivery area</p><p className="font-bold">{open.area}</p></div>
               <div className="rounded-2xl bg-white p-4"><p className="text-ink-mute">Phone</p><p className={cn('font-bold', isFarmRole(me.role, me.roleScope) && 'text-ink-mute')}>{customerPhone(open, me.role, me.roleScope)}</p></div>
@@ -274,15 +286,15 @@ function Orders() {
         )}
       </Drawer>
 
-      <Modal open={!!cancelling} onClose={() => setCancelId(null)} title="Cancel this order?">
+      <Modal open={!!cancelling} onClose={() => { if (!busyOrderId) setCancelId(null); }} title="Cancel this order?">
         {cancelling && (
           <div className="space-y-4">
             <p className="text-lg text-ink-soft">
               Order <b className="text-ink">{cancelling.code}</b> will be cancelled and the customer is told. The items go back into your stock.
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setCancelId(null)}>Keep order</Button>
-              <Button variant="danger" onClick={() => { void cancelOrder(); }}>Yes, cancel it</Button>
+              <Button variant="ghost" disabled={busyOrderId !== null} onClick={() => setCancelId(null)}>Keep order</Button>
+              <Button variant="danger" disabled={busyOrderId !== null} onClick={() => { void cancelOrder(); }}>{busyOrderId ? 'Cancelling…' : 'Yes, cancel it'}</Button>
             </div>
           </div>
         )}

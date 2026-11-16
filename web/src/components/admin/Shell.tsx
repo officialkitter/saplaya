@@ -72,7 +72,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </p>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3" aria-label="Admin">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3" aria-label="Admin">
         {items.map((it) => {
           const active = it.exact ? pathname === it.href : pathname.startsWith(it.href);
           const Icon = it.icon;
@@ -109,7 +109,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </Link>
       </nav>
 
-      <div className="m-3 rounded-3xl border border-line bg-milk p-4">
+      <div className="m-3 shrink-0 rounded-3xl border border-line bg-milk p-4">
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-leaf font-extrabold text-white">{initials(me.name)}</span>
           <div className="min-w-0">
