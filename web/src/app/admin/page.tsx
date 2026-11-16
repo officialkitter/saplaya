@@ -14,7 +14,8 @@ import { RestockModal } from '@/components/admin/RestockModal';
 import { Button, LinkButton } from '@/components/ui/Button';
 import { CountUp, StatusPill } from '@/components/ui/Bits';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { formatNum, formatTZS, STATUS, timeAgo, localHour } from '@/lib/format';
+import { formatNum, STATUS, timeAgo, localHour } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { photoUrl } from '@/lib/images';
 import { can } from '@/lib/roles';
 import { customerLabel, isLow, modeSplitByDay, orderTotal, ordersByArea, ordersByHour, salesByCategory, salesByDay, salesByFarm, statusCounts, topProducts, weekChange, countsAsSale } from '@/lib/stats';
@@ -29,6 +30,7 @@ function greeting() {
 }
 
 function Dashboard() {
+  const { formatPrice } = useGlobalMarket();
   const { me, farmId, suppliers, products, orders } = useScope();
   const applications = useDB((s) => s.applications);
   const [restockFor, setRestockFor] = useState<string | null>(null);
@@ -90,7 +92,7 @@ function Dashboard() {
       <section className="glass-surface grid grid-cols-2 divide-line rounded-[1.75rem] lg:grid-cols-4 lg:divide-x">
         <div className="min-w-0 p-4 sm:p-5">
           <p className="text-[15px] font-semibold text-ink-mute">{platform ? 'Sales through Saplaya' : 'Your sales'}, 14 days</p>
-          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={total14} prefix="TSh " /></p>
+          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={total14} format={formatPrice} /></p>
           {change !== null && (
             <p className={`mt-1 inline-flex items-center gap-1 text-sm font-bold ${change >= 0 ? 'text-leaf' : 'text-[#C62828]'}`}>
               {change >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
@@ -110,7 +112,7 @@ function Dashboard() {
         </div>
         <div className="min-w-0 border-l border-t border-line p-4 sm:p-5 lg:border-t-0">
           <p className="text-[15px] font-semibold text-ink-mute">Average order</p>
-          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={avg} prefix="TSh " /></p>
+          <p className="mt-1 min-w-0 break-words font-display text-2xl font-extrabold tabular-nums sm:text-3xl"><CountUp value={avg} format={formatPrice} /></p>
           <p className="mt-1 text-sm text-ink-mute">{platform ? `${suppliers.filter((s) => s.status === 'active').length} farms selling` : `${products.filter((p) => p.active).length} products in the shop`}</p>
         </div>
       </section>
@@ -144,8 +146,8 @@ function Dashboard() {
                 </defs>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" vertical={false} />
                 <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
-                <YAxis tick={AXIS} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
-                <Tooltip contentStyle={TIP} formatter={(v: unknown) => [formatTZS(Number(v)), 'Sales']} />
+                <YAxis tick={AXIS} tickLine={false} axisLine={false} width={100} tickFormatter={formatPrice} />
+                <Tooltip contentStyle={TIP} formatter={(v: unknown) => [formatPrice(Number(v)), 'Sales']} />
                 <Area type="monotone" dataKey="sales" stroke="#2E7D32" strokeWidth={3} fill="url(#sales)" animationDuration={1200} />
               </AreaChart>
             </ResponsiveContainer>
@@ -189,9 +191,9 @@ function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={platform ? byFarm : top} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" horizontal={false} />
-                <XAxis type="number" tick={AXIS} tickLine={false} axisLine={false} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
+                <XAxis type="number" tick={AXIS} tickLine={false} axisLine={false} tickFormatter={formatPrice} />
                 <YAxis type="category" dataKey="name" width={118} tick={{ ...AXIS, fill: '#15261A', fontWeight: 600 }} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={TIP} formatter={(v: unknown) => [formatTZS(Number(v)), 'Sales']} />
+                <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={TIP} formatter={(v: unknown) => [formatPrice(Number(v)), 'Sales']} />
                 <Bar dataKey="sales" fill="#4CAF50" radius={[0, 12, 12, 0]} barSize={22} animationDuration={1000} />
               </BarChart>
             </ResponsiveContainer>
@@ -234,8 +236,8 @@ function Dashboard() {
               <BarChart data={split} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#E3EBE0" strokeDasharray="3 6" vertical={false} />
                 <XAxis dataKey="day" tick={AXIS} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
-                <YAxis tick={AXIS} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
-                <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={TIP} formatter={(v: unknown, n: unknown) => [formatTZS(Number(v)), n === 'retail' ? 'Retail' : 'Wholesale']} />
+                <YAxis tick={AXIS} tickLine={false} axisLine={false} width={100} tickFormatter={formatPrice} />
+                <Tooltip cursor={{ fill: '#E8F5E9' }} contentStyle={TIP} formatter={(v: unknown, n: unknown) => [formatPrice(Number(v)), n === 'retail' ? 'Retail' : 'Wholesale']} />
                 <Bar dataKey="retail" stackId="a" fill="#4CAF50" radius={[0, 0, 0, 0]} animationDuration={1000} />
                 <Bar dataKey="wholesale" stackId="a" fill="#FFB300" radius={[8, 8, 0, 0]} animationDuration={1200} />
               </BarChart>
@@ -254,7 +256,7 @@ function Dashboard() {
                 <Pie data={categories} dataKey="sales" nameKey="name" outerRadius={84} paddingAngle={2} stroke="none" animationDuration={1000}>
                   {categories.map((c, i) => <Cell key={c.name} fill={['#2E7D32', '#FFB300', '#4CAF50', '#8D6E63', '#26A69A'][i % 5]} />)}
                 </Pie>
-                <Tooltip contentStyle={TIP} formatter={(v: unknown) => [formatTZS(Number(v)), 'Sales']} />
+                <Tooltip contentStyle={TIP} formatter={(v: unknown) => [formatPrice(Number(v)), 'Sales']} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -312,7 +314,7 @@ function Dashboard() {
                 <p className="truncate font-bold">{o.code} <span className="font-medium text-ink-mute">· {customerLabel(o, me.role, me.roleScope)}, {o.area}</span></p>
                 <p className="text-sm text-ink-mute">{timeAgo(o.placedAt)}</p>
               </div>
-              <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 md:col-span-1 md:justify-end"><p className="font-extrabold tabular-nums">{formatTZS(orderTotal(o))}</p>
+              <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 md:col-span-1 md:justify-end"><p className="font-extrabold tabular-nums">{formatPrice(orderTotal(o))}</p>
               <StatusPill status={o.status} /></div>
             </li>
           ))}

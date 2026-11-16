@@ -9,9 +9,9 @@
 
 Connecting customers with farmers, for your home or your business.
 
-[![Website](https://img.shields.io/badge/Website-saplaya.org-2e7d32?style=for-the-badge)](https://www.saplaya.org)
+[![Website](https://img.shields.io/badge/Website-saplaya.org-2e7d32?style=for-the-badge&logo=googlechrome&logoColor=white)](https://www.saplaya.org)
 [![Google Play](https://img.shields.io/badge/Google%20Play-Coming%20Soon-01875f?style=for-the-badge&logo=googleplay&logoColor=white)](#get-the-app)
-[![Farmers](https://img.shields.io/badge/For%20Farmers-Apply%20Now-f9a825?style=for-the-badge)](https://www.saplaya.org/for-farmers)
+[![Farmers](https://img.shields.io/badge/For%20Farmers-Apply%20Now-f9a825?style=for-the-badge&logo=leaflet&logoColor=white)](https://www.saplaya.org/for-farmers)
 
 [Visit the website](https://www.saplaya.org) · [How it works](https://www.saplaya.org/how-it-works) · [Help & FAQ](https://www.saplaya.org/faq)
 
@@ -41,9 +41,9 @@ Connecting customers with farmers, for your home or your business.
 
 | Platform | Status |
 |---|---|
-| 🌐 Web | Live at [www.saplaya.org](https://www.saplaya.org) |
-| 🤖 Android (Google Play) | Coming soon, link will be added at launch |
-| 🍎 iOS (App Store) | Coming soon |
+| <img src="https://api.iconify.design/lucide/globe.svg?color=%232e7d32" height="18" align="top" alt="" /> Web | Live at [www.saplaya.org](https://www.saplaya.org) |
+| <img src="https://api.iconify.design/simple-icons/googleplay.svg?color=%2301875f" height="18" align="top" alt="" /> Android (Google Play) | Coming soon, link will be added at launch |
+| <img src="https://api.iconify.design/simple-icons/apple.svg?color=%23555555" height="18" align="top" alt="" /> iOS (App Store) | Coming soon |
 
 <!-- When live, replace the Google Play badge above with:
 [![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](YOUR_PLAY_STORE_LINK)
@@ -53,11 +53,11 @@ Connecting customers with farmers, for your home or your business.
 
 ## What you can do with Saplaya
 
-- 🥬 **Browse fresh stock**: see what is available today from farms near you.
-- 🛒 **Retail or wholesale**: shop for your home or your business, with volume pricing on eligible products.
-- 🚚 **Choose a delivery time**: pick a slot that suits you and see delivery charges before you confirm.
-- 💳 **Clear checkout**: final prices and any delivery charge are shown before you place an order, and available payment methods appear at checkout.
-- 📍 **Nearby farms first**: optional location access helps prioritize farms close to you.
+- <img src="https://api.iconify.design/lucide/leaf.svg?color=%232e7d32" height="18" align="top" alt="" /> **Browse fresh stock**: see what is available today from farms near you.
+- <img src="https://api.iconify.design/lucide/shopping-cart.svg?color=%232e7d32" height="18" align="top" alt="" /> **Retail or wholesale**: shop for your home or your business, with volume pricing on eligible products.
+- <img src="https://api.iconify.design/lucide/truck.svg?color=%232e7d32" height="18" align="top" alt="" /> **Choose a delivery time**: pick a slot that suits you and see delivery charges before you confirm.
+- <img src="https://api.iconify.design/lucide/credit-card.svg?color=%232e7d32" height="18" align="top" alt="" /> **Clear checkout**: final prices and any delivery charge are shown before you place an order, and available payment methods appear at checkout.
+- <img src="https://api.iconify.design/lucide/map-pin.svg?color=%232e7d32" height="18" align="top" alt="" /> **Nearby farms first**: optional location access helps prioritize farms close to you.
 
 ## Shopping with Saplaya
 
@@ -99,7 +99,7 @@ flowchart LR
 
 <div align="center">
 
-Made for farmers and the people who eat their food. 🌱
+<img src="https://api.iconify.design/lucide/sprout.svg?color=%232e7d32" height="22" alt="" /> Made for farmers and the people who eat their food.
 
 © Saplaya · [www.saplaya.org](https://www.saplaya.org)
 

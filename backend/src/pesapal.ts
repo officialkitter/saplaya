@@ -1,4 +1,4 @@
-import { amountInMinorUnits } from './currency.js';
+import { amountInMinorUnits, isE164Phone } from './currency.js';
 
 type PesapalError = {
   type: string;
@@ -176,7 +176,7 @@ export async function submitOrder(order: {
   if (amountInMinorUnits(order.amount, order.currency) === null || order.amount <= 0) {
     throw new Error(`The ${order.currency} payment amount has invalid precision.`);
   }
-  if (!/^\+[1-9]\d{7,14}$/.test(order.phone)) {
+  if (!isE164Phone(order.phone)) {
     throw new Error('Pesapal requires a valid international E.164 phone number.');
   }
   const token = await getAccessToken();

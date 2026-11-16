@@ -21,7 +21,7 @@ export function StatusPill({ status, className }: { status: OrderStatus; classNa
   );
 }
 
-export function CountUp({ value, prefix = '', className }: { value: number; prefix?: string; className?: string }) {
+export function CountUp({ value, prefix = '', className, format }: { value: number; prefix?: string; className?: string; format?: (value: number) => string }) {
   const [v, setV] = useState(0);
   useEffect(() => {
     const c = animate(0, value, { duration: 1.1, ease: 'easeOut', onUpdate: (x) => setV(x) });
@@ -29,8 +29,7 @@ export function CountUp({ value, prefix = '', className }: { value: number; pref
   }, [value]);
   return (
     <span className={className}>
-      {prefix}
-      {Math.round(v).toLocaleString('en-US')}
+      {format ? format(v) : <>{prefix}{Math.round(v).toLocaleString('en-US')}</>}
     </span>
   );
 }

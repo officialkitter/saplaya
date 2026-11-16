@@ -13,6 +13,7 @@ import { deriveOrderMode, haversineKm, priceForQuantity, publicTierPrices, searc
 import { customerOrders } from './customer-orders.js';
 import {
   amountInMinorUnits,
+  isE164Phone,
   paymentAmountsMatch,
   quoteCurrencyAmount,
   supportedPaymentCurrencies,
@@ -34,6 +35,7 @@ import {
   submitOrder,
 } from './pesapal.js';
 import ordersAgentsRouter from './orders-agents.js';
+import { locationSearchRouter } from './location-search.js';
 import { publicErrorMessage } from './middleware.js';
 
 const {
@@ -66,6 +68,7 @@ const paymentCurrencies = supportedPaymentCurrencies();
 const app = express();
 app.use(cors({ origin: WEB_ORIGIN === '*' ? true : WEB_ORIGIN.split(',') }));
 app.use(express.json());
+app.use(locationSearchRouter);
 
 app.get('/locations/countries', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
@@ -1190,7 +1193,7 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     currency, quoted_payment_amount: quotedPaymentAmount, recipient, delivery_address: deliveryAddress,
   } = parsed.data;
   const phone = parsed.data.payment_phone ?? customer.phone;
-  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+  if (!isE164Phone(phone)) {
     return res.status(400).json({ error: 'Enter a valid international phone number in E.164 format (for example, +255700000000).' });
   }
   if (currency !== 'TZS' && quotedPaymentAmount === undefined) {

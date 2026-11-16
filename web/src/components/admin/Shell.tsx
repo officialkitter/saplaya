@@ -11,6 +11,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Logo, LogoMark } from '@/components/ui/Logo';
 import { cn, initials } from '@/lib/format';
+import { useGlobalMarket } from '@/lib/global-market';
 import { can, isFarmRole, roleInfo } from '@/lib/roles';
 import { getSupabase } from '@/lib/supabase';
 import { useBoot, useDB, useMe, useScope, useToast } from '@/lib/store';
@@ -39,6 +40,7 @@ function SidebarBody({ onNavigate, animatedPill = true }: { onNavigate?: () => v
   const logout = useDB((s) => s.logout);
   const applications = useDB((s) => s.applications);
   const push = useToast((s) => s.push);
+  const { currency, setCurrency, currencies, ratesLoading, ratesUnavailable } = useGlobalMarket();
   if (!me) return null;
 
   const info = roleInfo(me.role, me.roleLabel, me.roleScope);
@@ -112,6 +114,23 @@ function SidebarBody({ onNavigate, animatedPill = true }: { onNavigate?: () => v
           <UserRound size={23} />
           <span>My account</span>
         </Link>
+        <div className="px-4 py-3">
+          <label className="block text-sm font-bold text-ink-soft">
+            Display currency
+            <select
+              value={currency}
+              onChange={(event) => setCurrency(event.target.value)}
+              disabled={ratesLoading}
+              className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-white px-3 text-base text-ink focus:outline-none focus:ring-4 focus:ring-sprout/15"
+            >
+              {!currencies.includes(currency) && <option value={currency}>{currency}</option>}
+              {currencies.map((code) => <option key={code} value={code}>{code}</option>)}
+            </select>
+          </label>
+          {ratesLoading && <p role="status" className="mt-1 text-xs text-ink-mute">Loading exchange rates; prices may appear in TZS.</p>}
+          {ratesUnavailable && <p role="status" className="mt-1 text-xs text-ink-mute">Exchange rates unavailable. Prices are shown in base TZS.</p>}
+          {!ratesLoading && !ratesUnavailable && currency !== 'TZS' && <p className="mt-1 text-xs text-ink-mute">Converted prices are approximate. Editing amounts uses base TZS.</p>}
+        </div>
       </nav>
 
       <div className="m-3 shrink-0 rounded-3xl border border-line bg-milk p-4">

@@ -120,9 +120,15 @@ begin
       from jsonb_array_elements(p_items) with ordinality as entries(item, ordinality)
     ),
     'lat', p_lat, 'lng', p_lng, 'delivery_window', p_delivery_window,
-    'name', p_customer_name, 'email', p_customer_email, 'phone', p_customer_phone,
-    'recipient_name', p_recipient_name, 'recipient_phone', p_recipient_phone,
-    'delivery_address', p_delivery_address
+    'name', p_customer_name, 'email', p_customer_email, 'phone', p_customer_phone
+  ) || case
+    when p_recipient_name is null and p_recipient_phone is null and p_delivery_address is null then '{}'::jsonb
+    else jsonb_build_object(
+      'recipient_name', p_recipient_name,
+      'recipient_phone', p_recipient_phone,
+      'delivery_address', p_delivery_address
+    )
+  end
   )::text, 'sha256'), 'hex');
 
   perform pg_advisory_xact_lock(hashtextextended(p_request_key, 0));

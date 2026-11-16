@@ -5,6 +5,10 @@ export type CurrencyQuote = {
   fraction_digits: number;
 };
 
+export function isE164Phone(phone: string): boolean {
+  return /^\+[1-9]\d{7,14}$/.test(phone);
+}
+
 export function supportedPaymentCurrencies(
   configured = process.env.PAYMENT_SUPPORTED_CURRENCIES,
 ): string[] {
