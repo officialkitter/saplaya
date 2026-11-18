@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useIsPresent } from 'framer-motion';
 import { X } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/format';
 
 /**
@@ -11,8 +11,70 @@ import { cn } from '@/lib/format';
  */
 export function OverlayRoot({ className, children }: { className?: string; children: ReactNode }) {
   const isPresent = useIsPresent();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<Element | null>(null);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const restoreFocus = () => {
+      const previousFocus = previousFocusRef.current;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected && !previousFocus.closest('[inert]')) {
+        previousFocus.focus({ preventScroll: true });
+      }
+      if (root.contains(document.activeElement) && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    };
+    if (!isPresent) {
+      restoreFocus();
+      root.setAttribute('inert', '');
+      return;
+    }
+    root.removeAttribute('inert');
+    if (!root.contains(document.activeElement)) previousFocusRef.current = document.activeElement;
+    const dialog = root.querySelector<HTMLElement>('[role="dialog"]');
+    const focusable = () => Array.from(root.querySelectorAll<HTMLElement>(
+      'button, a[href], input, select, textarea, [tabindex]',
+    )).filter((element) => element.tabIndex >= 0
+      && !element.matches(':disabled')
+      && !element.closest('[inert]')
+      && element.getClientRects().length > 0);
+    const isTopmost = () => {
+      const overlays = document.querySelectorAll('[data-overlay-root]:not([inert])');
+      return overlays[overlays.length - 1] === root;
+    };
+    const focusInside = () => (focusable()[0] ?? dialog)?.focus({ preventScroll: true });
+    const onFocus = (event: FocusEvent) => {
+      if (isTopmost() && event.target instanceof Node && !root.contains(event.target)) focusInside();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !isTopmost()) return;
+      const elements = focusable();
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (!first || (event.shiftKey
+        ? document.activeElement === first || document.activeElement === dialog
+        : document.activeElement === last || document.activeElement === dialog)) {
+        event.preventDefault();
+        (event.shiftKey ? last ?? dialog : first ?? dialog)?.focus({ preventScroll: true });
+      }
+    };
+    focusInside();
+    document.addEventListener('focusin', onFocus);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('focusin', onFocus);
+      document.removeEventListener('keydown', onKey);
+      // React restores the pre-commit selection after layout-effect cleanup.
+      queueMicrotask(() => {
+        if (!root.isConnected && document.activeElement === document.body) restoreFocus();
+      });
+    };
+  }, [isPresent]);
+
   return (
-    <div className={cn('fixed inset-0 z-50 overscroll-contain', !isPresent && 'pointer-events-none', className)} aria-hidden={isPresent ? undefined : true}>
+    <div ref={rootRef} data-overlay-root="" className={cn('fixed inset-0 z-50 overscroll-contain', !isPresent && 'pointer-events-none', className)}>
       {children}
     </div>
   );
@@ -43,7 +105,7 @@ export function Modal({
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           />
           <motion.div
-            role="dialog" aria-modal="true" aria-label={title}
+            role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
             className={cn('relative max-h-[calc(100dvh-1.5rem)] w-full min-w-0 overflow-y-auto overscroll-contain rounded-3xl bg-white p-5 shadow-lift sm:max-h-[90vh] sm:p-6', wide ? 'max-w-2xl' : 'max-w-lg')}
             initial={{ y: 28, scale: 0.96, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: 16, scale: 0.97, opacity: 0 }}
@@ -77,7 +139,7 @@ export function Drawer({
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           />
           <motion.aside
-            role="dialog" aria-modal="true" aria-label={title}
+            role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
             className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-milk shadow-lift"
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 32, stiffness: 320 }}

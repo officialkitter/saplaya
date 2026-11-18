@@ -64,13 +64,15 @@ function timestamp(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
-export async function loadAdminData(): Promise<Partial<DB>> {
+export type AdminDataSection = 'suppliers' | 'products' | 'orders' | 'movements' | 'team' | 'applications' | 'settings';
+
+export async function loadAdminData(sections?: readonly AdminDataSection[]): Promise<Partial<DB>> {
   const member = await fetchAdmin<MemberResponse>('/admin/me');
   const permissions = new Set(member.permissions);
   const jobs: Promise<unknown>[] = [];
   const keys: string[] = [];
-  const enqueue = (permission: Perm, key: string, path: string) => {
-    if (permissions.has(permission)) {
+  const enqueue = (permission: Perm, key: AdminDataSection, path: string) => {
+    if (permissions.has(permission) && (!sections || sections.includes(key))) {
       keys.push(key);
       jobs.push(fetchAdmin<unknown>(path));
     }
@@ -82,7 +84,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
   enqueue('inventory.view', 'movements', '/admin/inventory-movements');
   enqueue('team.view', 'team', '/admin/team');
   enqueue('suppliers.manage', 'applications', '/admin/applications');
-  const settingsRequest = permissions.has('settings.manage')
+  const settingsRequest = permissions.has('settings.manage') && (!sections || sections.includes('settings'))
     ? fetchAdmin<Row>('/admin/settings')
     : Promise.resolve(null);
 
@@ -117,7 +119,7 @@ export async function loadAdminData(): Promise<Partial<DB>> {
       districtName: scope.district_name,
     })),
   };
-  const mapped: Partial<DB> = {
+  const mapped: Partial<DB> = sections ? {} : {
     team: [currentMember],
     sessionId: member.id,
   };

@@ -30,6 +30,7 @@ type ManagedMember = {
   role: string;
   role_label: string;
   status: 'active' | 'invited' | 'suspended';
+  commission_eligible?: boolean;
   phone: string | null;
   age: number | null;
   job_title: string | null;
@@ -108,6 +109,10 @@ function Management() {
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [savingMember, setSavingMember] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [summaryRange, setSummaryRange] = useState<'week' | 'fortnight' | 'month'>('week');
+  const [assignFilter, setAssignFilter] = useState<{ mode: 'farm' | 'area'; farmId: string; area: string }>({ mode: 'area', farmId: 'all', area: 'all' });
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberStatusFilter, setMemberStatusFilter] = useState<'all' | 'active' | 'invited' | 'suspended'>('all');
   const [newScope, setNewScope] = useState({ country_code: '', region_code: '', region_name: '', district_code: '', district_name: '' });
   const [policyForm, setPolicyForm] = useState<CommissionPolicy>({
     margin_pool_pct: 10,
@@ -154,7 +159,7 @@ function Management() {
     if (!canView) return;
     const [nextPolicy, nextSummary] = await Promise.all([
       fetchAdmin<CommissionPolicy>('/admin/management/commission-policy'),
-      fetchAdmin<CommissionSummary>('/admin/management/commission-summary'),
+      fetchAdmin<CommissionSummary>(`/admin/management/commission-summary?range=${summaryRange}`),
     ]);
     setPolicy(nextPolicy);
     setPolicyForm({
@@ -175,7 +180,7 @@ function Management() {
       setOrders(nextOrders);
       setSelectedMemberId((current) => current || nextMembers[0]?.id || '');
     }
-  }, [canManage, canView]);
+  }, [canManage, canView, summaryRange]);
 
   useEffect(() => {
     void reload().catch((error: unknown) => {
@@ -289,6 +294,28 @@ function Management() {
   if (!me) return null;
   const showManagement = canManage;
 
+  const farmOptions = [...new Map(orders.map((order) => [order.supplier_id, order.supplier_name])).entries()]
+    .sort((left, right) => left[1].localeCompare(right[1]));
+  const areaOptions = (() => {
+    const map = new Map<string, string>();
+    orders.forEach((order) => {
+      if (!order.country_code || !order.region_code) return;
+      map.set(`${order.country_code}|${order.region_code}`, [order.country_name, order.region_name].filter(Boolean).join(' · '));
+      if (order.district_code) {
+        map.set(`${order.country_code}|${order.region_code}|${order.district_code}`, [order.country_name, order.region_name, order.district_name].filter(Boolean).join(' · '));
+      }
+    });
+    return [...map.entries()].sort((left, right) => left[1].localeCompare(right[1]));
+  })();
+  const visibleOrders = orders.filter((order) => {
+    if (assignFilter.mode === 'farm') {
+      return assignFilter.farmId === 'all' || order.supplier_id === assignFilter.farmId;
+    }
+    if (assignFilter.area === 'all') return true;
+    const [country, region, district] = assignFilter.area.split('|');
+    return order.country_code === country && order.region_code === region && (!district || order.district_code === district);
+  });
+
   return (
     <>
       <PageHeader title="Management" subtitle="Employee activity, commission bundles, order ownership and regional access." />
@@ -337,16 +364,28 @@ function Management() {
             </div>
           </Panel>
 
-          <Panel title="Employee profiles and operation areas" subtitle="Country and administrative-region access is enforced by the API on farm and order lists and updates.">
-            {members.length === 0 ? <p className="rounded-2xl bg-milk p-4 text-ink-soft">Invite employees and grant the “View employee activities and commission details” permission to manage their profiles here.</p> : (
+          <Panel title="Employee profiles and operation areas" subtitle="Every platform employee is listed here. Country and administrative-region access is enforced by the API on farm and order lists and updates.">
+            {members.length === 0 ? <p className="rounded-2xl bg-milk p-4 text-ink-soft">Invite employees from the Team page to manage their profiles here.</p> : (
               <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(220px,0.75fr)_1.5fr]">
-                <div className="max-h-72 min-w-0 space-y-2 overflow-y-auto overscroll-contain lg:max-h-none lg:overflow-visible">
-                  {members.map((member) => (
-                    <button key={member.id} type="button" onClick={() => setSelectedMemberId(member.id)} aria-pressed={selectedMemberId === member.id} className={`w-full min-w-0 rounded-2xl border p-3 text-left ${selectedMemberId === member.id ? 'border-leaf bg-leaf-soft' : 'border-line hover:bg-milk'}`}>
-                      <span className="block break-words font-bold">{member.full_name}</span>
-                      <span className="block break-words text-sm text-ink-mute">{member.job_title || member.role_label} · {member.status}</span>
-                    </button>
-                  ))}
+                <div className="min-w-0 space-y-2">
+                  <Input value={memberQuery} placeholder="Search employees…" aria-label="Search employees" onChange={(event) => setMemberQuery(event.target.value)} />
+                  <Select value={memberStatusFilter} aria-label="Filter employees by status" onChange={(event) => setMemberStatusFilter(event.target.value as typeof memberStatusFilter)}>
+                    <option value="all">Every status</option>
+                    <option value="active">Active</option>
+                    <option value="invited">Invited</option>
+                    <option value="suspended">Paused</option>
+                  </Select>
+                  <div className="max-h-72 min-w-0 space-y-2 overflow-y-auto overscroll-contain lg:max-h-[28rem]">
+                    {members
+                      .filter((member) => (memberStatusFilter === 'all' || member.status === memberStatusFilter)
+                        && (!memberQuery.trim() || `${member.full_name} ${member.email} ${member.job_title ?? ''} ${member.role_label}`.toLowerCase().includes(memberQuery.trim().toLowerCase())))
+                      .map((member) => (
+                        <button key={member.id} type="button" onClick={() => setSelectedMemberId(member.id)} aria-pressed={selectedMemberId === member.id} className={`w-full min-w-0 rounded-2xl border p-3 text-left ${selectedMemberId === member.id ? 'border-leaf bg-leaf-soft' : 'border-line hover:bg-milk'}`}>
+                          <span className="block break-words font-bold">{member.full_name}</span>
+                          <span className="block break-words text-sm text-ink-mute">{member.job_title || member.role_label} · {member.status}</span>
+                        </button>
+                      ))}
+                  </div>
                 </div>
                 {selectedMember && (
                   <div className="min-w-0 space-y-4">
@@ -423,11 +462,36 @@ function Management() {
             )}
           </Panel>
 
-          <Panel title="Assign orders to sales officers" subtitle="Only delivered orders assigned to an employee count toward that employee’s weekly target.">
+          <Panel title="Assign orders to sales officers" subtitle="Only delivered orders assigned to an employee count toward that employee’s target. Filter by farm or by operational area.">
             {orders.length === 0 ? <p className="rounded-2xl bg-milk p-4 text-ink-soft">No active or recently delivered supplier orders are available to assign.</p> : (
-              <div className="space-y-2">
-                {orders.map((order) => {
-                  const eligible = members.filter((member) => member.status === 'active' && (
+              <>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                  <Field label="Filter orders by">
+                    <Select value={assignFilter.mode} onChange={(event) => setAssignFilter((current) => ({ ...current, mode: event.target.value as 'farm' | 'area', farmId: 'all', area: 'all' }))}>
+                      <option value="area">Operational area</option>
+                      <option value="farm">Farm</option>
+                    </Select>
+                  </Field>
+                  {assignFilter.mode === 'farm' ? (
+                    <Field label="Farm">
+                      <Select value={assignFilter.farmId} onChange={(event) => setAssignFilter((current) => ({ ...current, farmId: event.target.value }))}>
+                        <option value="all">Every farm</option>
+                        {farmOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                      </Select>
+                    </Field>
+                  ) : (
+                    <Field label="Operational area">
+                      <Select value={assignFilter.area} onChange={(event) => setAssignFilter((current) => ({ ...current, area: event.target.value }))}>
+                        <option value="all">Every operational area</option>
+                        {areaOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </Select>
+                    </Field>
+                  )}
+                </div>
+                {visibleOrders.length === 0 && <p className="rounded-2xl bg-milk p-4 text-ink-soft">No orders match this filter.</p>}
+                <div className="space-y-2">
+                  {visibleOrders.map((order) => {
+                  const eligible = members.filter((member) => member.status === 'active' && member.commission_eligible !== false && (
                     member.operation_scope_mode === 'global'
                     || member.operation_scopes.some((scope) => scope.country_code === order.country_code
                       && scope.region_code === order.region_code
@@ -446,13 +510,27 @@ function Management() {
                     </div>
                   );
                 })}
-              </div>
+                </div>
+              </>
             )}
           </Panel>
         </div>
       )}
 
-      <Panel title="Weekly employee performance" subtitle={summary ? `${new Date(summary.period.start).toLocaleDateString()} – ${new Date(summary.period.end).toLocaleDateString()} (UTC)` : 'Loading weekly performance…'}>
+      <Panel title="Employee performance and commissions" subtitle={summary ? `${new Date(summary.period.start).toLocaleDateString()} – ${new Date(summary.period.end).toLocaleDateString()} (UTC)` : 'Loading performance…'}>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {([['week', 'This week'], ['fortnight', 'Last 2 weeks'], ['month', 'This month']] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={summaryRange === value}
+              onClick={() => setSummaryRange(value)}
+              className={`rounded-full px-4 py-1.5 text-sm font-bold transition ${summaryRange === value ? 'bg-leaf text-white' : 'bg-milk text-ink-soft hover:bg-leaf-soft'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {summary?.members.length ? (
           <>
           <ul className="space-y-3 md:hidden">

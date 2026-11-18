@@ -21,9 +21,13 @@ import { useDB, useScope, useToast } from '@/lib/store';
 import type { Product, Supplier } from '@/lib/types';
 import { tierPrices } from '@/lib/volume';
 
-const CATEGORIES = ['Vegetables', 'Leafy', 'Fruit', 'Grains'];
-const UNITS = ['kg', 'bunch', 'piece', 'head', 'cob'];
-const EMOJI: Record<string, string> = { Vegetables: '🥕', Leafy: '🥬', Fruit: '🍎', Grains: '🌽' };
+const CATEGORIES = [
+  'Vegetables', 'Leafy', 'Fruit', 'Grains', 'Herbs & spices', 'Tubers & roots', 'Legumes',
+  'Nuts & seeds', 'Dairy & eggs', 'Meat & fish', 'Beverages', 'Other cooking essentials',
+];
+const UNITS = ['kg', 'g', 'bunch', 'piece', 'head', 'cob', 'litre', 'ml', 'tray', 'dozen', 'bag', 'sack', 'crate'];
+const CUSTOM_OPTION = '__custom__';
+const EMOJI: Record<string, string> = { Vegetables: '🥕', Leafy: '🥬', Fruit: '🍎', Grains: '🌽', 'Herbs & spices': '🌿', 'Tubers & roots': '🥔', Legumes: '🫘', 'Nuts & seeds': '🥜', 'Dairy & eggs': '🥚', 'Meat & fish': '🍗', Beverages: '🧃', 'Other cooking essentials': '🧂' };
 
 interface Form {
   name: string; category: string; unit: string; retail: string; wholesale: string;
@@ -84,6 +88,17 @@ function Products() {
   const [pricingPolicyReady, setPricingPolicyReady] = useState(false);
 
   const farmName = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
+  // Categories and units stay open-ended: every value already used in the system is offered, plus a custom entry.
+  const categoryOptions = useMemo(() => [...new Set([
+    ...CATEGORIES,
+    ...products.map((p) => p.category).filter(Boolean),
+    ...(stockCatalog?.items ?? []).map((item) => item.category).filter(Boolean),
+  ])], [products, stockCatalog]);
+  const unitOptions = useMemo(() => [...new Set([
+    ...UNITS,
+    ...products.map((p) => p.unit).filter(Boolean),
+    ...(stockCatalog?.items ?? []).map((item) => item.unit).filter(Boolean),
+  ])], [products, stockCatalog]);
   const visible = useMemo(() => {
     const t = q.trim().toLowerCase();
     return products.filter((p) => (farm === 'all' || p.supplierId === farm) && (!t || p.name.toLowerCase().includes(t) || p.category.toLowerCase().includes(t)));
@@ -230,13 +245,15 @@ function Products() {
     const retail = Number(form.retail);
     const wholesale = tierPrices(retail, pricingPercentages).wholesale;
     if (form.name.trim().length < 2) err.name = 'Give the product a name.';
+    if (!form.category.trim()) err.category = 'Enter the product type.';
+    if (!form.unit.trim()) err.unit = 'Enter the sales unit.';
     if (!Number.isSafeInteger(retail) || retail < 2) err.retail = 'Enter a whole base TZS retail price of at least 2.';
     if (!(Number(form.min) > 0)) err.min = 'Enter the smallest bulk order.';
     setErrors(err);
     if (Object.keys(err).length || !me || !farmId) return;
 
     const base = {
-      name: form.name.trim(), category: form.category, unit: form.unit,
+      name: form.name.trim(), category: form.category.trim(), unit: form.unit.trim(),
       retailPrice: Math.round(retail), wholesalePrice: Math.round(wholesale),
       wholesaleMinQty: Math.round(Number(form.min)), lowStockAt: Math.max(0, Number(form.low) || 0),
       image: form.image.trim(), emoji: EMOJI[form.category] ?? '🥬', active: form.active,
@@ -465,8 +482,34 @@ function Products() {
         <div className="space-y-4">
           <Field label="Product name" error={errors.name}><Input value={form.name} onChange={set('name')} placeholder="Enter the product name" /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Type"><Select value={form.category} onChange={set('category')}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
-            <Field label="Sold by"><Select value={form.unit} onChange={set('unit')}>{UNITS.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+            <Field label="Type" error={errors.category}>
+              <div className="space-y-2">
+                <Select
+                  value={categoryOptions.includes(form.category) ? form.category : CUSTOM_OPTION}
+                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value === CUSTOM_OPTION ? '' : e.target.value }))}
+                >
+                  {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value={CUSTOM_OPTION}>Custom type…</option>
+                </Select>
+                {!categoryOptions.includes(form.category) && (
+                  <Input value={form.category} placeholder="Enter a custom type" onChange={set('category')} />
+                )}
+              </div>
+            </Field>
+            <Field label="Sold by" error={errors.unit}>
+              <div className="space-y-2">
+                <Select
+                  value={unitOptions.includes(form.unit) ? form.unit : CUSTOM_OPTION}
+                  onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value === CUSTOM_OPTION ? '' : e.target.value }))}
+                >
+                  {unitOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value={CUSTOM_OPTION}>Custom unit…</option>
+                </Select>
+                {!unitOptions.includes(form.unit) && (
+                  <Input value={form.unit} placeholder="Enter a custom unit (e.g. litre)" onChange={set('unit')} />
+                )}
+              </div>
+            </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Suggested retail price" error={errors.retail} hint="Enter the selected currency. Shared customer prices require owner approval.">

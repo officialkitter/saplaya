@@ -3172,13 +3172,7 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
   let visibleMembers = data ?? [];
   let visibleProfiles: { team_member_id: string; phone: string | null; age: number | null; job_title: string | null; bio: string | null; avatar_url: string | null; operation_scope_mode: string }[] = [];
   let visibleScopes: { team_member_id: string; country_code: string; country_name: string; region_code: string; region_name: string; district_code: string | null; district_name: string | null }[] = [];
-  if (!m.supplier_id && m.operation_scope_mode === 'restricted') {
-    let allowedSupplierIds: string[];
-    try {
-      allowedSupplierIds = await scopedSupplierIds(m) ?? [];
-    } catch (scopeError) {
-      return res.status(503).json({ error: publicErrorMessage(scopeError) });
-    }
+  if (!m.supplier_id) {
     const [{ data: profiles, error: profileError }, { data: scopes, error: scopesError }] = await Promise.all([
       db.from('team_member_profiles').select('team_member_id, phone, age, job_title, bio, avatar_url, operation_scope_mode'),
       db.from('team_member_operation_scopes').select('team_member_id, country_code, country_name, region_code, region_name, district_code, district_name'),
@@ -3189,6 +3183,14 @@ app.get('/admin/team', requirePerm('team.view'), async (req: AuthedRequest, res:
     }
     visibleProfiles = profiles ?? [];
     visibleScopes = scopes ?? [];
+  }
+  if (!m.supplier_id && m.operation_scope_mode === 'restricted') {
+    let allowedSupplierIds: string[];
+    try {
+      allowedSupplierIds = await scopedSupplierIds(m) ?? [];
+    } catch (scopeError) {
+      return res.status(503).json({ error: publicErrorMessage(scopeError) });
+    }
     const profileById = new Map(visibleProfiles.map((profile) => [profile.team_member_id, profile]));
     const scopesById = new Map<string, OperationScope[]>();
     for (const scope of visibleScopes) {
@@ -3331,12 +3333,94 @@ app.post('/admin/roles', requirePerm('team.roles.manage'), async (req: AuthedReq
   return res.status(201).json(data);
 });
 
+const operationScopeSchema = z.object({
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string().trim().min(2).max(100),
+  region_code: z.string().trim().min(1).max(100),
+  region_name: z.string().trim().min(1).max(100),
+  district_code: z.string().trim().min(1).max(100).nullable(),
+  district_name: z.string().trim().min(1).max(100).nullable(),
+}).refine((scope) => (scope.district_code === null) === (scope.district_name === null), {
+  message: 'Provide both district code and name, or leave both empty.',
+});
+
 const inviteSchema = z.object({
   full_name: z.string().min(2),
   email: z.string().email(),
   role: z.string().regex(/^[a-z][a-z0-9_-]{1,59}$/),
   supplier_id: z.string().uuid().optional(),
+  operation_scope_mode: z.enum(['global', 'restricted']).optional(),
+  operation_scopes: z.array(operationScopeSchema).max(100).optional(),
 });
+
+type TeamChangeTarget = {
+  id: string;
+  user_id: string | null;
+  supplier_id: string | null;
+  full_name: string;
+  email: string;
+  role: string;
+  status: 'invited' | 'active' | 'suspended';
+};
+type TeamChangeAuth =
+  | { ok: true; target: TeamChangeTarget; targetRole: { scope: 'platform' | 'farm'; permissions: string[] } }
+  | { ok: false; status: number; error: string };
+
+/** Shared guard for changing or re-inviting a team member: farm isolation, operation areas and permission subsets. */
+async function authorizeTeamMemberChange(m: Member, targetId: string): Promise<TeamChangeAuth> {
+  let targetQuery = db.from('team_members')
+    .select('id, user_id, supplier_id, full_name, email, role, status')
+    .eq('id', targetId);
+  if (m.supplier_id) targetQuery = targetQuery.eq('supplier_id', m.supplier_id);
+  const { data: target, error: targetError } = await targetQuery.maybeSingle();
+  if (targetError) {
+    console.error('Could not load team member for a team update:', targetError.message);
+    return { ok: false, status: 500, error: 'Could not load this team member.' };
+  }
+  if (!target) return { ok: false, status: 404, error: 'Not found' };
+  if (!m.supplier_id && m.operation_scope_mode === 'restricted') {
+    if (target.supplier_id) {
+      try {
+        if (!await memberCanAccessSupplier(m, target.supplier_id)) return { ok: false, status: 404, error: 'Not found' };
+      } catch (scopeError) {
+        return { ok: false, status: 503, error: publicErrorMessage(scopeError) };
+      }
+    } else {
+      const [{ data: targetProfile, error: targetProfileError }, { data: targetScopes, error: targetScopesError }] = await Promise.all([
+        db.from('team_member_profiles').select('operation_scope_mode').eq('team_member_id', target.id).maybeSingle(),
+        db.from('team_member_operation_scopes').select('country_code, region_code, district_code').eq('team_member_id', target.id),
+      ]);
+      if (targetProfileError || targetScopesError) {
+        console.error('Could not validate team member operation areas:', targetProfileError?.message ?? targetScopesError?.message);
+        return { ok: false, status: 500, error: 'Could not validate this team member’s operation areas.' };
+      }
+      if (targetProfile?.operation_scope_mode !== 'restricted'
+        || !targetScopes?.some((scope) => m.operation_scopes.some((actorScope) => operationScopesOverlap(actorScope, scope)))) {
+        return { ok: false, status: 404, error: 'Not found' };
+      }
+    }
+  }
+  const { data: targetRole, error: targetRoleError } = await db.from('team_roles')
+    .select('scope, permissions')
+    .eq('role_key', target.role)
+    .maybeSingle();
+  if (targetRoleError) {
+    console.error('Could not load role for a team update:', targetRoleError.message);
+    return { ok: false, status: 500, error: 'Could not validate this team member role.' };
+  }
+  if (!targetRole) return { ok: false, status: 409, error: 'This team member has an invalid role configuration.' };
+  if (m.supplier_id && targetRole.scope !== 'farm') {
+    return { ok: false, status: 403, error: 'Farm administrators can only manage farm team members.' };
+  }
+  if (!targetRole.permissions.every((permission: string) => m.permissions.includes(permission as Perm))) {
+    return { ok: false, status: 403, error: 'You cannot change a team member with permissions you do not have.' };
+  }
+  return {
+    ok: true,
+    target: target as TeamChangeTarget,
+    targetRole: { scope: targetRole.scope as 'platform' | 'farm', permissions: targetRole.permissions as string[] },
+  };
+}
 
 app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, res: Response) => {
   const parsed = inviteSchema.safeParse(req.body);
@@ -3363,6 +3447,42 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
     return res.status(403).json({ error: 'Farm administrators can only invite farm-scoped roles.' });
   }
 
+  // Resolve the new member's operation areas before any account is created.
+  let scopeMode: 'global' | 'restricted' = 'global';
+  let scopes: z.infer<typeof operationScopeSchema>[] = [];
+  if (role.scope === 'platform') {
+    const requestedMode = parsed.data.operation_scope_mode;
+    const requestedScopes = parsed.data.operation_scopes ?? [];
+    if (m.operation_scope_mode === 'restricted') {
+      if (requestedMode === 'global') {
+        return res.status(403).json({ error: 'Only team members with global access can grant global operation access.' });
+      }
+      scopeMode = 'restricted';
+      scopes = requestedScopes.length ? requestedScopes : m.operation_scopes.map((scope) => ({
+        country_code: scope.country_code,
+        country_name: scope.country_name ?? scope.country_code,
+        region_code: scope.region_code,
+        region_name: scope.region_name ?? scope.region_code,
+        district_code: scope.district_code,
+        district_name: scope.district_name ?? scope.district_code ?? null,
+      }));
+      if (!scopes.every((candidate) => m.operation_scopes.some((scope) => operationScopesOverlap(scope, candidate)))) {
+        return res.status(403).json({ error: 'You cannot grant access beyond your own operation areas.' });
+      }
+      if (!scopes.length) {
+        return res.status(400).json({ error: 'Choose at least one operation area for this account.' });
+      }
+    } else {
+      scopeMode = requestedMode ?? 'global';
+      scopes = scopeMode === 'restricted' ? requestedScopes : [];
+      if (scopeMode === 'restricted' && !scopes.length) {
+        return res.status(400).json({ error: 'Choose at least one operation area for a restricted account.' });
+      }
+    }
+  } else if (parsed.data.operation_scope_mode || parsed.data.operation_scopes?.length) {
+    return res.status(400).json({ error: 'Operation areas apply to platform roles only.' });
+  }
+
   const redirectTo = teamInvitationRedirect(process.env.TEAM_WEB_ORIGIN);
   if (!redirectTo) return res.status(503).json({ error: 'Team invitation redirect is not configured.' });
   const invited = await db.auth.admin.inviteUserByEmail(parsed.data.email, { redirectTo });
@@ -3379,18 +3499,11 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
     }
     return res.status(500).json({ error: 'Could not save the team invitation.' });
   }
-  if (role.scope === 'platform' && m.operation_scope_mode === 'restricted') {
+  if (role.scope === 'platform' && scopeMode === 'restricted') {
     const { error: scopeError } = await db.rpc('save_team_member_management_profile', {
       p_team_member_id: data.id,
       p_profile: { operation_scope_mode: 'restricted' },
-      p_scopes: m.operation_scopes.map((scope) => ({
-        country_code: scope.country_code,
-        country_name: scope.country_name ?? scope.country_code,
-        region_code: scope.region_code,
-        region_name: scope.region_name ?? scope.region_code,
-        district_code: scope.district_code,
-        district_name: scope.district_name ?? scope.district_code,
-      })),
+      p_scopes: scopes,
     });
     if (scopeError) {
       console.error('Could not apply the inviter’s operation scopes to a new team member:', scopeError.message);
@@ -3404,67 +3517,189 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
   res.status(201).json(data);
 });
 
+const memberUpdateSchema = z.object({
+  status: z.enum(['active', 'suspended']).optional(),
+  full_name: z.string().trim().min(2).max(120).optional(),
+  role: z.string().regex(/^[a-z][a-z0-9_-]{1,59}$/).optional(),
+  supplier_id: z.string().uuid().optional(),
+  operation_scope_mode: z.enum(['global', 'restricted']).optional(),
+  operation_scopes: z.array(operationScopeSchema).max(100).optional(),
+}).refine((patch) => Object.values(patch).some((value) => value !== undefined), {
+  message: 'Provide at least one change.',
+});
+
 app.patch('/admin/team/:id', requirePerm('team.manage'), async (req: AuthedRequest, res: Response) => {
-  const parsed = z.object({ status: z.enum(['active', 'suspended']) }).safeParse(req.body);
+  const parsed = memberUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const m = req.member!;
   if (req.params.id === m.id) return res.status(400).json({ error: 'You cannot change your own access' });
-  let targetQuery = db.from('team_members')
-    .select('id, supplier_id, role')
-    .eq('id', req.params.id);
-  if (m.supplier_id) targetQuery = targetQuery.eq('supplier_id', m.supplier_id);
-  const { data: target, error: targetError } = await targetQuery.maybeSingle();
-  if (targetError) {
-    console.error('Could not load team member for access update:', targetError.message);
-    return res.status(500).json({ error: 'Could not load this team member.' });
+  const auth = await authorizeTeamMemberChange(m, req.params.id);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  const { target, targetRole } = auth;
+
+  let nextRole = targetRole;
+  let nextSupplierId = target.supplier_id;
+  if (parsed.data.role && parsed.data.role !== target.role) {
+    const { data: newRole, error: newRoleError } = await db.from('team_roles')
+      .select('role_key, scope, permissions')
+      .eq('role_key', parsed.data.role)
+      .maybeSingle();
+    if (newRoleError) return res.status(500).json({ error: 'Could not validate this team role.' });
+    if (!newRole) return res.status(400).json({ error: 'Choose an available role.' });
+    if (!newRole.permissions.every((permission: string) => m.permissions.includes(permission as Perm))) {
+      return res.status(403).json({ error: 'You cannot assign a role with permissions you do not have.' });
+    }
+    if (m.supplier_id && newRole.scope !== 'farm') {
+      return res.status(403).json({ error: 'Farm administrators can only assign farm-scoped roles.' });
+    }
+    nextRole = { scope: newRole.scope as 'platform' | 'farm', permissions: newRole.permissions as string[] };
   }
-  if (!target) return res.status(404).json({ error: 'Not found' });
-  if (!m.supplier_id && m.operation_scope_mode === 'restricted') {
-    if (target.supplier_id) {
-      try {
-        if (!await memberCanAccessSupplier(m, target.supplier_id)) return res.status(404).json({ error: 'Not found' });
-      } catch (scopeError) {
-        return res.status(503).json({ error: publicErrorMessage(scopeError) });
+  if (parsed.data.role || parsed.data.supplier_id) {
+    if (nextRole.scope === 'farm') {
+      nextSupplierId = parsed.data.supplier_id ?? target.supplier_id ?? m.supplier_id ?? null;
+      if (!nextSupplierId) return res.status(400).json({ error: 'Choose which farm this person belongs to.' });
+      if (m.supplier_id && nextSupplierId !== m.supplier_id) {
+        return res.status(403).json({ error: 'You can only manage staff on your own farm.' });
+      }
+      if (!m.supplier_id && nextSupplierId !== target.supplier_id) {
+        try {
+          if (!await memberCanAccessSupplier(m, nextSupplierId)) {
+            return res.status(403).json({ error: 'That farm is outside your operation areas.' });
+          }
+        } catch (scopeError) {
+          return res.status(503).json({ error: publicErrorMessage(scopeError) });
+        }
       }
     } else {
-      const [{ data: targetProfile, error: targetProfileError }, { data: targetScopes, error: targetScopesError }] = await Promise.all([
-        db.from('team_member_profiles').select('operation_scope_mode').eq('team_member_id', target.id).maybeSingle(),
-        db.from('team_member_operation_scopes').select('country_code, region_code, district_code').eq('team_member_id', target.id),
-      ]);
-      if (targetProfileError || targetScopesError) {
-        console.error('Could not validate team member operation areas:', targetProfileError?.message ?? targetScopesError?.message);
-        return res.status(500).json({ error: 'Could not validate this team member’s operation areas.' });
-      }
-      if (targetProfile?.operation_scope_mode !== 'restricted'
-        || !targetScopes?.some((scope) => m.operation_scopes.some((actorScope) => operationScopesOverlap(actorScope, scope)))) {
-        return res.status(404).json({ error: 'Not found' });
-      }
+      if (parsed.data.supplier_id) return res.status(400).json({ error: 'Platform roles are not linked to a single farm.' });
+      nextSupplierId = null;
     }
   }
-  const { data: targetRole, error: targetRoleError } = await db.from('team_roles')
-    .select('scope, permissions')
-    .eq('role_key', target.role)
-    .maybeSingle();
-  if (targetRoleError) {
-    console.error('Could not load role for team member access update:', targetRoleError.message);
-    return res.status(500).json({ error: 'Could not validate this team member role.' });
+
+  const scopeMode = parsed.data.operation_scope_mode;
+  const scopes = parsed.data.operation_scopes ?? [];
+  if (scopeMode) {
+    if (nextRole.scope !== 'platform') {
+      return res.status(400).json({ error: 'Operation areas apply to platform team members only.' });
+    }
+    if (scopeMode === 'restricted' && scopes.length === 0) {
+      return res.status(400).json({ error: 'Choose at least one operation area for a restricted account.' });
+    }
+    if (scopeMode === 'global' && scopes.length > 0) {
+      return res.status(400).json({ error: 'Remove individual operation areas before granting global access.' });
+    }
+    if (!isPlatformAdministrator(m)) {
+      if (scopeMode === 'global') {
+        return res.status(403).json({ error: 'Only platform administrators can grant global operation access.' });
+      }
+      if (!scopes.every((candidate) => m.operation_scopes.some((scope) => operationScopesOverlap(scope, candidate)))) {
+        return res.status(403).json({ error: 'You cannot grant access beyond your own operation areas.' });
+      }
+    }
+  } else if (parsed.data.operation_scopes) {
+    return res.status(400).json({ error: 'Choose an operation access mode for these areas.' });
   }
-  if (!targetRole) return res.status(409).json({ error: 'This team member has an invalid role configuration.' });
-  if (m.supplier_id && targetRole.scope !== 'farm') {
-    return res.status(403).json({ error: 'Farm administrators can only manage farm team members.' });
+
+  const update: Record<string, unknown> = {};
+  if (parsed.data.status) update.status = parsed.data.status;
+  if (parsed.data.full_name) update.full_name = parsed.data.full_name;
+  if (parsed.data.role) update.role = parsed.data.role;
+  if (parsed.data.role || parsed.data.supplier_id) update.supplier_id = nextSupplierId;
+
+  let updated: Record<string, unknown> | null = null;
+  if (Object.keys(update).length) {
+    let q = db.from('team_members').update(update).eq('id', req.params.id);
+    if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
+    const { data, error } = await q.select().maybeSingle();
+    if (error) {
+      console.error('Could not update team member access:', error.message);
+      return res.status(500).json({ error: 'Could not update this team member.' });
+    }
+    if (!data) return res.status(404).json({ error: 'Not found' });
+    updated = data;
   }
-  if (!targetRole.permissions.every((permission: string) => m.permissions.includes(permission as Perm))) {
-    return res.status(403).json({ error: 'You cannot change a team member with permissions you do not have.' });
+
+  if (scopeMode) {
+    const { data: profile, error: profileError } = await db.from('team_member_profiles')
+      .select('phone, age, job_title, bio, avatar_url')
+      .eq('team_member_id', target.id)
+      .maybeSingle();
+    if (profileError) {
+      console.error('Could not load the current team profile:', profileError.message);
+      return res.status(500).json({ error: 'Could not update this team member’s operation areas.' });
+    }
+    const { error: scopeError } = await db.rpc('save_team_member_management_profile', {
+      p_team_member_id: target.id,
+      p_profile: {
+        phone: profile?.phone ?? null,
+        age: profile?.age ?? null,
+        job_title: profile?.job_title ?? null,
+        bio: profile?.bio ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        operation_scope_mode: scopeMode,
+      },
+      p_scopes: scopes,
+    });
+    if (scopeError) {
+      console.error('Could not save the team member operation areas:', scopeError.message);
+      return res.status(400).json({ error: 'Could not save this team member’s operation areas.' });
+    }
   }
-  let q = db.from('team_members').update({ status: parsed.data.status }).eq('id', req.params.id);
-  if (m.supplier_id) q = q.eq('supplier_id', m.supplier_id);
-  const { data, error } = await q.select().maybeSingle();
-  if (error) {
-    console.error('Could not update team member access:', error.message);
-    return res.status(500).json({ error: 'Could not update team member access.' });
+
+  res.json(updated ?? { ok: true });
+});
+
+// Sends a fresh, active sign-in link. Expired invitations are replaced; established accounts get a password set-up link.
+app.post('/admin/team/:id/reinvite', requirePerm('team.manage'), async (req: AuthedRequest, res: Response) => {
+  const m = req.member!;
+  if (req.params.id === m.id) return res.status(400).json({ error: 'You cannot re-invite yourself.' });
+  const auth = await authorizeTeamMemberChange(m, req.params.id);
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+  const { target } = auth;
+  if (target.status === 'suspended') {
+    return res.status(400).json({ error: 'Turn this team member back on before sending a new sign-in link.' });
   }
-  if (!data) return res.status(404).json({ error: 'Not found' });
-  res.json(data);
+  const redirectTo = teamInvitationRedirect(process.env.TEAM_WEB_ORIGIN);
+  if (!redirectTo) return res.status(503).json({ error: 'Team invitation redirect is not configured.' });
+
+  const sendFreshInvite = async () => {
+    const invited = await db.auth.admin.inviteUserByEmail(target.email, { redirectTo });
+    if (invited.error || !invited.data.user) {
+      console.error('Could not re-invite team member:', invited.error?.message ?? 'No user returned.');
+      return res.status(502).json({ error: publicErrorMessage(invited.error ?? new Error('Could not send the invitation.')) });
+    }
+    const { error: linkError } = await db.from('team_members')
+      .update({ user_id: invited.data.user.id, status: 'invited' })
+      .eq('id', target.id);
+    if (linkError) {
+      console.error('Could not link the fresh team invitation:', linkError.message);
+      return res.status(500).json({ error: 'The invitation email was sent but could not be linked. Try again.' });
+    }
+    return res.json({ ok: true, sent: 'invitation' });
+  };
+
+  if (!target.user_id) return sendFreshInvite();
+
+  const { data: authUser, error: authUserError } = await db.auth.admin.getUserById(target.user_id);
+  if (authUserError || !authUser?.user) {
+    // The linked sign-in account no longer exists; a fresh invitation recreates it.
+    return sendFreshInvite();
+  }
+  if (!authUser.user.email_confirmed_at && !authUser.user.last_sign_in_at) {
+    // The original invite link expired before it was ever used. Replace the stale account with a fresh invitation.
+    const removed = await db.auth.admin.deleteUser(target.user_id);
+    if (removed.error) {
+      console.error('Could not replace the expired invitation:', removed.error.message);
+      return res.status(502).json({ error: 'Could not replace the expired invitation. Try again.' });
+    }
+    return sendFreshInvite();
+  }
+  const { error: recoveryError } = await db.auth.resetPasswordForEmail(target.email, { redirectTo });
+  if (recoveryError) {
+    console.error('Could not send a password set-up link:', recoveryError.message);
+    return res.status(502).json({ error: publicErrorMessage(recoveryError) });
+  }
+  return res.json({ ok: true, sent: 'password_reset' });
 });
 
 app.get('/admin/management/commission-policy', requirePerm('management.view'), async (_req: AuthedRequest, res: Response) => {
@@ -3516,7 +3751,16 @@ app.put('/admin/management/commission-policy', requirePerm('management.manage'),
 
 app.get('/admin/management/commission-summary', requirePerm('management.view'), async (req: AuthedRequest, res: Response) => {
   const member = req.member!;
-  const { start, end } = weekBoundsUtc(new Date());
+  const range = z.enum(['week', 'fortnight', 'month']).catch('week').parse(req.query.range ?? 'week');
+  const now = new Date();
+  let { start, end } = weekBoundsUtc(now);
+  if (range === 'fortnight') {
+    start = new Date(start);
+    start.setUTCDate(start.getUTCDate() - 7);
+  } else if (range === 'month') {
+    start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  }
   const canManage = member.permissions.includes('management.manage');
   let allowedSupplierIds: string[] | null;
   try {
@@ -3631,7 +3875,7 @@ app.get('/admin/management/members', requirePerm('management.manage'), async (re
   const restrictedActor = !isPlatformAdministrator(member);
   return res.json((members ?? []).flatMap((teamMember) => {
     const role = roleByKey.get(teamMember.role);
-    if (!role?.permissions.includes('management.view')) return [];
+    if (!role) return [];
     const profile = profileById.get(teamMember.id);
     const memberScopes = (scopes ?? []).filter((scope) => scope.team_member_id === teamMember.id);
     if (restrictedActor && (
@@ -3642,6 +3886,7 @@ app.get('/admin/management/members', requirePerm('management.manage'), async (re
       ...teamMember,
       role_label: role.name,
       role_scope: role.scope,
+      commission_eligible: role.permissions.includes('management.view'),
       phone: profile?.phone ?? null,
       age: profile?.age ?? null,
       job_title: profile?.job_title ?? null,
@@ -3653,17 +3898,6 @@ app.get('/admin/management/members', requirePerm('management.manage'), async (re
       operation_scopes: memberScopes,
     }];
   }));
-});
-
-const operationScopeSchema = z.object({
-  country_code: z.string().regex(/^[A-Z]{2}$/),
-  country_name: z.string().trim().min(2).max(100),
-  region_code: z.string().trim().min(1).max(100),
-  region_name: z.string().trim().min(1).max(100),
-  district_code: z.string().trim().min(1).max(100).nullable(),
-  district_name: z.string().trim().min(1).max(100).nullable(),
-}).refine((scope) => (scope.district_code === null) === (scope.district_name === null), {
-  message: 'Provide both district code and name, or leave both empty.',
 });
 
 app.put('/admin/management/members/:id', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {

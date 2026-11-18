@@ -2,6 +2,7 @@ import { userFacingMessage } from '@/lib/user-facing-error';
 import { create, type StateCreator } from 'zustand';
 import { useMemo } from 'react';
 import { fetchAdmin } from './supabase';
+import type { AdminDataSection } from './admin-data';
 import type {
   Application, Movement, OrderStatus, Product, Settings, Supplier,
   SupplierOrder, TeamMember, MemberStatus, SupplierStatus, Role,
@@ -51,10 +52,43 @@ interface Actions {
   archiveSupplier: (id: string) => Promise<void>;
   mergeProduct: (sourceId: string, targetId: string) => Promise<void>;
   archiveProduct: (id: string) => Promise<boolean>;
-  inviteMember: (m: { name: string; email: string; role: Role; supplierId: string | null }) => Promise<string | null>;
+  inviteMember: (m: {
+    name: string;
+    email: string;
+    role: Role;
+    supplierId: string | null;
+    operationScopeMode?: 'global' | 'restricted';
+    operationScopes?: OperationScopePatch[];
+  }) => Promise<string | null>;
+  updateMember: (id: string, patch: {
+    name?: string;
+    role?: Role;
+    supplierId?: string;
+    operationScopeMode?: 'global' | 'restricted';
+    operationScopes?: OperationScopePatch[];
+  }) => Promise<void>;
+  reinviteMember: (id: string) => Promise<'invitation' | 'password_reset'>;
   setMemberStatus: (id: string, status: MemberStatus) => Promise<void>;
   saveSettings: (s: Settings) => Promise<void>;
 }
+
+export type OperationScopePatch = {
+  countryCode: string;
+  countryName: string;
+  regionCode: string;
+  regionName: string;
+  districtCode: string | null;
+  districtName: string | null;
+};
+
+const scopesToApi = (scopes: OperationScopePatch[]) => scopes.map((scope) => ({
+  country_code: scope.countryCode,
+  country_name: scope.countryName,
+  region_code: scope.regionCode,
+  region_name: scope.regionName,
+  district_code: scope.districtCode,
+  district_name: scope.districtName,
+}));
 
 export type DB = {
   suppliers: Supplier[];
@@ -68,9 +102,9 @@ export type DB = {
 } & Actions;
 
 const createAdminStore: StateCreator<DB> = (set) => {
-  const reload = async () => {
+  const reload = async (sections?: readonly AdminDataSection[]) => {
     const { loadAdminData } = await import('./admin-data');
-    set(await loadAdminData());
+    set(await loadAdminData(sections));
   };
 
   return {
@@ -226,7 +260,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
-      await reload();
+      await reload(['suppliers']);
     },
 
     setSupplierCoordinates: async (id, latitude, longitude) => {
@@ -234,7 +268,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'PATCH',
         body: JSON.stringify({ latitude, longitude }),
       });
-      await reload();
+      await reload(['suppliers']);
     },
 
     setSupplierLocation: async (id, location) => {
@@ -249,7 +283,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           district_name: location.districtName,
         }),
       });
-      await reload();
+      await reload(['suppliers']);
     },
 
     mergeSuppliers: async (sourceIds, targetId) => {
@@ -257,12 +291,12 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'POST',
         body: JSON.stringify({ source_supplier_ids: sourceIds, target_supplier_id: targetId }),
       });
-      await reload();
+      await reload(['suppliers', 'products', 'movements']);
     },
 
     archiveSupplier: async (id) => {
       await fetchAdmin(`/admin/suppliers/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      await reload();
+      await reload(['suppliers', 'products', 'movements']);
     },
 
     mergeProduct: async (sourceId, targetId) => {
@@ -291,6 +325,10 @@ const createAdminStore: StateCreator<DB> = (set) => {
             email: member.email,
             role: member.role,
             ...(member.supplierId ? { supplier_id: member.supplierId } : {}),
+            ...(member.operationScopeMode ? {
+              operation_scope_mode: member.operationScopeMode,
+              operation_scopes: scopesToApi(member.operationScopes ?? []),
+            } : {}),
           }),
         });
         await reload();
@@ -298,6 +336,31 @@ const createAdminStore: StateCreator<DB> = (set) => {
       } catch (error) {
         return userFacingMessage(error, 'Could not invite this team member. Please try again.');
       }
+    },
+
+    updateMember: async (id, patch) => {
+      await fetchAdmin(`/admin/team/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...(patch.name !== undefined ? { full_name: patch.name } : {}),
+          ...(patch.role !== undefined ? { role: patch.role } : {}),
+          ...(patch.supplierId !== undefined ? { supplier_id: patch.supplierId } : {}),
+          ...(patch.operationScopeMode !== undefined ? {
+            operation_scope_mode: patch.operationScopeMode,
+            operation_scopes: scopesToApi(patch.operationScopes ?? []),
+          } : {}),
+        }),
+      });
+      await reload();
+    },
+
+    reinviteMember: async (id) => {
+      const result = await fetchAdmin<{ ok: boolean; sent: 'invitation' | 'password_reset' }>(
+        `/admin/team/${encodeURIComponent(id)}/reinvite`,
+        { method: 'POST' },
+      );
+      await reload(['team']);
+      return result.sent;
     },
 
     setMemberStatus: async (id, status) => {
@@ -367,7 +430,9 @@ export function useScope() {
     return {
       me,
       farmId,
-      suppliers: farmId ? suppliers.filter((supplier) => supplier.id === farmId) : suppliers,
+      suppliers: farmId
+        ? suppliers.filter((supplier) => supplier.id === farmId)
+        : suppliers.filter((supplier) => !supplier.mergedIntoSupplierId),
       products: farmId ? products.filter((product) => product.supplierId === farmId) : products,
       orders: (farmId ? orders.filter((order) => order.supplierId === farmId) : orders).filter(
         (order) => !isDriver || order.status === 'packing' || order.status === 'en_route' || order.status === 'delivered'

@@ -2,9 +2,10 @@
 
 import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
-import { Ban, Check, Minus, Pause, Play, UserPlus } from 'lucide-react';
+import { Ban, Check, Mail, Minus, Pause, Play, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
+import { OperationScopeEditor, type OperationScopeDraft } from '@/components/admin/OperationScopeEditor';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Fields';
 import { Modal } from '@/components/ui/Modal';
@@ -32,12 +33,18 @@ function slug(value: string) {
 function Team() {
   const { me, farmId, suppliers, team } = useScope();
   const inviteMember = useDB((s) => s.inviteMember);
+  const updateMember = useDB((s) => s.updateMember);
+  const reinviteMember = useDB((s) => s.reinviteMember);
   const setMemberStatus = useDB((s) => s.setMemberStatus);
   const push = useToast((s) => s.push);
 
   const [inviting, setInviting] = useState(false);
   const [pause, setPause] = useState<TeamMember | null>(null);
-  const [form, setForm] = useState<{ name: string; email: string; role: Role; supplierId: string }>({ name: '', email: '', role: 'supplier_staff', supplierId: '' });
+  const [form, setForm] = useState<{ name: string; email: string; role: Role; supplierId: string; scopeMode: 'global' | 'restricted'; scopes: OperationScopeDraft[] }>({ name: '', email: '', role: 'supplier_staff', supplierId: '', scopeMode: 'global', scopes: [] });
+  const [editing, setEditing] = useState<TeamMember | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; role: Role; supplierId: string; scopeMode: 'global' | 'restricted'; scopes: OperationScopeDraft[] }>({ name: '', role: 'supplier_staff', supplierId: '', scopeMode: 'global', scopes: [] });
+  const [savingMember, setSavingMember] = useState(false);
+  const [reinviting, setReinviting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [roleConfig, setRoleConfig] = useState<RoleConfigResponse | null>(null);
   const [configError, setConfigError] = useState('');
@@ -87,9 +94,28 @@ function Team() {
       push(configError || 'No role with permissions you can assign is available.', 'bad');
       return;
     }
-    setForm({ name: '', email: '', role: options[0].role_key, supplierId: me?.supplierId ?? suppliers[0]?.id ?? '' });
+    const restricted = me?.operationScopeMode === 'restricted';
+    setForm({
+      name: '',
+      email: '',
+      role: options[0].role_key,
+      supplierId: me?.supplierId ?? suppliers[0]?.id ?? '',
+      scopeMode: restricted ? 'restricted' : 'global',
+      scopes: restricted ? (me?.operationScopes ?? []).map((scope) => ({ ...scope })) : [],
+    });
     setErrors({});
     setInviting(true);
+  }
+
+  function openEdit(member: TeamMember) {
+    setEditForm({
+      name: member.name,
+      role: member.role,
+      supplierId: member.supplierId ?? '',
+      scopeMode: member.operationScopeMode ?? 'global',
+      scopes: (member.operationScopes ?? []).map((scope) => ({ ...scope })),
+    });
+    setEditing(member);
   }
 
   async function send() {
@@ -103,12 +129,74 @@ function Team() {
     }
     const farmRole = isFarmRole(form.role, assignedRole.scope);
     if (farmRole && !form.supplierId) err.supplierId = 'Choose a farm.';
+    if (!farmRole && form.scopeMode === 'restricted' && !form.scopes.length) err.scopes = 'Add at least one operation area, or grant global access.';
     setErrors(err);
     if (Object.keys(err).length) return;
-    const problem = await inviteMember({ name: form.name.trim(), email: form.email, role: form.role, supplierId: farmRole ? (me?.supplierId ?? form.supplierId) : null });
+    const problem = await inviteMember({
+      name: form.name.trim(),
+      email: form.email,
+      role: form.role,
+      supplierId: farmRole ? (me?.supplierId ?? form.supplierId) : null,
+      ...(!farmRole ? {
+        operationScopeMode: form.scopeMode,
+        operationScopes: form.scopeMode === 'restricted' ? form.scopes : [],
+      } : {}),
+    });
     if (problem) { setErrors({ email: problem }); return; }
     push(`Invitation sent to ${form.email.trim()}. They join as ${assignedRole.name}.`);
     setInviting(false);
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+    const assignedRole = options.find((option) => option.role_key === editForm.role);
+    const farmRole = isFarmRole(editForm.role, assignedRole?.scope ?? editing.roleScope);
+    if (editForm.name.trim().length < 2) { push('Enter their name.', 'bad'); return; }
+    if (editForm.role !== editing.role && !assignedRole) { push('Choose a role you are allowed to assign.', 'bad'); return; }
+    if (farmRole && !editForm.supplierId) { push('Choose which farm this person belongs to.', 'bad'); return; }
+    if (!farmRole && editForm.scopeMode === 'restricted' && !editForm.scopes.length) {
+      push('Add at least one operation area, or grant global access.', 'bad');
+      return;
+    }
+    const currentScopes = (editing.operationScopes ?? []).map((scope) => ({ ...scope }));
+    const scopesChanged = editForm.scopeMode !== (editing.operationScopeMode ?? 'global')
+      || JSON.stringify(editForm.scopes) !== JSON.stringify(currentScopes);
+    const patch = {
+      ...(editForm.name.trim() !== editing.name ? { name: editForm.name.trim() } : {}),
+      ...(editForm.role !== editing.role ? { role: editForm.role } : {}),
+      ...(farmRole && editForm.supplierId !== (editing.supplierId ?? '') ? { supplierId: editForm.supplierId } : {}),
+      ...(!farmRole && scopesChanged ? {
+        operationScopeMode: editForm.scopeMode,
+        operationScopes: editForm.scopeMode === 'restricted' ? editForm.scopes : [],
+      } : {}),
+    };
+    if (!Object.keys(patch).length) { setEditing(null); return; }
+    setSavingMember(true);
+    try {
+      await updateMember(editing.id, patch);
+      push(`${editForm.name.trim()} was updated.`);
+      setEditing(null);
+    } catch (error) {
+      push(userFacingMessage(error, 'Could not update this team member.'), 'bad');
+    } finally {
+      setSavingMember(false);
+    }
+  }
+
+  async function sendNewLink() {
+    if (!editing) return;
+    setReinviting(true);
+    try {
+      const sent = await reinviteMember(editing.id);
+      push(sent === 'invitation'
+        ? `A fresh invitation was emailed to ${editing.email}.`
+        : `A password set-up link was emailed to ${editing.email}.`);
+      setEditing(null);
+    } catch (error) {
+      push(userFacingMessage(error, 'Could not send a new sign-in link.'), 'bad');
+    } finally {
+      setReinviting(false);
+    }
   }
 
   async function createDepartment() {
@@ -194,7 +282,18 @@ function Team() {
                 const st = STATUS[m.status];
                 const manage = canManageMember(me, m);
                 return (
-                  <motion.li key={m.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.03, duration: 0.2 }} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 py-4 first:pt-1 last:pb-1 sm:gap-x-4 md:grid-cols-[auto_minmax(0,1fr)_auto]">
+                  <motion.li
+                    key={m.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(i, 8) * 0.03, duration: 0.2 }}
+                    onClick={manage ? () => openEdit(m) : undefined}
+                    className={cn(
+                      'grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 py-4 first:pt-1 last:pb-1 sm:gap-x-4 md:grid-cols-[auto_minmax(0,1fr)_auto]',
+                      manage && 'cursor-pointer rounded-2xl transition hover:bg-milk/60',
+                    )}
+                    title={manage ? `Manage ${m.name}` : undefined}
+                  >
                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-leaf-soft font-extrabold text-leaf-deep sm:h-12 sm:w-12">{initials(m.name)}</span>
                     <div className="min-w-0">
                       <p className="truncate font-bold">{m.name}{m.id === me.id && <span className="ml-2 text-sm font-semibold text-ink-mute">(you)</span>}</p>
@@ -203,9 +302,14 @@ function Team() {
                     <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-2 md:col-span-1 md:justify-end">
                       <span className={cn('max-w-full truncate rounded-full px-3 py-1 text-sm font-bold', info.badge)}>{info.label}</span>
                       <span className="max-w-full truncate rounded-full bg-milk px-3 py-1 text-xs font-bold capitalize text-ink-soft">{m.department ?? info.scope}</span>
+                      {!m.supplierId && m.operationScopeMode === 'restricted' && (
+                        <span className="max-w-full truncate rounded-full bg-[#E3F2FD] px-3 py-1 text-xs font-bold text-[#0D47A1]" title={(m.operationScopes ?? []).map((scope) => `${scope.countryName} · ${scope.regionName}${scope.districtName ? ` · ${scope.districtName}` : ''}`).join(', ')}>
+                          {(m.operationScopes?.length ?? 0)} operation area{(m.operationScopes?.length ?? 0) === 1 ? '' : 's'}
+                        </span>
+                      )}
                       <span className={cn('rounded-full px-3 py-1 text-sm font-bold', st.cls)}>{st.label}</span>
                       {manage && (
-                        <Button size="sm" className="ml-auto md:ml-0" variant={m.status === 'suspended' ? 'soft' : 'ghost'} icon={m.status === 'suspended' ? <Play size={16} /> : <Pause size={16} />} onClick={() => (m.status === 'suspended' ? void resumeMember(m) : setPause(m))}>
+                        <Button size="sm" className="ml-auto md:ml-0" variant={m.status === 'suspended' ? 'soft' : 'ghost'} icon={m.status === 'suspended' ? <Play size={16} /> : <Pause size={16} />} onClick={(event) => { event.stopPropagation(); if (m.status === 'suspended') { void resumeMember(m); } else { setPause(m); } }}>
                           {m.status === 'suspended' ? 'Turn back on' : 'Pause'}
                         </Button>
                       )}
@@ -355,6 +459,19 @@ function Team() {
               </Select>
             </Field>
           )}
+          {!farmId && !isFarmRole(form.role, options.find((role) => role.role_key === form.role)?.scope) && (
+            <>
+              <Field label="Assigned operation area" error={errors.scopes} hint={me.operationScopeMode === 'restricted' ? 'New members can only be assigned areas within your own operation areas.' : 'Restrict them to specific countries, regions or districts, or give them global access.'}>
+                <Select value={form.scopeMode} onChange={(e) => setForm((f) => ({ ...f, scopeMode: e.target.value as 'global' | 'restricted' }))}>
+                  <option value="restricted">Assigned countries and regions only</option>
+                  {me.operationScopeMode !== 'restricted' && <option value="global">Global operations</option>}
+                </Select>
+              </Field>
+              {form.scopeMode === 'restricted' && (
+                <OperationScopeEditor scopes={form.scopes} onChange={(scopes) => setForm((f) => ({ ...f, scopes }))} />
+              )}
+            </>
+          )}
           <div className="rounded-2xl bg-milk p-4 text-[15px]">
             <p className="font-bold">{options.find((role) => role.role_key === form.role)?.name ?? roleInfo(form.role).label}</p>
             <p className="mt-1 text-ink-soft">They will be assigned only the permissions granted by this role.</p>
@@ -378,6 +495,75 @@ function Team() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={!!editing} onClose={() => setEditing(null)} title="Manage team member" wide>
+        {editing && (() => {
+          const selectedRole = options.find((option) => option.role_key === editForm.role);
+          const editFarmRole = isFarmRole(editForm.role, selectedRole?.scope ?? editing.roleScope);
+          const st = STATUS[editing.status];
+          return (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-leaf-soft font-extrabold text-leaf-deep">{initials(editing.name)}</span>
+                <span className={cn('rounded-full px-3 py-1 text-sm font-bold', st.cls)}>{st.label}</span>
+                <span className="min-w-0 truncate text-sm text-ink-mute" title={editing.email}>{editing.email}</span>
+              </div>
+              <Field label="Full name"><Input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} /></Field>
+              <Field label="Role" hint="Changing the role updates their permissions straight away.">
+                <Select value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as Role }))}>
+                  {!options.some((role) => role.role_key === editing.role) && (
+                    <option value={editing.role}>{editing.roleLabel ?? editing.role} (current)</option>
+                  )}
+                  {options.map((r) => <option key={r.role_key} value={r.role_key}>{r.name} · {roleConfig?.departments.find((department) => department.id === r.department_id)?.name ?? r.department_id}</option>)}
+                </Select>
+              </Field>
+              {editFarmRole ? (
+                <Field label="Assigned farm">
+                  <Select value={editForm.supplierId} onChange={(e) => setEditForm((f) => ({ ...f, supplierId: e.target.value }))}>
+                    <option value="">Choose a farm</option>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
+                </Field>
+              ) : (
+                <>
+                  <Field label="Assigned operation area" hint="Global covers every country. Restricted limits them to the listed countries, regions or districts.">
+                    <Select value={editForm.scopeMode} onChange={(e) => setEditForm((f) => ({ ...f, scopeMode: e.target.value as 'global' | 'restricted' }))}>
+                      <option value="restricted">Assigned countries and regions only</option>
+                      {me.operationScopeMode !== 'restricted' && <option value="global">Global operations</option>}
+                    </Select>
+                  </Field>
+                  {editForm.scopeMode === 'restricted' && (
+                    <OperationScopeEditor scopes={editForm.scopes} onChange={(scopes) => setEditForm((f) => ({ ...f, scopes }))} />
+                  )}
+                </>
+              )}
+              <div className="rounded-2xl bg-milk p-4 text-[15px]">
+                <p className="font-bold">Permissions from this role</p>
+                <ul className="mt-2 flex flex-wrap gap-1.5">
+                  {(selectedRole?.permissions ?? editing.permissions ?? []).map((permission) => (
+                    <li key={permission} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">{PERM_ROWS.find((row) => row.perm === permission)?.label ?? permission}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Button
+                  variant="soft"
+                  icon={<Mail size={18} />}
+                  disabled={reinviting || editing.status === 'suspended'}
+                  title={editing.status === 'suspended' ? 'Turn this person back on before sending a new link.' : undefined}
+                  onClick={() => { void sendNewLink(); }}
+                >
+                  {reinviting ? 'Sending…' : editing.status === 'invited' ? 'Re-send invitation link' : 'Send password set-up link'}
+                </Button>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                  <Button disabled={savingMember} onClick={() => { void saveEdit(); }}>{savingMember ? 'Saving…' : 'Save changes'}</Button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </>
   );
