@@ -1,6 +1,7 @@
 'use client';
 
 import { userFacingMessage } from '@/lib/user-facing-error';
+import Image from 'next/image';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, KeyRound, Upload, UserRound } from 'lucide-react';
 import { PageHeader, Panel } from '@/components/admin/Guard';
@@ -184,7 +185,7 @@ function AccountPage() {
           <form onSubmit={(event) => void savePersonalDetails(event)} className="space-y-4">
             <div className="flex items-center gap-4">
               {avatarUrl
-                ? <img src={avatarUrl} alt="Your profile" className="h-16 w-16 rounded-2xl object-cover" />
+                ? <Image src={avatarUrl} alt="Your profile" width={64} height={64} unoptimized className="h-16 w-16 rounded-2xl object-cover" />
                 : <span className="grid h-16 w-16 place-items-center rounded-2xl bg-leaf-soft text-leaf"><UserRound size={28} /></span>}
               <label className="cursor-pointer">
                 <span className="inline-flex items-center gap-2 rounded-xl border border-line px-3 py-2 font-bold hover:bg-milk">

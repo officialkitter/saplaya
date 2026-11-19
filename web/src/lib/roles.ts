@@ -4,6 +4,7 @@ import type { BuiltinRole, Perm, Role } from './types';
 export const PERMS: Record<BuiltinRole, Perm[]> = {
   platform_owner: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
+    'products.edit',
     'catalog.manage', 'stock.adjust',
     'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
     'team.manage', 'settings.manage',
@@ -12,7 +13,8 @@ export const PERMS: Record<BuiltinRole, Perm[]> = {
   ],
   platform_manager: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
-    'catalog.manage', 'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
+    'products.edit', 'catalog.manage', 'inventory.view', 'suppliers.view_all', 'suppliers.manage',
+    'team.view', 'team.manage',
   ],
   supplier_owner: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
@@ -20,7 +22,7 @@ export const PERMS: Record<BuiltinRole, Perm[]> = {
   ],
   supplier_staff: [
     'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
-    'stock.adjust', 'inventory.view',
+    'products.edit', 'stock.adjust', 'inventory.view',
   ],
   driver: ['orders.view', 'orders.update_status'],
 };
@@ -51,9 +53,9 @@ export const ROLE_INFO: Record<BuiltinRole, RoleInfo> = {
   platform_manager: {
     label: 'Operations manager',
     scope: 'Saplaya team',
-    blurb: 'Approves new farms and keeps every order moving.',
+    blurb: 'Approves farms, manages product listings and invites team members, and keeps orders moving.',
     badge: 'bg-sprout text-white',
-    cannot: ['Change delivery fees and settings', 'Invite or pause team members', 'Approve central catalog prices'],
+    cannot: ['Change delivery fees and settings'],
   },
   supplier_owner: {
     label: 'Farm owner',
@@ -65,9 +67,9 @@ export const ROLE_INFO: Record<BuiltinRole, RoleInfo> = {
   supplier_staff: {
     label: 'Farm packer',
     scope: 'Farm team',
-    blurb: "Packs the farm's orders and adds stock when a harvest arrives.",
+    blurb: "Manages the farm's product listings, packs orders and adds stock when a harvest arrives.",
     badge: 'bg-sun-soft text-ink ring-1 ring-sun-deep/40',
-    cannot: ['Change prices or add products', 'Invite team members', 'See other farms', 'See customer phone numbers'],
+    cannot: ['Set shared customer prices directly', 'Invite team members', 'See other farms', 'See customer phone numbers'],
   },
   driver: {
     label: 'Driver',

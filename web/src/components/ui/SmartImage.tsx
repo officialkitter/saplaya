@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
 import { cn } from '@/lib/format';
 
@@ -13,8 +14,8 @@ const TILES = [
 
 /** A photo that quietly turns into a coloured emoji tile if the picture can't load. */
 export function SmartImage({
-  src, alt, emoji = '🥬', className, imgClassName,
-}: { src?: string; alt: string; emoji?: string; className?: string; imgClassName?: string }) {
+  src, alt, emoji = '🥬', className, imgClassName, sizes = '(max-width: 640px) 50vw, 256px',
+}: { src?: string; alt: string; emoji?: string; className?: string; imgClassName?: string; sizes?: string }) {
   const [failed, setFailed] = useState(false);
   const tile = TILES[(alt.length + emoji.length) % TILES.length];
 
@@ -30,12 +31,13 @@ export function SmartImage({
     );
   }
   return (
-    <div className={cn('overflow-hidden bg-line', className)}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+    <div className={cn('relative overflow-hidden bg-line', className)}>
+      <Image
         src={src}
         alt={alt}
-        loading="lazy"
+        fill
+        sizes={sizes}
+        unoptimized
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
         className={cn('h-full w-full object-cover', imgClassName)}

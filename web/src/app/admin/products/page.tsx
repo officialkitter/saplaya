@@ -31,12 +31,12 @@ const EMOJI: Record<string, string> = { Vegetables: '🥕', Leafy: '🥬', Fruit
 
 interface Form {
   name: string; category: string; unit: string; retail: string; wholesale: string;
-  min: string; low: string; image: string; opening: string; active: boolean;
+  min: string; low: string; image: string; opening: string; active: boolean; supplierId: string;
 }
-const blank: Form = { name: '', category: 'Vegetables', unit: 'kg', retail: '', wholesale: '', min: '10', low: '10', image: '', opening: '0', active: true };
+const blank: Form = { name: '', category: 'Vegetables', unit: 'kg', retail: '', wholesale: '', min: '10', low: '10', image: '', opening: '0', active: true, supplierId: '' };
 const fromProduct = (p: Product): Form => ({
   name: p.name, category: p.category, unit: p.unit, retail: String(p.retailPrice), wholesale: String(p.wholesalePrice),
-  min: String(p.wholesaleMinQty), low: String(p.lowStockAt), image: p.image, opening: '0', active: p.active,
+  min: String(p.wholesaleMinQty), low: String(p.lowStockAt), image: p.image, opening: '0', active: p.active, supplierId: p.supplierId,
 });
 
 type StockableCatalogItem = {
@@ -82,6 +82,7 @@ function Products() {
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [removingProduct, setRemovingProduct] = useState<Product | null>(null);
   const [productActionBusy, setProductActionBusy] = useState(false);
+  const [savingProduct, setSavingProduct] = useState(false);
   const [form, setForm] = useState<Form>(blank);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pricingPercentages, setPricingPercentages] = useState({ wholesale: 70, bulk: 65, mega_bulk: 55 });
@@ -144,9 +145,9 @@ function Products() {
   }, [push]);
 
   if (!me) return null;
-  const canEdit = can(me.role, 'products.edit', me.permissions) && !!farmId;
+  const canEdit = can(me.role, 'products.edit', me.permissions);
   const canStock = can(me.role, 'stock.adjust', me.permissions);
-  const canManageRecords = !farmId && ['platform_owner', 'administrator', 'platform_admin'].includes(me.role);
+  const canManageRecords = !farmId && can(me.role, 'suppliers.manage', me.permissions);
   const visibleCatalog = (stockCatalog?.items ?? []).filter((item) => {
     const text = q.trim().toLowerCase();
     return !text || `${item.name} ${item.category}`.toLowerCase().includes(text);
@@ -230,7 +231,9 @@ function Products() {
   }
 
   function openForm(p: Product | 'new') {
-    setForm(p === 'new' ? blank : fromProduct(p));
+    setForm(p === 'new'
+      ? { ...blank, supplierId: farmId ?? activeFarms[0]?.id ?? '' }
+      : fromProduct(p));
     setErrors({});
     setEditing(p);
   }
@@ -249,8 +252,10 @@ function Products() {
     if (!form.unit.trim()) err.unit = 'Enter the sales unit.';
     if (!Number.isSafeInteger(retail) || retail < 2) err.retail = 'Enter a whole base TZS retail price of at least 2.';
     if (!(Number(form.min) > 0)) err.min = 'Enter the smallest bulk order.';
+    const targetFarmId = farmId ?? form.supplierId;
+    if (!farmId && !targetFarmId) err.supplierId = 'Choose a farm.';
     setErrors(err);
-    if (Object.keys(err).length || !me || !farmId) return;
+    if (Object.keys(err).length || !me || !targetFarmId || savingProduct) return;
 
     const base = {
       name: form.name.trim(), category: form.category.trim(), unit: form.unit.trim(),
@@ -259,8 +264,9 @@ function Products() {
       image: form.image.trim(), emoji: EMOJI[form.category] ?? '🥬', active: form.active,
     };
     try {
+      setSavingProduct(true);
       if (editing === 'new') {
-        await addProduct({ ...base, supplierId: farmId, bulkPrice: null, megaBulkPrice: null }, Math.max(0, Number(form.opening) || 0), me.name);
+        await addProduct({ ...base, supplierId: targetFarmId, bulkPrice: null, megaBulkPrice: null }, Math.max(0, Number(form.opening) || 0), me.name);
         push(`${base.name} listing saved. Shared prices are centrally approved; new catalog entries need review before sale.`);
       } else if (editing) {
         const priceChanged = editing.retailPrice !== base.retailPrice;
@@ -272,6 +278,8 @@ function Products() {
       setEditing(null);
     } catch (error) {
       push(userFacingMessage(error, 'Could not save this product.'), 'bad');
+    } finally {
+      setSavingProduct(false);
     }
   }
 
@@ -379,7 +387,14 @@ function Products() {
                     {!farmId && <p className="truncate text-xs text-ink-mute">{farmName.get(product.supplierId)}</p>}
                   </div>
                 </div>
-                <span className="shrink-0 rounded-full bg-sun-soft px-3 py-1.5 text-xs font-extrabold text-sun-deep">Pending</span>
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 rounded-full bg-sun-soft px-3 py-1.5 text-xs font-extrabold text-sun-deep">Pending</span>
+                  {canEdit && (
+                    <Button size="sm" variant="danger" className="min-h-10" icon={<Trash2 size={17} />} onClick={() => setRemovingProduct(product)}>
+                      Remove
+                    </Button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -463,11 +478,9 @@ function Products() {
                           >
                             Merge
                           </Button>
-                          <Button size="sm" variant="danger" className="min-h-10" icon={<Trash2 size={17} />} onClick={() => setRemovingProduct(p)}>
-                            Remove
-                          </Button>
                         </>
                       )}
+                      {canEdit && <Button size="sm" variant="danger" className="min-h-10" icon={<Trash2 size={17} />} onClick={() => setRemovingProduct(p)}>Remove</Button>}
                     </div>
                   )}
                 </div>
@@ -480,6 +493,14 @@ function Products() {
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add a product' : 'Edit product'} wide>
         <div className="space-y-4">
+          {editing === 'new' && !farmId && (
+            <Field label="Farm" error={errors.supplierId}>
+              <Select value={form.supplierId} onChange={(event) => setForm((current) => ({ ...current, supplierId: event.target.value }))}>
+                <option value="">Choose a farm</option>
+                {activeFarms.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label="Product name" error={errors.name}><Input value={form.name} onChange={set('name')} placeholder="Enter the product name" /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Type" error={errors.category}>
@@ -535,8 +556,8 @@ function Products() {
             <span className="font-semibold">Show this product in the Saplaya shop</span>
           </label>
           <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
-            <Button disabled={!pricingPolicyReady} onClick={() => { void save(); }}>{editing === 'new' ? 'Add product' : 'Save changes'}</Button>
+            <Button variant="ghost" disabled={savingProduct} onClick={() => setEditing(null)}>Cancel</Button>
+            <Button disabled={!pricingPolicyReady || savingProduct} onClick={() => { void save(); }}>{savingProduct ? 'Saving…' : editing === 'new' ? 'Add product' : 'Save changes'}</Button>
           </div>
         </div>
       </Modal>
@@ -566,7 +587,7 @@ function Products() {
       <Modal open={removingProduct !== null} onClose={() => { if (!productActionBusy) setRemovingProduct(null); }} title="Remove product">
         <div className="space-y-4">
           <p className="text-sm text-ink-soft">
-            {removingProduct?.name} will be removed from the shop. If orders or inventory movements reference it, the record will be archived instead of permanently deleted.
+            {removingProduct?.name} at {removingProduct ? farmName.get(removingProduct.supplierId) ?? 'this farm' : 'this farm'} will be removed from the shop. If orders or inventory movements reference it, the record will be archived instead of permanently deleted.
           </p>
           <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button variant="ghost" disabled={productActionBusy} onClick={() => setRemovingProduct(null)}>Cancel</Button>

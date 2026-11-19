@@ -504,10 +504,23 @@ function requirePerm(perm?: Perm) {
         }
       }
       if (!data) return res.status(403).json({ error: 'No active team account' });
-      const { data: role, error: roleError } = await db.from('team_roles')
-        .select('role_key, name, department_id, scope, permissions')
-        .eq('role_key', data.role)
-        .maybeSingle();
+      const [roleResult, profileResult, scopesResult, supplierResult] = await Promise.all([
+        db.from('team_roles')
+          .select('role_key, name, department_id, scope, permissions')
+          .eq('role_key', data.role)
+          .maybeSingle(),
+        db.from('team_member_profiles')
+          .select('phone, age, job_title, bio, avatar_url, operation_scope_mode')
+          .eq('team_member_id', data.id)
+          .maybeSingle(),
+        db.from('team_member_operation_scopes')
+          .select('country_code, country_name, region_code, region_name, district_code, district_name')
+          .eq('team_member_id', data.id),
+        data.supplier_id
+          ? db.from('suppliers').select('status').eq('id', data.supplier_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      const { data: role, error: roleError } = roleResult;
       if (roleError || !role) {
         console.error('Could not load team role configuration:', roleError?.message ?? 'Assigned role was not found.');
         return res.status(503).json({ error: 'Could not load your role permissions.' });
@@ -520,16 +533,18 @@ function requirePerm(perm?: Perm) {
         console.error('Could not load team department configuration:', departmentError?.message ?? 'Assigned department was not found.');
         return res.status(503).json({ error: 'Could not load your department.' });
       }
-      const { data: profile, error: profileError } = await db.from('team_member_profiles')
-        .select('phone, age, job_title, bio, avatar_url, operation_scope_mode')
-        .eq('team_member_id', data.id)
-        .maybeSingle();
-      const { data: operationScopes, error: scopesError } = await db.from('team_member_operation_scopes')
-        .select('country_code, country_name, region_code, region_name, district_code, district_name')
-        .eq('team_member_id', data.id);
+      const { data: profile, error: profileError } = profileResult;
+      const { data: operationScopes, error: scopesError } = scopesResult;
       if (profileError || scopesError) {
         console.error('Could not load team member profile and operation scopes:', profileError?.message ?? scopesError?.message);
         return res.status(503).json({ error: 'Could not load your team profile and operation access.' });
+      }
+      if (supplierResult.error) {
+        console.error('Could not validate the team member farm:', supplierResult.error.message);
+        return res.status(503).json({ error: 'Could not validate your farm account.' });
+      }
+      if (data.supplier_id && supplierResult.data?.status !== 'active') {
+        return res.status(403).json({ error: 'This farm account is not active' });
       }
       let m: Member = {
         ...data,
@@ -557,10 +572,6 @@ function requirePerm(perm?: Perm) {
       }
       if (perm && !m.permissions.includes(perm)) {
         return res.status(403).json({ error: 'Your role is not allowed to do this' });
-      }
-      if (m.supplier_id) {
-        const { data: s } = await db.from('suppliers').select('status').eq('id', m.supplier_id).maybeSingle();
-        if (s?.status !== 'active') return res.status(403).json({ error: 'This farm account is not active' });
       }
       req.member = m;
       next();
@@ -913,9 +924,71 @@ app.get('/products', async (req, res) => {
     stock: product.stock,
     image_url: product.image_url,
     harvested_at: product.harvested_at,
+    updated_at: product.updated_at,
     farm_distance_km: distance === null ? null : Number(distance.toFixed(2)),
   }));
   res.json({ items, hasMore: results.length > (page + 1) * size, categories });
+});
+
+app.get('/products/:id', async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(404).json({ error: 'Product not found.' });
+
+  const { data: product, error: productError } = await db.from('products')
+    .select('*')
+    .eq('id', id.data)
+    .eq('active', true)
+    .gt('stock', 0)
+    .maybeSingle();
+  if (productError) {
+    console.error('Could not load storefront product:', productError.message);
+    return res.status(500).json({ error: 'Could not load this product.' });
+  }
+  if (!product) return res.status(404).json({ error: 'Product not found.' });
+
+  const [supplierResult, catalogResult] = await Promise.all([
+    db.from('suppliers')
+      .select('id, latitude, longitude, status')
+      .eq('id', product.supplier_id)
+      .maybeSingle(),
+    product.catalog_product_id
+      ? db.from('catalog_products')
+        .select('id, price_approved')
+        .eq('id', product.catalog_product_id)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (supplierResult.error || catalogResult.error) {
+    console.error('Could not verify storefront product availability:', supplierResult.error?.message ?? catalogResult.error?.message);
+    return res.status(500).json({ error: 'Could not verify this product.' });
+  }
+
+  const approvedCatalogIds = new Set(
+    catalogResult.data?.price_approved ? [catalogResult.data.id] : [],
+  );
+  const [selected] = selectStorefrontProducts(
+    [product],
+    supplierResult.data ? [supplierResult.data] : [],
+    approvedCatalogIds,
+    null,
+  );
+  if (!selected) return res.status(404).json({ error: 'Product not found.' });
+
+  const item = selected.product;
+  return res.json({
+    id: item.id,
+    name: item.name,
+    category: item.category ?? '',
+    unit: item.unit,
+    retail_price: item.retail_price,
+    wholesale_price: item.wholesale_price,
+    wholesale_min_qty: item.wholesale_min_qty,
+    ...publicTierPrices(),
+    stock: item.stock,
+    image_url: item.image_url,
+    harvested_at: item.harvested_at,
+    updated_at: item.updated_at,
+  });
 });
 
 app.get('/promos', async (_req, res) => {
@@ -2484,10 +2557,27 @@ app.post('/admin/products/:id/merge', requirePerm('suppliers.manage'), async (re
   return res.json(data);
 });
 
-app.delete('/admin/products/:id', requirePerm('suppliers.manage'), async (req: AuthedRequest, res: Response) => {
-  if (!isPlatformAdministrator(req.member!)) return res.status(403).json({ error: 'Only platform owners and administrators can remove products.' });
+app.delete('/admin/products/:id', requirePerm('products.edit'), async (req: AuthedRequest, res: Response) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: 'Invalid product ID.' });
+
+  const { data: product, error: productError } = await db.from('products')
+    .select('supplier_id')
+    .eq('id', id.data)
+    .maybeSingle();
+  if (productError) {
+    console.error('Could not load farm product before removal:', productError.message);
+    return res.status(500).json({ error: 'Could not load this product.' });
+  }
+  if (!product) return res.status(404).json({ error: 'Product not found.' });
+  try {
+    if (!await memberCanAccessSupplier(req.member!, product.supplier_id)) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+  } catch (scopeError) {
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
+  }
+
   const { data, error } = await db.rpc('archive_farm_product', { p_product_id: id.data });
   if (error) {
     console.error('Could not remove farm product:', error.message);
@@ -2686,6 +2776,7 @@ app.post('/admin/catalog', requirePerm('catalog.manage'), async (req: AuthedRequ
 });
 
 const catalogUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
   category: z.string().trim().min(2).max(80),
   unit: z.string().trim().min(1).max(24),
   retail_price: z.number().int().min(2),
@@ -2719,6 +2810,9 @@ app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: Authe
     .select()
     .maybeSingle();
   if (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'This name conflicts with an existing catalog or farm listing.' });
+    }
     console.error('Could not update central catalog pricing:', error.message);
     return res.status(500).json({ error: 'Could not update this catalog product.' });
   }
@@ -3825,7 +3919,7 @@ app.get('/admin/management/assignable-orders', requirePerm('management.manage'),
   }
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let query = db.from('supplier_orders')
-    .select('id, order_id, supplier_id, status, updated_at, suppliers(name, country_name, region_name, district_name), supplier_order_assignments(team_member_id, team_members!supplier_order_assignments_team_member_id_fkey(full_name))')
+    .select('id, order_id, supplier_id, status, updated_at, suppliers(name, country_code, country_name, region_code, region_name, district_code, district_name), supplier_order_assignments(team_member_id, team_members!supplier_order_assignments_team_member_id_fkey(full_name))')
     .in('status', ['pending', 'packing', 'en_route', 'delivered'])
     .order('updated_at', { ascending: false })
     .limit(300);

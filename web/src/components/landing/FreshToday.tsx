@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { localDayPeriod, type LocalDayPeriod } from '@/lib/format';
-import { useStorefrontProducts, type StorefrontFilters, type StorefrontProduct } from '@/lib/storefront';
+import { useStorefrontProducts, type StorefrontFilters, type StorefrontPageData, type StorefrontProduct } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
 import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
@@ -62,7 +62,7 @@ function ProductCard({ product, fresh, compact, fillRow, onAdded }: {
           className="absolute inset-x-0 bottom-0 max-h-full overflow-y-auto rounded-t-2xl border-t border-white/80 bg-white/95 p-3 shadow-lg backdrop-blur-md"
         >
           <div className="flex items-start gap-2">
-            <h4 className="min-w-0 flex-1 break-words font-display text-lg font-extrabold leading-6 text-ink" title={product.name}>{product.name}</h4>
+            <p className="min-w-0 flex-1 break-words font-display text-lg font-extrabold leading-6 text-ink" title={product.name}>{product.name}</p>
             <button type="button" aria-label={`Hide details for ${product.name}`} onClick={() => { setPinned(false); setHovered(false); }} className="grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-leaf">
               <X size={18} aria-hidden />
             </button>
@@ -90,31 +90,53 @@ function ProductCard({ product, fresh, compact, fillRow, onAdded }: {
           </motion.button>
         </motion.div>
       )}
+      <div className="space-y-1.5 bg-white p-3">
+        <h3 className="break-words font-display text-lg font-extrabold leading-6 text-ink">
+          <Link href={`/products/${encodeURIComponent(product.id)}`} className="hover:text-leaf-deep hover:underline">
+            {product.name}
+          </Link>
+        </h3>
+        <p className="text-sm text-ink-soft">{product.category} · sold per {product.unit}</p>
+        <p className="font-bold text-ink">{market.formatPrice(product.retail_price)} per {product.unit}</p>
+      </div>
     </article>
   );
 }
 
-export function FreshToday({ showShoppingMode = false }: { showShoppingMode?: boolean }) {
+export function FreshToday({
+  showShoppingMode = false,
+  initialData,
+  initialError = false,
+  initialQuery = '',
+  initialCategory = '',
+}: {
+  showShoppingMode?: boolean;
+  initialData?: StorefrontPageData;
+  initialError?: boolean;
+  initialQuery?: string;
+  initialCategory?: string;
+}) {
   const market = useGlobalMarket();
   const { lines, mode, preferredMode, setPreferredMode } = useStorefrontCart();
   const theme = volumeTheme(mode);
   const [localPeriod, setLocalPeriod] = useState<LocalDayPeriod | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(0);
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('');
+  const [query, setQuery] = useState(initialQuery);
+  const [category, setCategory] = useState(initialCategory);
   const [fresh, setFresh] = useState(false);
-  const [filters, setFilters] = useState<StorefrontFilters>({});
+  const [filters, setFilters] = useState<StorefrontFilters>({ query: initialQuery, category: initialCategory });
   const [basketNotice, setBasketNotice] = useState<{ id: string; name: string; unit: string } | null>(null);
   const [compact, setCompact] = useState(false);
   const reduceMotion = useReducedMotion();
-  const { products, loading, error, retry, hasMore, categories, loadMore } = useStorefrontProducts(40, market.location, filters);
+  const { products, loading, error, retry, hasMore, categories, loadMore } = useStorefrontProducts(
+    40,
+    market.location,
+    filters,
+    initialData,
+    initialError,
+  );
   const searching = Boolean(filters.query?.trim() || filters.category || filters.fresh);
-
-  useEffect(() => {
-    const initialQuery = new URLSearchParams(window.location.search).get('q');
-    if (initialQuery) setQuery(initialQuery.slice(0, 100));
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {

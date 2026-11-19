@@ -42,9 +42,9 @@ for (const [path, heading, content] of [
   });
 }
 
-test('public routes have unique concise metadata, canonical URLs and one h1', async () => {
+test('public routes have unique concise metadata, canonical URLs and complete social tags', async () => {
   const titles = new Set();
-  for (const path of ['/', '/how-it-works', '/fresh-today', '/for-farmers', '/faq', '/help']) {
+  for (const path of ['/', '/how-it-works', '/fresh-today', '/for-farmers', '/faq', '/help', '/privacy']) {
     const { response, html } = await readPage(path);
     assert.equal(response.status, 200);
     assert.equal((html.match(/<h1(?:\s|>)/gi) ?? []).length, 1, `${path} must have exactly one h1.`);
@@ -56,7 +56,18 @@ test('public routes have unique concise metadata, canonical URLs and one h1', as
     assert.ok(!titles.has(title), `${path} must have a unique title.`);
     titles.add(title);
     assert.ok(description && description.length < 155, `${path} must have a description under 155 characters.`);
-    assert.equal(canonical, path === '/' ? 'https://www.saplaya.org' : `https://www.saplaya.org${path}`);
+    assert.ok(canonical, `${path} must declare a canonical URL.`);
+    const canonicalUrl = new URL(canonical);
+    assert.equal(canonicalUrl.origin, 'https://www.saplaya.org');
+    assert.equal(canonicalUrl.pathname, path);
+    assert.equal(canonicalUrl.search, '');
+    assert.equal(canonicalUrl.hash, '');
+    assert.match(html, /<meta property="og:title" content="[^"]+"/);
+    assert.match(html, /<meta property="og:description" content="[^"]+"/);
+    assert.match(html, /<meta property="og:url" content="https:\/\/www\.saplaya\.org/);
+    assert.match(html, /<meta property="og:image" content="https:\/\/www\.saplaya\.org\/saplaya-icon\.png"/);
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
+    assert.match(html, /<meta name="twitter:title" content="[^"]+"/);
   }
 });
 
@@ -66,12 +77,15 @@ test('structured data describes the site, page hierarchy and visible FAQ answers
   assert.ok(homeData, 'The homepage must expose the Organization and WebSite graph.');
   const organization = homeData['@graph'].find((item) => item['@type'] === 'Organization');
   const website = homeData['@graph'].find((item) => item['@type'] === 'WebSite');
+  assert.equal(organization?.['@id'], 'https://www.saplaya.org/#organization');
   assert.equal(organization?.name, 'Saplaya');
   assert.equal(organization?.url, 'https://www.saplaya.org/');
+  assert.match(organization?.description, /fresh produce delivery and wholesale marketplace/i);
+  assert.ok(Array.isArray(organization?.sameAs));
   assert.equal(website?.name, 'Saplaya');
   assert.equal(website?.url, 'https://www.saplaya.org/');
   assert.match(home.html, /<meta property="og:site_name" content="Saplaya"/);
-  assert.match(home.html, /Saplaya connects customers with farm produce for retail and wholesale\./);
+  assert.match(home.html, /Saplaya is a fresh produce delivery and wholesale marketplace connecting customers with local farms\./);
   assert.equal(website?.potentialAction?.['@type'], 'SearchAction');
   assert.equal(website?.potentialAction?.target, 'https://www.saplaya.org/fresh-today?q={search_term_string}');
 
@@ -90,24 +104,64 @@ test('structured data describes the site, page hierarchy and visible FAQ answers
   assert.match(faq.html, /How fast is delivery\?/);
 });
 
-test('robots and sitemap expose only public canonical pages with priorities', async () => {
+test('robots and dynamic sitemap expose public pages, categories and products', async () => {
   const [robots, sitemap] = await Promise.all([readPage('/robots.txt'), readPage('/sitemap.xml')]);
   assert.equal(robots.response.status, 200);
   assert.match(robots.html, /User-Agent: \*/i);
   assert.match(robots.html, /Allow: \//i);
   assert.match(robots.html, /Sitemap: https:\/\/www\.saplaya\.org\/sitemap\.xml/i);
-  assert.match(robots.html, /Disallow: \/admin\//i);
+  assert.match(robots.html, /Disallow: \/admin(?:\/|\s)/i);
+  assert.match(robots.html, /Disallow: \/login/i);
+  assert.match(robots.html, /Disallow: \/account(?:\/|\s)/i);
 
   assert.equal(sitemap.response.status, 200);
   const entries = [...sitemap.html.matchAll(/<url>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<priority>([^<]+)<\/priority>[\s\S]*?<\/url>/g)];
   const priorities = new Map(entries.map((entry) => [entry[1], Number(entry[2])]));
-  assert.equal(entries.length, 7);
+  assert.ok(entries.length >= 7);
+  assert.match(sitemap.html, /<lastmod>\d{4}-\d{2}-\d{2}/);
   assert.equal(priorities.get('https://www.saplaya.org/'), 1);
   for (const path of ['/how-it-works', '/fresh-today', '/for-farmers', '/faq', '/help']) {
     assert.equal(priorities.get(`https://www.saplaya.org${path}`), 0.8);
   }
   assert.equal(priorities.get('https://www.saplaya.org/privacy'), 0.4);
+  const productUrl = entries.map((entry) => entry[1]).find((url) => /\/products\/[0-9a-f-]{36}$/i.test(url));
+  const categoryUrl = entries.map((entry) => entry[1]).find((url) => /\/fresh-today\?category=/i.test(url));
+  if (productUrl) {
+    const url = new URL(productUrl);
+    const [{ response, html }, home] = await Promise.all([
+      readPage(url.pathname),
+      readPage('/'),
+    ]);
+    assert.equal(response.status, 200);
+    assert.equal((html.match(/<h1(?:\s|>)/gi) ?? []).length, 1);
+    const productData = readJsonLd(html).find((data) => data['@type'] === 'Product');
+    assert.ok(productData?.name, 'Product detail must expose server-rendered Product JSON-LD.');
+    assert.ok(html.includes(productData.name), 'The product name must be rendered in initial HTML.');
+    assert.ok(home.html.includes(productData.name), 'A listed product name must be rendered in the initial homepage HTML.');
+    assert.equal(productData.offers?.url, productUrl);
+  }
+  if (categoryUrl) {
+    const url = new URL(categoryUrl);
+    const { response, html } = await readPage(`${url.pathname}${url.search}`);
+    assert.equal(response.status, 200);
+    assert.match(html, /Search results|Fresh today/);
+  }
   assert.doesNotMatch(sitemap.html, /\/(admin|auth|checkout|orders|401|403|server-error)(\/|<)/);
+});
+
+test('the official apex HTTP host permanently redirects to the HTTPS www host', async () => {
+  const originUrl = new URL(origin);
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(originUrl.hostname);
+  const redirectUrl = isLocal
+    ? new URL('/fresh-today?q=carrots', origin)
+    : new URL('http://saplaya.org/fresh-today?q=carrots');
+  const response = await fetch(redirectUrl, {
+    ...(isLocal ? { headers: { 'x-forwarded-host': 'saplaya.org', 'x-forwarded-proto': 'http' } } : {}),
+    redirect: 'manual',
+    signal: AbortSignal.timeout(20000),
+  });
+  assert.equal(response.status, 301);
+  assert.equal(response.headers.get('location'), 'https://www.saplaya.org/fresh-today?q=carrots');
 });
 
 test('the homepage retains all existing storefront sections', async () => {

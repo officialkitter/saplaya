@@ -1,12 +1,28 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '@/components/Providers';
+import { BRAND_IMAGE, MARKETPLACE_DESCRIPTION } from '@/lib/seo';
+
+const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.saplaya.org'),
-  title: 'Saplaya | Fresh from the farm to your door',
-  description:
-    'Saplaya brings vegetables and fruit from local farms to your door in hours. Shop retail or wholesale, and farms can join as suppliers.',
+  title: 'Saplaya | Fresh Produce Delivery & Wholesale',
+  description: MARKETPLACE_DESCRIPTION,
+  openGraph: {
+    type: 'website',
+    siteName: 'Saplaya',
+    title: 'Saplaya | Fresh Produce Delivery & Wholesale',
+    description: MARKETPLACE_DESCRIPTION,
+    images: [{ url: BRAND_IMAGE, alt: 'Saplaya fresh produce delivery and wholesale marketplace' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Saplaya | Fresh Produce Delivery & Wholesale',
+    description: MARKETPLACE_DESCRIPTION,
+    images: [BRAND_IMAGE],
+  },
+  ...(googleSiteVerification ? { verification: { google: googleSiteVerification } } : {}),
   icons: {
     icon: '/saplaya-icon.png',
     shortcut: '/saplaya-icon.png',

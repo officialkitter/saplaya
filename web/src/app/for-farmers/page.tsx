@@ -1,12 +1,12 @@
-import type { Metadata } from 'next';
 import { Farmers } from '@/components/landing/Farmers';
 import { PublicPage } from '@/components/landing/PublicPage';
+import { publicMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
+export const metadata = publicMetadata({
   title: 'For Farmers | Saplaya',
   description: 'Apply to supply fresh produce through Saplaya. Manage your farm stock and orders with role-based access and customer privacy.',
-  alternates: { canonical: '/for-farmers' },
-};
+  pathname: '/for-farmers',
+});
 
 export default function ForFarmersPage() {
   return (

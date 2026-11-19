@@ -1,14 +1,14 @@
-import type { Metadata } from 'next';
 import { Faq } from '@/components/landing/Faq';
 import { PublicPage } from '@/components/landing/PublicPage';
 import { FAQ_ITEMS } from '@/lib/faq-content';
 import { serializeJsonLd } from '@/lib/json-ld';
+import { publicMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
+export const metadata = publicMetadata({
   title: 'Questions | Saplaya',
   description: 'Find answers about Saplaya delivery, payment methods, wholesale shopping, customer privacy and joining as a farm supplier.',
-  alternates: { canonical: '/faq' },
-};
+  pathname: '/faq',
+});
 
 export default function QuestionsPage() {
   return (

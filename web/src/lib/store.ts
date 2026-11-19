@@ -142,7 +142,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'PATCH',
         body: JSON.stringify({ full_name: fullName }),
       });
-      await reload();
+      await reload(['team']);
     },
 
     saveManagementProfile: async (profile) => {
@@ -150,7 +150,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'PATCH',
         body: JSON.stringify(profile),
       });
-      await reload();
+      await reload(['team']);
     },
 
     stockCatalogProduct: async (catalogProductId, supplierId, qty) => {
@@ -161,7 +161,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           body: JSON.stringify({ supplier_id: supplierId, qty }),
         },
       );
-      await reload();
+      await reload(['products', 'movements']);
       return result;
     },
 
@@ -170,7 +170,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'POST',
         body: JSON.stringify({ supplier_id: supplierId }),
       });
-      await reload();
+      await reload(['products']);
     },
 
     setOrderStatus: async (orderId, status) => {
@@ -178,7 +178,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
-      await reload();
+      await reload(['orders']);
     },
 
     restock: async (productId, qty, _by) => {
@@ -186,7 +186,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'POST',
         body: JSON.stringify({ product_id: productId, qty }),
       });
-      await reload();
+      await reload(['products', 'movements']);
     },
 
     addProduct: async (product, openingStock, _by) => {
@@ -206,7 +206,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           active: product.active,
         }),
       });
-      await reload();
+      await reload(['products', 'movements']);
     },
 
     updateProduct: async (id, patch) => {
@@ -224,7 +224,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           ...(patch.active !== undefined ? { active: patch.active } : {}),
         }),
       });
-      await reload();
+      await reload(['products']);
     },
 
     decideApplication: async (id, decision) => {
@@ -252,7 +252,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           contact_phone: supplier.contactPhone,
         }),
       });
-      await reload();
+      await reload(['suppliers']);
     },
 
     setSupplierStatus: async (id, status) => {
@@ -304,7 +304,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'POST',
         body: JSON.stringify({ target_product_id: targetId }),
       });
-      await reload();
+      await reload(['products', 'movements']);
     },
 
     archiveProduct: async (id) => {
@@ -312,7 +312,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         `/admin/products/${encodeURIComponent(id)}`,
         { method: 'DELETE' },
       );
-      await reload();
+      await reload(['products', 'movements']);
       return result.archived;
     },
 
@@ -331,7 +331,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
             } : {}),
           }),
         });
-        await reload();
+        await reload(['team']);
         return null;
       } catch (error) {
         return userFacingMessage(error, 'Could not invite this team member. Please try again.');
@@ -351,7 +351,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           } : {}),
         }),
       });
-      await reload();
+      await reload(['team']);
     },
 
     reinviteMember: async (id) => {
@@ -368,7 +368,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
-      await reload();
+      await reload(['team']);
     },
 
     saveSettings: async (settings) => {
@@ -386,7 +386,7 @@ const createAdminStore: StateCreator<DB> = (set) => {
           delivery_option_fees: settings.deliveryOptionFees,
         }),
       });
-      await reload();
+      await reload(['settings']);
     },
   };
 };

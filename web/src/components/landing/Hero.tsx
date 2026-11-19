@@ -6,7 +6,7 @@ import { LinkButton } from '@/components/ui/Button';
 import { BasketGraphic, CratesGraphic } from '@/components/ui/Graphics';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { ModeSlide } from './ModeSlide';
-import { useStorefrontProducts, type StorefrontProduct } from '@/lib/storefront';
+import { useStorefrontProducts, type StorefrontPageData, type StorefrontProduct } from '@/lib/storefront';
 import { useGlobalMarket } from '@/lib/global-market';
 import { useStorefrontCart } from '@/lib/cart';
 import { volumeTheme } from '@/lib/volume';
@@ -110,12 +110,12 @@ function Phone({
   );
 }
 
-export function Hero() {
+export function Hero({ initialData, initialError = false }: { initialData?: StorefrontPageData; initialError?: boolean }) {
   const { preferredMode, setPreferredMode, mode } = useStorefrontCart();
   const wholesale = preferredMode === 'wholesale';
   const theme = volumeTheme(mode);
   const market = useGlobalMarket();
-  const { products, loading, error } = useStorefrontProducts(4, market.location);
+  const { products, loading, error } = useStorefrontProducts(4, market.location, {}, initialData, initialError);
   return (
     <section className="relative overflow-hidden">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr] lg:pb-28 lg:pt-20">
@@ -124,7 +124,7 @@ export function Hero() {
             Farm-fresh food, at your door in hours.
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            Saplaya connects customers with farm produce for retail and wholesale.{' '}
+            Saplaya is a fresh produce delivery and wholesale marketplace connecting customers with local farms.{' '}
             {market.location
               ? market.placeNameStatus === 'ready'
                 ? `Discover stocked farms near ${market.placeName}. Buy a little for your kitchen or a lot for your shop.`
@@ -150,7 +150,7 @@ export function Hero() {
         <div className="relative">
           <div className="absolute inset-x-0 top-6 mx-auto h-[540px] w-[88%] rounded-[3rem] field-lines" style={{ backgroundColor: theme.button }} aria-hidden />
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 18, stiffness: 90, delay: 0.15 }} className="relative">
-            <Phone wholesale={wholesale} products={products} loading={loading} error={error} formatPrice={market.formatPrice} />
+            <Phone wholesale={wholesale} products={products.slice(0, 4)} loading={loading} error={error} formatPrice={market.formatPrice} />
           </motion.div>
 
         </div>

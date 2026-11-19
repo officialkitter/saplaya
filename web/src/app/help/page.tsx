@@ -1,12 +1,12 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PublicPage } from '@/components/landing/PublicPage';
+import { publicMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
+export const metadata = publicMetadata({
   title: 'Help | Saplaya',
   description: 'Get help with Saplaya shopping and delivery, find answers to common questions or contact the team.',
-  alternates: { canonical: '/help' },
-};
+  pathname: '/help',
+});
 
 export default function HelpPage() {
   return (

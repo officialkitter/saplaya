@@ -1,64 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  isStorefrontPageData,
+  withoutProtectedPrices,
+  type StorefrontFilters,
+  type StorefrontPageData,
+  type StorefrontProduct,
+} from './storefront-contract';
 
-export type StorefrontProduct = {
-  id: string;
-  name: string;
-  category: string;
-  unit: string;
-  retail_price: number;
-  wholesale_price: number;
-  wholesale_min_qty: number;
-  bulk_price: number | null;
-  mega_bulk_price: number | null;
-  stock: number;
-  image_url: string | null;
-  harvested_at: string;
-  farm_distance_km?: number | null;
-};
+export type { StorefrontFilters, StorefrontPageData, StorefrontProduct } from './storefront-contract';
 
-type StorefrontResponse = {
-  items: StorefrontProduct[];
-  hasMore: boolean;
-  categories?: string[];
-};
+export { isStorefrontProduct } from './storefront-contract';
+export { withoutProtectedPrices } from './storefront-contract';
 
-export type StorefrontFilters = {
-  query?: string;
-  category?: string;
-  minPrice?: string;
-  maxPrice?: string;
-  fresh?: boolean;
-  sort?: 'default' | 'price_asc' | 'price_desc' | 'nearby';
-};
-
-export function isStorefrontProduct(value: unknown): value is StorefrontProduct {
-  if (typeof value !== 'object' || value === null) return false;
-  const product = value as Record<string, unknown>;
-  return typeof product.id === 'string'
-    && typeof product.name === 'string'
-    && typeof product.category === 'string'
-    && typeof product.unit === 'string'
-    && typeof product.retail_price === 'number'
-    && Number.isFinite(product.retail_price)
-    && typeof product.wholesale_price === 'number'
-    && Number.isFinite(product.wholesale_price)
-    && typeof product.wholesale_min_qty === 'number'
-    && Number.isFinite(product.wholesale_min_qty)
-    && (product.bulk_price === null || (typeof product.bulk_price === 'number' && Number.isFinite(product.bulk_price)))
-    && (product.mega_bulk_price === null || (typeof product.mega_bulk_price === 'number' && Number.isFinite(product.mega_bulk_price)))
-    && typeof product.stock === 'number'
-    && Number.isFinite(product.stock)
-    && (typeof product.image_url === 'string' || product.image_url === null)
-    && typeof product.harvested_at === 'string';
-}
-
-export function withoutProtectedPrices(product: StorefrontProduct): StorefrontProduct {
-  return { ...product, bulk_price: null, mega_bulk_price: null };
-}
-
-async function fetchStorefrontProducts(limit: number, page: number, filters: StorefrontFilters, location?: { lat: number; lng: number }): Promise<StorefrontResponse> {
+async function fetchStorefrontProducts(limit: number, page: number, filters: StorefrontFilters, location?: { lat: number; lng: number }): Promise<StorefrontPageData> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '');
   if (!apiUrl) throw new Error('The storefront API is not configured.');
 
@@ -76,32 +32,28 @@ async function fetchStorefrontProducts(limit: number, page: number, filters: Sto
   const response = await fetch(`${apiUrl}/products?${query}`, { cache: 'no-store' });
   if (!response.ok) throw new Error(`The storefront API returned ${response.status}.`);
   const result: unknown = await response.json();
-  if (
-    typeof result !== 'object'
-    || result === null
-    || !('items' in result)
-    || !Array.isArray((result as StorefrontResponse).items)
-    || !(result as StorefrontResponse).items.every(isStorefrontProduct)
-    || typeof (result as StorefrontResponse).hasMore !== 'boolean'
-    || ((result as StorefrontResponse).categories !== undefined
-      && (!Array.isArray((result as StorefrontResponse).categories)
-        || !(result as StorefrontResponse).categories?.every((category) => typeof category === 'string')))
-  ) {
+  if (!isStorefrontPageData(result)) {
     throw new Error('The storefront API returned an unexpected product response.');
   }
-  const parsed = result as StorefrontResponse;
-  return { ...parsed, items: parsed.items.map(withoutProtectedPrices) };
+  return { ...result, items: result.items.map(withoutProtectedPrices) };
 }
 
-export function useStorefrontProducts(limit: number, location?: { lat: number; lng: number } | null, filters: StorefrontFilters = {}) {
-  const [products, setProducts] = useState<StorefrontProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+export function useStorefrontProducts(
+  limit: number,
+  location?: { lat: number; lng: number } | null,
+  filters: StorefrontFilters = {},
+  initialData?: StorefrontPageData,
+  initialError = false,
+) {
+  const [products, setProducts] = useState<StorefrontProduct[]>(initialData?.items ?? []);
+  const [loading, setLoading] = useState(!initialData);
+  const [error, setError] = useState(initialError && !initialData);
   const [requestVersion, setRequestVersion] = useState(0);
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [hasMore, setHasMore] = useState(initialData?.hasMore ?? false);
+  const [categories, setCategories] = useState<string[]>(initialData?.categories ?? []);
   const generation = useRef(0);
+  const skipInitialRequest = useRef(Boolean(initialData));
 
   const retry = useCallback(() => setRequestVersion((version) => version + 1), []);
 
@@ -115,6 +67,11 @@ export function useStorefrontProducts(limit: number, location?: { lat: number; l
       setLoading(false);
       return () => { active = false; generation.current += 1; };
     }
+    if (skipInitialRequest.current && !location) {
+      skipInitialRequest.current = false;
+      return () => { active = false; generation.current += 1; };
+    }
+    skipInitialRequest.current = false;
     setLoading(true);
     setError(false);
     setPage(0);

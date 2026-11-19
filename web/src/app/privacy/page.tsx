@@ -1,11 +1,12 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Logo } from '@/components/ui/Logo';
+import { publicMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
+export const metadata = publicMetadata({
   title: 'Privacy policy | Saplaya',
   description: 'How Saplaya handles account, order and location information.',
-};
+  pathname: '/privacy',
+});
 
 export default function PrivacyPage() {
   return (

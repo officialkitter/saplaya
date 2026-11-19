@@ -1,13 +1,13 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Pipeline } from '@/components/landing/Pipeline';
 import { PublicPage } from '@/components/landing/PublicPage';
+import { publicMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
+export const metadata = publicMetadata({
   title: 'How It Works | Saplaya',
   description: 'Learn how to order farm produce, choose delivery options and track your Saplaya order from the farm to your door.',
-  alternates: { canonical: '/how-it-works' },
-};
+  pathname: '/how-it-works',
+});
 
 export default function HowItWorksPage() {
   return (

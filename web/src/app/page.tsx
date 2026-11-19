@@ -3,24 +3,14 @@ import type { Metadata } from 'next';
 import { Nav } from '@/components/landing/Nav';
 import { Hero } from '@/components/landing/Hero';
 import { serializeJsonLd } from '@/lib/json-ld';
+import { configuredSocialProfiles, MARKETPLACE_DESCRIPTION, publicMetadata, SITE_URL } from '@/lib/seo';
+import { fetchStorefrontPage } from '@/lib/storefront-server';
+import type { StorefrontPageData } from '@/lib/storefront-contract';
 
-const title = 'Saplaya | Fresh Produce Delivery & Wholesale';
-const description = 'Shop fresh fruit, vegetables and farm produce with Saplaya. Order retail or wholesale for delivery, or apply to sell your harvest.';
+const title = 'Fresh Produce Delivery & Wholesale | Saplaya';
+const description = MARKETPLACE_DESCRIPTION;
 
-export const metadata: Metadata = {
-  title,
-  description,
-  alternates: { canonical: '/' },
-  openGraph: {
-    type: 'website',
-    url: 'https://www.saplaya.org/',
-    siteName: 'Saplaya',
-    title,
-    description,
-    images: [{ url: '/saplaya-icon.png', alt: 'Saplaya' }],
-  },
-  twitter: { card: 'summary', title, description, images: ['/saplaya-icon.png'] },
-};
+export const metadata: Metadata = publicMetadata({ title, description, pathname: '/' });
 
 const Pipeline = dynamic(() => import('@/components/landing/Pipeline').then((module) => module.Pipeline));
 const FreshToday = dynamic(() => import('@/components/landing/FreshToday').then((module) => module.FreshToday));
@@ -30,7 +20,16 @@ const Faq = dynamic(() => import('@/components/landing/Faq').then((module) => mo
 const Download = dynamic(() => import('@/components/landing/Footer').then((module) => module.Download));
 const Footer = dynamic(() => import('@/components/landing/Footer').then((module) => module.Footer));
 
-export default function Home() {
+export default async function Home() {
+  let initialData: StorefrontPageData | undefined;
+  let initialError = false;
+  try {
+    initialData = await fetchStorefrontPage(40);
+  } catch (error) {
+    console.error('Could not render initial homepage products:', error);
+    initialError = true;
+  }
+
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd({
@@ -42,16 +41,18 @@ export default function Home() {
             name: 'Saplaya',
             url: 'https://www.saplaya.org/',
             logo: 'https://www.saplaya.org/saplaya-icon.png',
+            description: MARKETPLACE_DESCRIPTION,
+            sameAs: configuredSocialProfiles(),
           },
           {
             '@type': 'WebSite',
             '@id': 'https://www.saplaya.org/#website',
             name: 'Saplaya',
-            url: 'https://www.saplaya.org/',
+            url: `${SITE_URL}/`,
             publisher: { '@id': 'https://www.saplaya.org/#organization' },
             potentialAction: {
               '@type': 'SearchAction',
-              target: 'https://www.saplaya.org/fresh-today?q={search_term_string}',
+              target: `${SITE_URL}/fresh-today?q={search_term_string}`,
               'query-input': 'required name=search_term_string',
             },
           },
@@ -59,9 +60,9 @@ export default function Home() {
       }) }} />
       <Nav />
       <main>
-        <Hero />
+        <Hero initialData={initialData} initialError={initialError} />
         <Pipeline />
-        <FreshToday />
+        <FreshToday initialData={initialData} initialError={initialError} />
         <TwoWays />
         <Farmers />
         <Faq />

@@ -39,6 +39,7 @@ function Team() {
   const push = useToast((s) => s.push);
 
   const [inviting, setInviting] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
   const [pause, setPause] = useState<TeamMember | null>(null);
   const [form, setForm] = useState<{ name: string; email: string; role: Role; supplierId: string; scopeMode: 'global' | 'restricted'; scopes: OperationScopeDraft[] }>({ name: '', email: '', role: 'supplier_staff', supplierId: '', scopeMode: 'global', scopes: [] });
   const [editing, setEditing] = useState<TeamMember | null>(null);
@@ -119,6 +120,7 @@ function Team() {
   }
 
   async function send() {
+    if (sendingInvite) return;
     const err: Record<string, string> = {};
     if (form.name.trim().length < 2) err.name = 'Enter their name.';
     if (!/^\S+@\S+\.\S+$/.test(form.email)) err.email = 'Check the email address.';
@@ -132,19 +134,24 @@ function Team() {
     if (!farmRole && form.scopeMode === 'restricted' && !form.scopes.length) err.scopes = 'Add at least one operation area, or grant global access.';
     setErrors(err);
     if (Object.keys(err).length) return;
-    const problem = await inviteMember({
-      name: form.name.trim(),
-      email: form.email,
-      role: form.role,
-      supplierId: farmRole ? (me?.supplierId ?? form.supplierId) : null,
-      ...(!farmRole ? {
-        operationScopeMode: form.scopeMode,
-        operationScopes: form.scopeMode === 'restricted' ? form.scopes : [],
-      } : {}),
-    });
-    if (problem) { setErrors({ email: problem }); return; }
-    push(`Invitation sent to ${form.email.trim()}. They join as ${assignedRole.name}.`);
-    setInviting(false);
+    setSendingInvite(true);
+    try {
+      const problem = await inviteMember({
+        name: form.name.trim(),
+        email: form.email,
+        role: form.role,
+        supplierId: farmRole ? (me?.supplierId ?? form.supplierId) : null,
+        ...(!farmRole ? {
+          operationScopeMode: form.scopeMode,
+          operationScopes: form.scopeMode === 'restricted' ? form.scopes : [],
+        } : {}),
+      });
+      if (problem) { setErrors({ email: problem }); return; }
+      push(`Invitation sent to ${form.email.trim()}. They join as ${assignedRole.name}.`);
+      setInviting(false);
+    } finally {
+      setSendingInvite(false);
+    }
   }
 
   async function saveEdit() {
@@ -443,7 +450,7 @@ function Team() {
         </Panel>
       </div>
 
-      <Modal open={inviting} onClose={() => setInviting(false)} title="Invite someone">
+      <Modal open={inviting} onClose={() => { if (!sendingInvite) setInviting(false); }} title="Invite someone">
         <div className="space-y-4">
           <Field label="Full name" error={errors.name}><Input value={form.name} onChange={set('name')} /></Field>
           <Field label="Email" error={errors.email} hint="They get a link to set up their sign in."><Input type="email" value={form.email} onChange={set('email')} /></Field>
@@ -481,7 +488,7 @@ function Team() {
               ))}
             </ul>
           </div>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => setInviting(false)}>Cancel</Button><Button onClick={send}>Send invitation</Button></div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" disabled={sendingInvite} onClick={() => setInviting(false)}>Cancel</Button><Button disabled={sendingInvite} onClick={() => { void send(); }}>{sendingInvite ? 'Sending…' : 'Send invitation'}</Button></div>
         </div>
       </Modal>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { userFacingMessage } from '@/lib/user-facing-error';
+import Image from 'next/image';
 import { Check, ImagePlus, Pencil, Plus, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
@@ -9,6 +10,7 @@ import { EmptyState } from '@/components/ui/Bits';
 import { Field, Input } from '@/components/ui/Fields';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Modal } from '@/components/ui/Modal';
+import { SmartImage } from '@/components/ui/SmartImage';
 import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { localDateTime } from '@/lib/format';
 import { useGlobalMarket } from '@/lib/global-market';
@@ -204,7 +206,7 @@ function SharedCatalog() {
         {
         method: editing === 'new' ? 'POST' : 'PATCH',
         body: JSON.stringify({
-          ...(editing === 'new' ? { name: form.name.trim() } : {}),
+          name: form.name.trim(),
           category: form.category,
           unit: form.unit,
           image_url: form.image_url,
@@ -216,7 +218,9 @@ function SharedCatalog() {
           price_approved: form.price_approved,
         }),
       });
-      push(editing === 'new' ? `${form.name.trim()} was added to the shared catalog.` : `${form.name.trim()} shared price was saved.`);
+      push(editing === 'new'
+        ? `${form.name.trim()} was added to the shared catalog.`
+        : `${form.name.trim()} shared product details and price were saved.`);
       setEditing(null);
       setForm(null);
       await reload();
@@ -261,7 +265,10 @@ function SharedCatalog() {
               return (
                 <div key={proposal.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line p-3.5 sm:gap-4 sm:p-4">
                   <div className="min-w-0 flex-1 basis-60">
-                    <p className="break-words font-extrabold">{product?.name ?? 'Catalog item'}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <SmartImage src={product?.image_url ?? ''} alt={product?.name ?? 'Product'} className="h-12 w-12 shrink-0 rounded-xl" />
+                      <p className="break-words font-extrabold">{product?.name ?? `Product unavailable · ${proposal.catalog_product_id.slice(0, 8)}`}</p>
+                    </div>
                     <p className="mt-1 text-sm text-ink-mute">
                       Proposed retail {formatPrice(proposal.retail_price)} · wholesale {formatPrice(proposal.wholesale_price)}
                     </p>
@@ -319,9 +326,12 @@ function SharedCatalog() {
             {visible.map((item) => (
               <li key={item.id} className="py-3.5 first:pt-1 last:pb-1">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="break-words font-bold">{item.name}</p>
-                    <p className="text-xs text-ink-mute">{item.category} · per {item.unit}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <SmartImage src={item.image_url ?? ''} alt={item.name} className="h-12 w-12 shrink-0 rounded-xl" />
+                    <div className="min-w-0">
+                      <p className="break-words font-bold">{item.name}</p>
+                      <p className="text-xs text-ink-mute">{item.category} · per {item.unit}</p>
+                    </div>
                   </div>
                   <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-extrabold ${item.price_approved ? 'bg-leaf-soft text-leaf-deep' : 'bg-sun-soft text-sun-deep'}`}>
                     {item.price_approved ? 'Approved' : 'Needs approval'}
@@ -354,8 +364,13 @@ function SharedCatalog() {
                 {visible.map((item) => (
                   <tr key={item.id} className="border-b border-line last:border-0">
                     <td className="px-3 py-3">
-                      <p className="font-bold">{item.name}</p>
-                      <p className="text-xs text-ink-mute">{item.category} · per {item.unit}</p>
+                      <div className="flex items-center gap-3">
+                        <SmartImage src={item.image_url ?? ''} alt={item.name} className="h-12 w-12 shrink-0 rounded-xl" />
+                        <div>
+                          <p className="font-bold">{item.name}</p>
+                          <p className="text-xs text-ink-mute">{item.category} · per {item.unit}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-3 py-3 font-semibold">{formatPrice(item.retail_price)}</td>
                     <td className="px-3 py-3 font-semibold">{formatPrice(item.wholesale_price)}</td>
@@ -398,7 +413,7 @@ function SharedCatalog() {
             <div className="rounded-2xl border border-line p-4">
               <div className="flex flex-wrap items-center gap-4">
                 {form.image_url && (
-                  <img src={form.image_url} alt={`${form.name || 'Product'} preview`} className="h-20 w-20 rounded-xl object-cover" />
+                  <Image src={form.image_url} alt={`${form.name || 'Product'} preview`} width={80} height={80} unoptimized className="h-20 w-20 rounded-xl object-cover" />
                 )}
                 <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-leaf-soft px-4 py-2 font-bold text-leaf-deep hover:bg-leaf-soft/80">
                   <ImagePlus size={18} />
