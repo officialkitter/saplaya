@@ -72,9 +72,9 @@ function Phone({
             <p className="mt-4 rounded-2xl bg-white p-4 text-center text-sm font-bold text-ink-mute">Fresh listings will appear here when farms add stock.</p>
           ) : (
             <div className="mt-3 grid grid-cols-2 gap-2.5">
-              {products.map((it) => (
+              {products.map((it, index) => (
                 <div key={it.id} className="overflow-hidden rounded-2xl bg-white shadow-soft">
-                  <SmartImage src={it.image_url ?? undefined} alt={it.name} className="aspect-square w-full text-3xl" />
+                  <SmartImage src={it.image_url ?? undefined} alt={it.name} sizes="128px" priority={index === 0} className="aspect-square w-full text-3xl" />
                   <div className="p-2.5">
                     <p className="line-clamp-2 min-h-[2.4em] break-words text-[13px] font-bold leading-[1.2]" title={it.name}>{it.name}</p>
                     <div className="min-h-5">

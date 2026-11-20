@@ -1,8 +1,9 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/format';
+import { productPhotoUrl } from '@/lib/images';
 
 const TILES = [
   'from-[#FFE0B2] to-[#FFCC80]',
@@ -14,12 +15,19 @@ const TILES = [
 
 /** A photo that quietly turns into a coloured emoji tile if the picture can't load. */
 export function SmartImage({
-  src, alt, emoji = '🥬', className, imgClassName, sizes = '(max-width: 640px) 50vw, 256px',
-}: { src?: string; alt: string; emoji?: string; className?: string; imgClassName?: string; sizes?: string }) {
+  src, alt, emoji = '🥬', className, imgClassName, sizes = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px', priority = false,
+}: { src?: string; alt: string; emoji?: string; className?: string; imgClassName?: string; sizes?: string; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const tile = TILES[(alt.length + emoji.length) % TILES.length];
+  const imageSrc = src || productPhotoUrl(alt);
 
-  if (!src || failed) {
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [imageSrc]);
+
+  if (failed) {
     return (
       <div
         role="img"
@@ -32,15 +40,21 @@ export function SmartImage({
   }
   return (
     <div className={cn('relative overflow-hidden bg-line', className)}>
+      {!loaded && (
+        <div aria-hidden className={cn('absolute inset-0 grid place-items-center bg-gradient-to-br', tile)}>
+          <span className="select-none text-[2.2em] leading-none">{emoji}</span>
+        </div>
+      )}
       <Image
-        src={src}
+        src={imageSrc}
         alt={alt}
         fill
         sizes={sizes}
-        unoptimized
+        priority={priority}
         referrerPolicy="no-referrer"
+        onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
-        className={cn('h-full w-full object-cover', imgClassName)}
+        className={cn('h-full w-full object-cover transition-opacity duration-200', loaded ? 'opacity-100' : 'opacity-0', imgClassName)}
       />
     </div>
   );

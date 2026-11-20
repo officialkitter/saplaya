@@ -2,7 +2,7 @@
 
 import { userFacingMessage } from '@/lib/user-facing-error';
 import Image from 'next/image';
-import { Check, ImagePlus, Pencil, Plus, Search, X } from 'lucide-react';
+import { Check, ImagePlus, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
@@ -76,6 +76,7 @@ function SharedCatalog() {
   const [approvalFilter, setApprovalFilter] = useState<'pending' | 'approved'>('pending');
   const [editing, setEditing] = useState<CatalogItem | 'new' | null>(null);
   const [form, setForm] = useState<Form | null>(null);
+  const [removing, setRemoving] = useState<CatalogItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -247,6 +248,21 @@ function SharedCatalog() {
     }
   };
 
+  const removeApprovedProduct = async () => {
+    if (!removing) return;
+    setSaving(true);
+    try {
+      await fetchAdmin(`/admin/catalog/${encodeURIComponent(removing.id)}`, { method: 'DELETE' });
+      push(`${removing.name} was removed from approved products. Farm listings and records were kept.`);
+      setRemoving(null);
+      await reload();
+    } catch (error) {
+      push(userFacingMessage(error, 'Could not remove this approved product.'), 'bad');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -343,7 +359,10 @@ function SharedCatalog() {
                   {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Bulk</dt><dd className="font-semibold tabular-nums">{item.bulk_price == null ? 'Not set' : formatPrice(item.bulk_price)}</dd></div>}
                   {canViewTierPricing && <div className="min-w-0"><dt className="text-xs text-ink-mute">Mega-bulk</dt><dd className="font-semibold tabular-nums">{item.mega_bulk_price == null ? 'Not set' : formatPrice(item.mega_bulk_price)}</dd></div>}
                 </dl>
-                <Button variant="soft" size="sm" className="mt-2.5 w-full" onClick={() => startEdit(item)} icon={<Pencil size={16} />}>Edit</Button>
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <Button variant="soft" size="sm" className="w-full" onClick={() => startEdit(item)} icon={<Pencil size={16} />}>Edit</Button>
+                  {item.price_approved && <Button variant="danger" size="sm" className="w-full" disabled={saving} onClick={() => setRemoving(item)} icon={<Trash2 size={16} />}>Remove</Button>}
+                </div>
               </li>
             ))}
           </ul>
@@ -382,7 +401,10 @@ function SharedCatalog() {
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <Button variant="soft" onClick={() => startEdit(item)} icon={<Pencil size={16} />}>Edit</Button>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="soft" onClick={() => startEdit(item)} icon={<Pencil size={16} />}>Edit</Button>
+                        {item.price_approved && <Button variant="danger" disabled={saving} onClick={() => setRemoving(item)} icon={<Trash2 size={16} />}>Remove</Button>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -396,7 +418,9 @@ function SharedCatalog() {
       <Modal open={!!editing && !!form} onClose={() => { setEditing(null); setForm(null); }} title={editing === 'new' ? 'Add catalog product' : editing ? `Edit ${editing.name}` : 'Catalog product'}>
         {form && (
           <div className="space-y-4">
-            <Field label="Product name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Enter the product name" /></Field>
+            <Field label="Product name" hint={editing && editing !== 'new' && editing.price_approved ? 'This name is shared with every linked farm listing.' : undefined}>
+              <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Enter the product name" />
+            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Category"><Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></Field>
               <Field label="Unit"><Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} /></Field>
@@ -441,6 +465,21 @@ function SharedCatalog() {
             <div className="flex justify-end gap-2">
               <Button variant="soft" onClick={() => { setEditing(null); setForm(null); }}>Cancel</Button>
               <Button disabled={saving || uploadingPhoto || !pricingPolicyReady} onClick={() => void save()}>{saving ? 'Saving…' : editing === 'new' ? 'Add product' : 'Save shared price'}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <Modal open={removing !== null} onClose={() => { if (!saving) setRemoving(null); }} title="Remove approved product?">
+        {removing && (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-soft">
+              <b className="text-ink">{removing.name}</b> will no longer appear in the approved catalog or customer shop. Farm listings and past records are retained; you can approve the product again later.
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="ghost" disabled={saving} onClick={() => setRemoving(null)}>Cancel</Button>
+              <Button variant="danger" icon={<Trash2 size={17} />} disabled={saving} onClick={() => { void removeApprovedProduct(); }}>
+                {saving ? 'Removing…' : 'Remove from approved'}
+              </Button>
             </div>
           </div>
         )}

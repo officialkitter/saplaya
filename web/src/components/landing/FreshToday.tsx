@@ -50,6 +50,7 @@ function ProductCard({ product, fresh, compact, fillRow, onAdded }: {
         <SmartImage
           src={product.image_url ?? undefined}
           alt={product.name}
+          sizes="(max-width: 399px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 50vw, 33vw"
           className="absolute inset-0 text-6xl"
           imgClassName="motion-safe:transition motion-safe:duration-700 motion-safe:group-hover:scale-105"
         />

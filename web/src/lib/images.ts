@@ -27,3 +27,29 @@ export const PHOTOS = {
 
 export type PhotoKey = keyof typeof PHOTOS;
 export const photoUrl = (k: PhotoKey, w = 800) => photo(PHOTOS[k], w);
+
+const PRODUCT_PHOTOS: readonly [RegExp, PhotoKey][] = [
+  [/\btomato(?:es)?\b/i, 'tomato'],
+  [/\bcarrot(?:s)?\b/i, 'carrot'],
+  [/\bspinach\b/i, 'spinach'],
+  [/\bbanana(?:s)?\b/i, 'banana'],
+  [/\bonion(?:s)?\b/i, 'onion'],
+  [/\borange(?:s)?\b/i, 'orange'],
+  [/\bpepper(?:s)?\b/i, 'pepper'],
+  [/\bmango(?:es)?\b/i, 'mango'],
+  [/\bavocado(?:es)?\b/i, 'avocado'],
+  [/\bpineapple(?:s)?\b/i, 'pineapple'],
+  [/\bpotato(?:es)?\b/i, 'potato'],
+  [/\bcabbage\b/i, 'cabbage'],
+  [/\bcucumber(?:s)?\b/i, 'cucumber'],
+  [/\bwatermelon(?:s)?\b/i, 'watermelon'],
+  [/\b(?:maize|corn)\b/i, 'maize'],
+  [/\bstrawberr(?:y|ies)\b/i, 'strawberry'],
+  [/\bkale\b/i, 'kale'],
+  [/\bgarlic\b/i, 'garlic'],
+];
+
+export function productPhotoUrl(name: string, width = 1200): string {
+  const photoKey = PRODUCT_PHOTOS.find(([pattern]) => pattern.test(name))?.[1] ?? 'box';
+  return photoUrl(photoKey, width);
+}

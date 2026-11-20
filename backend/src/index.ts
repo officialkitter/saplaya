@@ -2824,6 +2824,23 @@ app.patch('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: Authe
   });
 });
 
+app.delete('/admin/catalog/:id', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid catalog product ID.' });
+
+  const { data, error } = await db.from('catalog_products')
+    .update({ price_approved: false })
+    .eq('id', id.data)
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    console.error('Could not remove a product from the approved catalog:', error.message);
+    return res.status(500).json({ error: 'Could not remove this approved product.' });
+  }
+  if (!data) return res.status(404).json({ error: 'Catalog product not found.' });
+  return res.json({ id: data.id, removed: true });
+});
+
 app.post('/admin/catalog-proposals/:id/review', requirePerm('catalog.manage'), async (req: AuthedRequest, res: Response) => {
   const id = z.string().uuid().safeParse(req.params.id);
   const parsed = z.object({ approve: z.boolean() }).safeParse(req.body);
