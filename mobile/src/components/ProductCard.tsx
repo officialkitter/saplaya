@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -10,6 +9,7 @@ import { colors, glass, radius, shadow, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 import { quickAddQuantity } from '../lib/volume';
 import { useFly } from '../store/FlyContext';
+import ProductImage from './ProductImage';
 
 export default function ProductCard({ product, index, wide, onPress }: { product: Product; index: number; wide?: boolean; onPress: () => void }) {
   const [revealed, setRevealed] = useState(false);
@@ -37,13 +37,13 @@ export default function ProductCard({ product, index, wide, onPress }: { product
           accessibilityState={{ expanded: revealed }}
           style={({ pressed }) => pressed && !reduceMotion ? { transform: [{ scale: 0.98 }] } : undefined}
         >
-          {product.image_url ? (
-            <Image source={{ uri: product.image_url }} style={[styles.img, wide && styles.wideImage]} contentFit="cover" transition={reduceMotion ? 0 : 250} />
-          ) : (
-            <View style={[styles.img, wide && styles.wideImage, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
-              <Ionicons name="leaf-outline" size={42} color={tierTheme.icon} />
-            </View>
-          )}
+          <ProductImage
+            uri={product.image_url}
+            name={product.name}
+            style={[styles.img, wide && styles.wideImage]}
+            fallbackColor={tierTheme.soft}
+            iconColor={tierTheme.icon}
+          />
         </Pressable>
         {revealed && (
           <MotiView
@@ -94,7 +94,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden' },
   img: { width: '100%', aspectRatio: 1, backgroundColor: colors.line },
   wideImage: { aspectRatio: 2 },
-  imageFallback: { alignItems: 'center', justifyContent: 'center' },
   body: { ...glass, padding: 12 },
   name: { fontSize: 16, fontWeight: '700', color: colors.ink },
   description: { marginTop: 3, fontSize: 12, color: colors.muted },

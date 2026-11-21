@@ -21,6 +21,7 @@ export function SmartImage({
   const [loaded, setLoaded] = useState(false);
   const tile = TILES[(alt.length + emoji.length) % TILES.length];
   const imageSrc = src || productPhotoUrl(alt);
+  const isAbsolutelyPositioned = className?.split(/\s+/).includes('absolute') ?? false;
 
   useEffect(() => {
     setFailed(false);
@@ -39,7 +40,7 @@ export function SmartImage({
     );
   }
   return (
-    <div className={cn('relative overflow-hidden bg-line', className)}>
+    <div className={cn(isAbsolutelyPositioned ? 'overflow-hidden bg-line' : 'relative overflow-hidden bg-line', className)}>
       {!loaded && (
         <div aria-hidden className={cn('absolute inset-0 grid place-items-center bg-gradient-to-br', tile)}>
           <span className="select-none text-[2.2em] leading-none">{emoji}</span>

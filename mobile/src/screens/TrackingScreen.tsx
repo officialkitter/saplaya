@@ -26,6 +26,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, OrderStatus, radius, statusColor, statusLabel, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
+import ProductImage from '../components/ProductImage';
 
 const ONGOING_STATUSES = new Set<OrderStatus>(['pending', 'packing', 'en_route']);
 
@@ -481,9 +482,14 @@ function OrderLine({ item }: Readonly<{ item: OrderItem }>) {
   const theme = volumeTheme(mode);
   return (
     <View style={styles.itemRow}>
-      {item.products?.image_url
-        ? <Image source={{ uri: item.products.image_url }} style={styles.itemImage} resizeMode="cover" />
-        : <View style={[styles.itemImage, styles.itemImageFallback, { backgroundColor: theme.soft }]}><Ionicons name="basket-outline" size={20} color={theme.icon} /></View>}
+      <ProductImage
+        uri={item.products?.image_url}
+        name={item.products?.name ?? 'Fresh produce'}
+        style={styles.itemImage}
+        fallbackColor={theme.soft}
+        iconColor={theme.icon}
+        iconSize={20}
+      />
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.products?.name ?? 'Fresh item'}</Text>
         <Text style={styles.itemMeta}>
@@ -560,7 +566,6 @@ const styles = StyleSheet.create({
   modeText: { color: colors.green, fontSize: 11, fontWeight: '900', textTransform: 'capitalize' },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.line },
   itemImage: { width: 58, height: 58, borderRadius: radius.sm, backgroundColor: colors.line },
-  itemImageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF7EC' },
   itemInfo: { flex: 1 },
   itemName: { color: colors.ink, fontSize: 14, fontWeight: '800' },
   itemMeta: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 4 },

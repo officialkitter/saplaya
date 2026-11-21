@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -12,6 +11,7 @@ import { Product } from '../types';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
 import { unlockedVolumeTier } from '../lib/volume';
+import ProductImage from '../components/ProductImage';
 
 const H = Dimensions.get('window').height;
 
@@ -58,13 +58,14 @@ export default function ProductDetailScreen({ route, navigation }: any) {
     <View style={[styles.root, { backgroundColor: tierTheme.background }]}>
       {/* Product photo */}
       <View style={styles.hero}>
-        {product.image_url ? (
-          <Image source={{ uri: product.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, styles.imageFallback, { backgroundColor: tierTheme.soft }]}>
-            <MaterialCommunityIcons name="food-apple-outline" size={68} color={tierTheme.icon} />
-          </View>
-        )}
+        <ProductImage
+          uri={product.image_url}
+          name={product.name}
+          style={StyleSheet.absoluteFill}
+          fallbackColor={tierTheme.soft}
+          iconColor={tierTheme.icon}
+          iconSize={68}
+        />
         <Pressable onPress={() => navigation.goBack()} style={[styles.back, { top: insets.top + 8 }]} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={24} color={colors.ink} />
         </Pressable>
@@ -161,7 +162,6 @@ export default function ProductDetailScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
   hero: { height: '54%', backgroundColor: colors.line },
-  imageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5E9' },
   back: { position: 'absolute', left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%', backgroundColor: colors.white, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 20, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, elevation: 12 },
   badge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },

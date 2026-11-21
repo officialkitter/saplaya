@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/StoreContext';
@@ -10,6 +9,7 @@ import { unlockedVolumeTier, volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
 import type { CartLine } from '../types';
+import ProductImage from '../components/ProductImage';
 
 export default function CartScreen({ navigation }: any) {
   const { lines, setQty, subtotal, priceOf, tierOf, mode, baseMode } = useStore();
@@ -61,13 +61,14 @@ export default function CartScreen({ navigation }: any) {
         contentContainerStyle={{ padding: 20, paddingBottom: 160 }}
         renderItem={({ item }) => (
           <View style={[styles.line, shadow, { borderColor: tierTheme.accent + '55' }]}>
-            {item.product.image_url ? (
-              <Image source={{ uri: item.product.image_url }} style={styles.thumb} contentFit="cover" />
-            ) : (
-              <View style={[styles.thumb, styles.imageFallback]}>
-                <Ionicons name="leaf-outline" size={22} color={tierTheme.icon} />
-              </View>
-            )}
+            <ProductImage
+              uri={item.product.image_url}
+              name={item.product.name}
+              style={styles.thumb}
+              fallbackColor={tierTheme.soft}
+              iconColor={tierTheme.icon}
+              iconSize={22}
+            />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.name} numberOfLines={1}>{item.product.name}</Text>
               <Text style={[styles.price, { color: tierTheme.accent }]}>
@@ -163,7 +164,6 @@ const styles = StyleSheet.create({
   h1: { fontSize: 30, fontWeight: '900', color: colors.green, marginHorizontal: 20, marginTop: 8 },
   line: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.md, padding: 10, marginBottom: 12 },
   thumb: { width: 84, height: 84, borderRadius: radius.sm, backgroundColor: colors.line },
-  imageFallback: { alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 17, fontWeight: '800', color: colors.ink },
   price: { fontSize: 16, fontWeight: '800', color: colors.green, marginTop: 2 },
   tierLabel: { color: colors.green, fontWeight: '800', fontSize: 12, marginTop: 3 },

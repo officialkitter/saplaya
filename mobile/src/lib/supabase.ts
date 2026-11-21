@@ -3,14 +3,14 @@ import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import { authStorage } from './auth-storage';
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://saplaya-backend.up.railway.app';
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const publishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
 const storageKey = process.env.EXPO_PUBLIC_SUPABASE_AUTH_STORAGE_KEY;
 
-if (!url || !publishableKey || !API_URL) {
+if (!url || !publishableKey) {
   throw new Error(
-    'Set EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, and EXPO_PUBLIC_API_URL.',
+    'Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.',
   );
 }
 
