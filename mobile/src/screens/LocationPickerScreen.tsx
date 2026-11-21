@@ -8,7 +8,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, volumeTheme } from '../theme';
+import { colors, glass, glassElevated, glassSoft, radius, volumeTheme } from '../theme';
 import { API_URL } from '../lib/supabase';
 
 type SearchPlace = { id: string; label: string; lat: number; lng: number; partial_match: boolean };
@@ -80,9 +80,11 @@ export default function LocationPickerScreen({ navigation }: any) {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       <ScreenHeader title="Delivery location" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <MotiView from={{ opacity: 0, translateY: 8 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 220 }}>
+        <MotiView from={{ opacity: 0, translateY: 12 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 260 }}>
+          <View style={[styles.locationSheet, glassElevated]}>
+          <Text style={styles.sheetHandle} />
           <Text style={styles.intro}>Choose where you’d like your fresh order delivered.</Text>
-          <Pressable style={[styles.gps, { backgroundColor: theme.soft }]} onPress={locate} disabled={busy}>
+          <Pressable style={[styles.gps, glassSoft, { backgroundColor: 'rgba(255,255,255,0.78)' }]} onPress={locate} disabled={busy}>
             <View style={styles.gpsIcon}><Ionicons name="locate" size={22} color={theme.icon} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.itemTitle}>{busy ? 'Finding your location…' : 'Use my current location'}</Text>
@@ -97,7 +99,7 @@ export default function LocationPickerScreen({ navigation }: any) {
               {addresses.map((address) => (
                 <Pressable
                   key={address.id}
-                  style={styles.savedRow}
+                  style={[styles.savedRow, glass]}
                   onPress={() => choose({ lat: address.lat, lng: address.lng, label: address.address, approximate: false })}
                 >
                   <Ionicons name={address.isDefault ? 'checkmark-circle' : 'location-outline'} size={21} color={theme.icon} />
@@ -111,8 +113,10 @@ export default function LocationPickerScreen({ navigation }: any) {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>Search for a delivery address</Text>
-          <TextInput
+          <Text style={styles.sectionTitle}>Where should we deliver?</Text>
+          <View style={[styles.searchBox, glass]}>
+            <Ionicons name="search" size={20} color={theme.icon} />
+            <TextInput
             value={label}
             onChangeText={(text) => {
               generation.current += 1;
@@ -127,28 +131,34 @@ export default function LocationPickerScreen({ navigation }: any) {
             style={styles.input}
             returnKeyType="search"
             onSubmitEditing={() => void search()}
-          />
+            />
+            {label.length > 0 && (
+              <Pressable onPress={() => setLabel('')} accessibilityRole="button" accessibilityLabel="Clear address search">
+                <Ionicons name="close-circle" size={20} color={colors.muted} />
+              </Pressable>
+            )}
+          </View>
           <Text style={styles.note}>
             Order for yourself or someone else. Select a matching address and confirm its map location; delivery fees are recalculated for that destination.
           </Text>
-          <Pressable accessibilityRole="button" disabled={searching} style={[styles.button, { backgroundColor: theme.button }]} onPress={() => void search()}>
+          <Pressable accessibilityRole="button" disabled={searching} style={[styles.button, glassElevated, { backgroundColor: theme.button }]} onPress={() => void search()}>
             <Text style={[styles.buttonText, { color: theme.buttonText }]}>{searching ? 'Searching…' : 'Find address'}</Text>
           </Pressable>
           {error ? <Text accessibilityRole="alert" style={styles.note}>{error}</Text> : null}
           {results.map((result) => (
-            <Pressable key={result.id} accessibilityRole="radio" accessibilityState={{ checked: selected?.id === result.id }} style={[styles.savedRow, { marginTop: 10 }]} onPress={() => setSelected(result)}>
+            <Pressable key={result.id} accessibilityRole="radio" accessibilityState={{ checked: selected?.id === result.id }} style={[styles.savedRow, glass, { marginTop: 10 }]} onPress={() => setSelected(result)}>
               <Ionicons name={selected?.id === result.id ? 'radio-button-on' : 'radio-button-off'} size={22} color={theme.icon} />
               <Text style={[styles.itemTitle, { flex: 1 }]}>{result.label}{result.partial_match ? '\nPartial match — check the map carefully.' : ''}</Text>
             </Pressable>
           ))}
           {selected && (
             <>
-              <Pressable accessibilityRole="link" style={styles.button} onPress={() => {
+              <Pressable accessibilityRole="link" style={[styles.button, glass, styles.secondaryButton]} onPress={() => {
                 void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}&query_place_id=${encodeURIComponent(selected.id)}`).catch((cause) => {
                   Alert.alert('Could not open map', userFacingMessage(cause, 'Please try again.'));
                 });
-              }}><Text style={styles.buttonText}>Check destination on Google Maps</Text></Pressable>
-              <Pressable accessibilityRole="button" disabled={busy} style={[styles.button, { backgroundColor: theme.button }]} onPress={async () => {
+              }}><Text style={[styles.buttonText, { color: theme.accent }]}>Check destination on Google Maps</Text></Pressable>
+              <Pressable accessibilityRole="button" disabled={busy} style={[styles.button, glassElevated, { backgroundColor: theme.button }]} onPress={async () => {
                 setBusy(true);
                 await choose({ lat: selected.lat, lng: selected.lng, label: selected.label, approximate: false });
                 setBusy(false);
@@ -156,6 +166,7 @@ export default function LocationPickerScreen({ navigation }: any) {
             </>
           )}
           <Text style={styles.note}>Address results by Google Maps</Text>
+          </View>
         </MotiView>
       </ScrollView>
     </SafeAreaView>
@@ -164,15 +175,19 @@ export default function LocationPickerScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
-  content: { padding: 20, paddingBottom: 36 },
+  content: { padding: 14, paddingBottom: 36 },
+  locationSheet: { borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.88)', backgroundColor: 'rgba(249,251,247,0.82)', padding: 16, shadowColor: '#1B4D22', shadowOpacity: 0.12, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
+  sheetHandle: { alignSelf: 'center', width: 42, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 12 },
   intro: { color: colors.muted, fontSize: 15, lineHeight: 22, marginBottom: 18 },
-  gps: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15, backgroundColor: '#EFF7EC', borderRadius: radius.md },
+  gps: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15, backgroundColor: '#EFF7EC', borderRadius: radius.lg },
   gpsIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { marginTop: 24, marginBottom: 10, color: colors.ink, fontSize: 14, fontWeight: '900' },
-  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, paddingHorizontal: 13, marginBottom: 9, borderRadius: radius.md, backgroundColor: colors.white },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, paddingHorizontal: 13, marginBottom: 9, borderRadius: radius.lg, backgroundColor: colors.white },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingHorizontal: 14, borderRadius: radius.lg, backgroundColor: colors.white },
+  secondaryButton: { backgroundColor: 'rgba(255,255,255,0.88)', borderWidth: 1, borderColor: colors.line },
   itemTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   subtitle: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  input: { minHeight: 52, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, color: colors.ink, fontSize: 15 },
+  input: { flex: 1, minHeight: 52, color: colors.ink, fontSize: 15 },
   note: { marginTop: 9, color: colors.muted, fontSize: 12, lineHeight: 18 },
   button: { height: 54, marginTop: 17, borderRadius: radius.md, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
   buttonText: { color: colors.white, fontWeight: '900', fontSize: 16 },

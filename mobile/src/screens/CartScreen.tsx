@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { View as MotiView } from 'moti/build/components/view';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow, volumeTheme } from '../theme';
+import { colors, glassElevated, radius, shadow, volumeTheme } from '../theme';
 import { unlockedVolumeTier, volumeTierLabel } from '../lib/volume';
 import { useCurrency } from '../lib/currency';
 import CelebrationModal from '../components/CelebrationModal';
@@ -60,7 +60,7 @@ export default function CartScreen({ navigation }: any) {
         keyExtractor={(l) => l.product.id}
         contentContainerStyle={{ padding: 20, paddingBottom: 160 }}
         renderItem={({ item }) => (
-          <View style={[styles.line, shadow, { borderColor: tierTheme.accent + '55' }]}>
+          <View style={[styles.line, glassElevated, { borderColor: tierTheme.accent + '55', backgroundColor: 'rgba(255,255,255,0.88)' }]}>
             <ProductImage
               uri={item.product.image_url}
               name={item.product.name}
@@ -90,13 +90,13 @@ export default function CartScreen({ navigation }: any) {
           </View>
         )}
         ListFooterComponent={
-          <View style={styles.summary}>
+          <View style={[styles.summary, glassElevated]}>
             <Row label="Estimated items" value={subtotal === null ? 'Confirmed at checkout' : formatPrice(subtotal)} />
             <Text style={styles.dist}>Farm availability, delivery distance and fees are confirmed at checkout.</Text>
           </View>
         }
       />
-      <View style={styles.bar}>
+      <View style={[styles.bar, glassElevated]}>
         <View style={styles.totalBlock}>
           <Text style={styles.totalLabel}>Estimate</Text>
           <Text style={[styles.total, { color: tierTheme.accent }]}>{subtotal === null ? 'At checkout' : formatPrice(subtotal)}</Text>

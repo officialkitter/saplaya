@@ -3,7 +3,7 @@ import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useCurrency } from '../lib/currency';
-import { colors, radius } from '../theme';
+import { colors, glass, glassElevated, radius } from '../theme';
 
 export default function CurrencySelector() {
   const { currency, currencies, setCurrency } = useCurrency();
@@ -39,13 +39,13 @@ export default function CurrencySelector() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.white },
-  trigger: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, borderRadius: radius.md, backgroundColor: colors.white },
+  trigger: { ...glassElevated, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.86)' },
   code: { color: colors.green, fontWeight: '900', fontSize: 12 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
   title: { color: colors.ink, fontWeight: '900', fontSize: 22 },
-  close: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
-  search: { marginHorizontal: 20, marginBottom: 12, padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, color: colors.ink },
-  row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
+  close: { ...glass, minHeight: 44, minWidth: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  search: { ...glassElevated, marginHorizontal: 20, marginBottom: 12, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', color: colors.ink, backgroundColor: 'rgba(255,255,255,0.86)' },
+  row: { ...glass, minHeight: 56, flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 12, gap: 12, borderRadius: radius.lg, borderBottomWidth: 0 },
   name: { flex: 1, color: colors.ink, fontWeight: '600', fontSize: 16 },
   empty: { padding: 20, color: colors.muted },
 });

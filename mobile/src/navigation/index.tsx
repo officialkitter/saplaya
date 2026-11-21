@@ -14,7 +14,7 @@ import LocationPickerScreen from '../screens/LocationPickerScreen';
 import CheckoutScreen from '../screens/CheckoutScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import CartTabIcon from '../components/CartTabIcon';
-import { colors, volumeTheme } from '../theme';
+import { colors, glassElevated, volumeTheme } from '../theme';
 import { useStore } from '../store/StoreContext';
 
 const Tab = createBottomTabNavigator();
@@ -71,7 +71,21 @@ function Tabs() {
         tabBarActiveTintColor: tierTheme.accent,
         tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontWeight: '700', fontSize: 12 },
-        tabBarStyle: { height: 66, paddingTop: 6, backgroundColor: colors.white, borderTopColor: colors.line },
+        tabBarStyle: {
+          ...glassElevated,
+          position: 'absolute',
+          left: 10,
+          right: 10,
+          bottom: 10,
+          height: 66,
+          paddingTop: 6,
+          borderRadius: 24,
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(255,255,255,0.92)',
+          borderLeftWidth: 1,
+          borderRightWidth: 1,
+          borderBottomWidth: 1,
+        },
       }}
     >
       <Tab.Screen

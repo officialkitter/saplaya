@@ -12,7 +12,7 @@ import { ModeBackdrop, ModeToggle } from '../components/ModeToggle';
 import PromoSlider from '../components/PromoSlider';
 import ProductCard from '../components/ProductCard';
 import { useStore } from '../store/StoreContext';
-import { colors, glass, volumeTheme } from '../theme';
+import { colors, glass, glassElevated, volumeTheme } from '../theme';
 import { Product, Promo } from '../types';
 import { useCurrency } from '../lib/currency';
 import CurrencySelector from '../components/CurrencySelector';
@@ -217,7 +217,7 @@ export default function HomeScreen({ navigation }: any) {
     <View>
       {/* Delivery location with van icon */}
       <View style={styles.topBar}>
-        <Pressable style={styles.loc} onPress={() => navigateToRoot('LocationPicker')} accessibilityRole="button" accessibilityLabel={`Change delivery location, currently ${place.label}`}>
+        <Pressable style={[styles.loc, glassElevated]} onPress={() => navigateToRoot('LocationPicker')} accessibilityRole="button" accessibilityLabel={`Change delivery location, currently ${place.label}`}>
           <MotiView
             from={{ translateX: -8 }}
             animate={{ translateX: 0 }}
@@ -255,7 +255,7 @@ export default function HomeScreen({ navigation }: any) {
       <Text style={[styles.section, { color: tierTheme.accent }]}>Shop by category</Text>
       <Text style={styles.intro}>Find farm produce and pantry essentials for your home or business, all in one place.</Text>
       <View style={styles.searchPanel}>
-        <View style={[styles.searchBar, { borderColor: tierTheme.button, backgroundColor: tierTheme.surface }]}>
+        <View style={[styles.searchBar, glassElevated, { borderColor: 'rgba(255,255,255,0.92)', backgroundColor: 'rgba(255,255,255,0.82)' }]}>
           <Ionicons name="search" size={20} color={tierTheme.icon} />
           <TextInput value={query} onChangeText={setQuery} maxLength={100} placeholder="Search products" accessibilityLabel="Search products" style={styles.searchInput} returnKeyType="search" />
           {query ? <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search"><Ionicons name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
@@ -352,7 +352,7 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 8 },
-  loc: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingLeft: 6, gap: 12 },
+  loc: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingLeft: 8, paddingRight: 10, gap: 10, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', backgroundColor: 'rgba(255,255,255,0.82)' },
   van: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
   accountButton: { ...glass, width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   currencyButton: { ...glass, minWidth: 52, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },

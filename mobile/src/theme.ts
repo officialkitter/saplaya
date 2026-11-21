@@ -50,9 +50,34 @@ export const statusLabel: Record<OrderStatus, string> = {
 export const radius = { sm: 10, md: 16, lg: 24, xl: 32 };
 
 export const glass = {
-  backgroundColor: 'rgba(255,255,255,0.94)',
+  backgroundColor: 'rgba(255,255,255,0.86)',
   borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.85)',
+  borderColor: 'rgba(255,255,255,0.92)',
+  shadowColor: '#1B4D22',
+  shadowOpacity: 0.10,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 6,
+};
+
+export const glassElevated = {
+  ...glass,
+  backgroundColor: 'rgba(255,255,255,0.92)',
+  shadowOpacity: 0.14,
+  shadowRadius: 22,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 8,
+};
+
+export const glassSoft = {
+  backgroundColor: 'rgba(255,255,255,0.72)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.82)',
+  shadowColor: '#1B4D22',
+  shadowOpacity: 0.06,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 5 },
+  elevation: 3,
 };
 
 export const shadow = {

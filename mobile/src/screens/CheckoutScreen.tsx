@@ -14,7 +14,7 @@ import { ApiRequestError, CheckoutQuote, confirmPayment, CustomerOrder, Delivery
 import { useDeliveryActions, useDeliveryPlace } from '../lib/location';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, shadow, volumeTheme } from '../theme';
+import { colors, glass, glassElevated, glassSoft, radius, shadow, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 import CurrencySelector from '../components/CurrencySelector';
 import { verifyAfterPaymentBrowser } from '../lib/payment-confirmation';
@@ -484,7 +484,7 @@ export default function CheckoutScreen({ navigation }: any) {
             </View>
           )}
 
-          <View style={styles.deliveryCard}>
+          <View style={[styles.deliveryCard, glassElevated]}>
             <View style={styles.deliveryTop}>
               <View style={[styles.pin, { backgroundColor: tierTheme.soft }]}><Ionicons name="location" size={20} color={tierTheme.icon} /></View>
               <View style={{ flex: 1 }}>
@@ -572,7 +572,7 @@ export default function CheckoutScreen({ navigation }: any) {
               </View>
             );
           })}
-          <View style={styles.totalCard}>
+          <View style={[styles.totalCard, glassElevated]}>
             <SummaryRow label="Items" value={payment ? formatTZS(payment.subtotal) : quote ? formatTZS(quote.subtotal) : 'Awaiting quote'} />
             <SummaryRow
               label={`Distance-based delivery · ${km === undefined ? 'pending' : `${km.toFixed(1)} km`}`}
@@ -753,15 +753,15 @@ const styles = StyleSheet.create({
   subheading: { marginBottom: 16, color: colors.muted, fontSize: 14, lineHeight: 20 },
   field: { marginBottom: 13 },
   label: { marginBottom: 6, color: colors.ink, fontSize: 13, fontWeight: '800' },
-  input: { minHeight: 51, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, color: colors.ink, fontSize: 15 },
+  input: { minHeight: 51, paddingHorizontal: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', borderRadius: radius.lg, backgroundColor: 'rgba(255,255,255,0.82)', color: colors.ink, fontSize: 15, shadowColor: '#1B4D22', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   deliveryCard: { marginVertical: 10, padding: 15, borderRadius: radius.md, backgroundColor: colors.white, ...shadow },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 13 },
-  choiceCard: { flexGrow: 1, flexBasis: '42%', minWidth: 130, minHeight: 102, padding: 13, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.white, alignItems: 'flex-start', justifyContent: 'center', gap: 5 },
+  choiceCard: { flexGrow: 1, flexBasis: '42%', minWidth: 130, minHeight: 102, padding: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', borderRadius: radius.lg, backgroundColor: 'rgba(255,255,255,0.78)', alignItems: 'flex-start', justifyContent: 'center', gap: 5, shadowColor: '#1B4D22', shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   choiceSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },
   choiceTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   choiceHint: { color: colors.muted, fontSize: 11, lineHeight: 15 },
   warning: { color: '#A15C00', fontWeight: '700', marginBottom: 12 },
-  acceptDelivery: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginBottom: 8 },
+  acceptDelivery: { ...glassSoft, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 10, borderRadius: radius.lg },
   savedMethods: { marginBottom: 10, padding: 13, borderRadius: radius.md, backgroundColor: colors.white },
   savedMethod: { minHeight: 54, marginTop: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, flexDirection: 'row', alignItems: 'center', gap: 10 },
   savedMethodSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },

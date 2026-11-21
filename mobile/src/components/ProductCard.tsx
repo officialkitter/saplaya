@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useReducedMotion } from 'react-native-reanimated';
 import { Product } from '../types';
 import { useStore } from '../store/StoreContext';
-import { colors, glass, radius, shadow, volumeTheme } from '../theme';
+import { colors, glass, glassElevated, radius, volumeTheme } from '../theme';
 import { useCurrency } from '../lib/currency';
 import { quickAddQuantity } from '../lib/volume';
 import { useFly } from '../store/FlyContext';
@@ -29,7 +29,7 @@ export default function ProductCard({ product, index, wide, onPress }: { product
       transition={{ type: 'timing', duration: reduceMotion ? 0 : 350, delay: reduceMotion ? 0 : (index % 6) * 50 }}
       style={styles.wrap}
     >
-      <View style={[styles.card, shadow]}>
+      <View style={[styles.card, glassElevated]}>
         <Pressable
           onPress={() => setRevealed((value) => !value)}
           accessibilityRole="button"
@@ -91,7 +91,7 @@ export default function ProductCard({ product, index, wide, onPress }: { product
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, padding: 6 },
-  card: { backgroundColor: colors.white, borderRadius: radius.md, overflow: 'hidden' },
+  card: { backgroundColor: 'rgba(255,255,255,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', borderRadius: radius.lg, overflow: 'hidden' },
   img: { width: '100%', aspectRatio: 1, backgroundColor: colors.line },
   wideImage: { aspectRatio: 2 },
   body: { ...glass, padding: 12 },
