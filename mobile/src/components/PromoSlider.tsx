@@ -1,9 +1,9 @@
 import React from 'react';
 import { Dimensions, FlatList, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Promo } from '../types';
 import { colors, radius, shadow } from '../theme';
+import ProductImage from './ProductImage';
 
 const W = Dimensions.get('window').width;
 const CARD_W = W - 56;
@@ -15,12 +15,21 @@ export default function PromoSlider({ promos }: { promos: Promo[] }) {
       horizontal
       keyExtractor={(p) => p.id}
       showsHorizontalScrollIndicator={false}
+      initialNumToRender={1}
+      maxToRenderPerBatch={1}
+      windowSize={2}
       snapToInterval={CARD_W + 12}
       decelerationRate="fast"
       contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
       renderItem={({ item }) => (
         <View style={[styles.card, shadow]}>
-          <Image source={{ uri: item.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
+          <ProductImage
+            uri={item.image_url}
+            name={item.title}
+            style={StyleSheet.absoluteFill}
+            fallbackColor={colors.green}
+            iconColor={colors.white}
+          />
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.65)']} style={StyleSheet.absoluteFill} />
           <View style={styles.chip}>
             <Text style={styles.chipText}>{item.kind === 'farm_box' ? 'FARM BOX' : "CHEF'S KIT"}</Text>

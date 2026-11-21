@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
-  ImageBackground,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
@@ -18,25 +17,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Atmosphere from '../components/Atmosphere';
 import BrandMark from '../components/BrandMark';
+import RemotePhotoBackground from '../components/RemotePhotoBackground';
 import { colors, radius } from '../theme';
 
 const slides = [
   {
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1400&q=88',
+    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=72',
     eyebrow: 'FRESH FROM NEARBY FARMS',
     title: 'Good food, closer to home.',
     body: 'Shop seasonal produce selected from local growers and delivered to your door.',
     icon: 'basket-outline' as const,
   },
   {
-    image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=1400&q=88',
+    image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=900&q=72',
     eyebrow: 'YOUR SHOP, YOUR WAY',
     title: 'A little basket or a big one.',
     body: 'Choose everyday portions or switch to wholesale quantities when you need more.',
     icon: 'layers-outline' as const,
   },
   {
-    image: 'https://images.unsplash.com/photo-1518843875459-f738682238a6?auto=format&fit=crop&w=1400&q=88',
+    image: 'https://images.unsplash.com/photo-1518843875459-f738682238a6?auto=format&fit=crop&w=900&q=72',
     eyebrow: 'DELIVERED WITH CARE',
     title: 'Harvest to home, made simple.',
     body: 'Choose a delivery window, follow your order and enjoy what is fresh today.',
@@ -82,12 +82,15 @@ export default function OnboardingScreen({ navigation }: any) {
         data={slides}
         horizontal
         pagingEnabled
+        initialNumToRender={1}
+        maxToRenderPerBatch={1}
+        windowSize={2}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScroll}
         getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
         keyExtractor={(slide) => slide.eyebrow}
         renderItem={({ item, index }) => (
-          <ImageBackground source={{ uri: item.image }} style={[styles.slide, { width, height }]} resizeMode="cover">
+          <RemotePhotoBackground uri={item.image} style={[styles.slide, { width, height }]}>
             <LinearGradient
               colors={['rgba(8,25,11,0.28)', 'rgba(8,25,11,0.04)', 'rgba(8,25,11,0.8)']}
               locations={[0, 0.4, 1]}
@@ -108,7 +111,7 @@ export default function OnboardingScreen({ navigation }: any) {
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.body}>{item.body}</Text>
             </View>
-          </ImageBackground>
+          </RemotePhotoBackground>
         )}
       />
 

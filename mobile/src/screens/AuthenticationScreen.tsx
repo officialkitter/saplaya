@@ -1,7 +1,7 @@
 import { userFacingMessage } from '../lib/user-facing-error';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, FlatList, ImageBackground, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent,
+  Alert, FlatList, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent,
   Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,14 +11,15 @@ import { View as MotiView } from 'moti/build/components/view';
 import GoogleMark from '../components/GoogleMark';
 import BrandMark from '../components/BrandMark';
 import ScreenHeader from '../components/ScreenHeader';
+import RemotePhotoBackground from '../components/RemotePhotoBackground';
 import { useAccount } from '../store/AccountContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, volumeTheme } from '../theme';
 
 const authSlides = [
-  { image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1100&q=85', title: 'Fresh finds, every day' },
-  { image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=1100&q=85', title: 'From local farms to you' },
-  { image: 'https://images.unsplash.com/photo-1518843875459-f738682238a6?auto=format&fit=crop&w=1100&q=85', title: 'Make room for good food' },
+  { image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=72', title: 'Fresh finds, every day' },
+  { image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=800&q=72', title: 'From local farms to you' },
+  { image: 'https://images.unsplash.com/photo-1518843875459-f738682238a6?auto=format&fit=crop&w=800&q=72', title: 'Make room for good food' },
 ];
 const RESEND_SECONDS = 45;
 
@@ -242,6 +243,9 @@ export default function AuthenticationScreen({ navigation }: any) {
               data={authSlides}
               horizontal
               pagingEnabled
+              initialNumToRender={1}
+              maxToRenderPerBatch={1}
+              windowSize={2}
               showsHorizontalScrollIndicator={false}
               scrollEventThrottle={16}
               decelerationRate="fast"
@@ -251,13 +255,13 @@ export default function AuthenticationScreen({ navigation }: any) {
               getItemLayout={(_, index) => ({ length: width - 36, offset: (width - 36) * index, index })}
               keyExtractor={(slide) => slide.title}
               renderItem={({ item: slide }) => (
-                <ImageBackground source={{ uri: slide.image }} style={[styles.hero, { width: width - 36 }]} imageStyle={styles.heroImage}>
+                <RemotePhotoBackground uri={slide.image} style={[styles.hero, { width: width - 36 }]} imageStyle={styles.heroImage}>
                   <LinearGradient colors={['rgba(10,30,14,0.02)', 'rgba(10,30,14,0.73)']} style={StyleSheet.absoluteFill} />
                   <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 400 }} style={styles.heroCopy}>
                     <View style={styles.heroPill}><BrandMark size={16} /><Text style={styles.heroPillText}>SAPLAYA · FRESH DAILY</Text></View>
                     <Text style={styles.heroTitle}>{slide.title}</Text>
                   </MotiView>
-                </ImageBackground>
+                </RemotePhotoBackground>
               )}
             />
             <View style={styles.heroDots}>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const CANONICAL_HOST = 'www.saplaya.org';
-const OFFICIAL_HOSTS = new Set(['saplaya.org', CANONICAL_HOST]);
+const OFFICIAL_HOSTS = new Set(['saplaya.org', CANONICAL_HOST, 'saplaya-web.up.railway.app']);
 
 export function middleware(request: NextRequest) {
   const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0].trim();

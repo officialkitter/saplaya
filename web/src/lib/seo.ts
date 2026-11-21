@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const SITE_URL = 'https://www.saplaya.org';
 export const BRAND_IMAGE = '/saplaya-icon.png';
 export const MARKETPLACE_DESCRIPTION =
-  'Saplaya is a fresh produce delivery and wholesale marketplace connecting customers with local farms.';
+  'Saplaya Organization Limited is a Tanzania-based fresh produce delivery and wholesale marketplace connecting customers with local farms.';
 
 export function publicMetadata({
   title,
@@ -26,7 +26,7 @@ export function publicMetadata({
     openGraph: {
       type: 'website',
       url,
-      siteName: 'Saplaya',
+      siteName: 'Saplaya Organization',
       title,
       description,
       images: [{ url: image, alt: imageAlt }],
@@ -38,23 +38,4 @@ export function publicMetadata({
       images: [{ url: image, alt: imageAlt }],
     },
   };
-}
-
-export function configuredSocialProfiles(): string[] {
-  const candidates = [
-    process.env.NEXT_PUBLIC_SAPLAYA_INSTAGRAM_URL,
-    process.env.NEXT_PUBLIC_SAPLAYA_FACEBOOK_URL,
-    process.env.NEXT_PUBLIC_SAPLAYA_LINKEDIN_URL,
-    process.env.NEXT_PUBLIC_SAPLAYA_X_URL,
-  ];
-
-  return candidates.flatMap((candidate) => {
-    if (!candidate) return [];
-    try {
-      const url = new URL(candidate);
-      return url.protocol === 'https:' ? [url.toString()] : [];
-    } catch {
-      return [];
-    }
-  });
 }

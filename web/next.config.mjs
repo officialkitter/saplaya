@@ -16,7 +16,12 @@ const nextConfig = {
   outputFileTracingRoot: fileURLToPath(new URL('../', import.meta.url)),
   reactStrictMode: true,
   experimental: { cpus: 1 },
-  images: { remotePatterns },
+  images: {
+    remotePatterns,
+    deviceSizes: [360, 480, 640, 750, 828, 1080, 1200, 1600],
+    imageSizes: [32, 48, 64, 96, 128, 256, 384],
+    qualities: [65, 75],
+  },
 };
 
 export default nextConfig;

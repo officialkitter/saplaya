@@ -1,6 +1,6 @@
-/** Remote product photos. Every <SmartImage> falls back to a coloured emoji tile if one fails to load. */
+/** Remote produce photos used when catalog photos are missing or unavailable. */
 export const photo = (id: string, w = 800) =>
-  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=80`;
+  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=72`;
 
 export const PHOTOS = {
   tomato: 'photo-1592924357228-91a4daadcfea',
@@ -49,7 +49,7 @@ const PRODUCT_PHOTOS: readonly [RegExp, PhotoKey][] = [
   [/\bgarlic\b/i, 'garlic'],
 ];
 
-export function productPhotoUrl(name: string, width = 1200): string {
+export function productPhotoUrl(name: string, width = 800): string {
   const photoKey = PRODUCT_PHOTOS.find(([pattern]) => pattern.test(name))?.[1] ?? 'box';
-  return photoUrl(photoKey, width);
+  return `https://images.unsplash.com/${PHOTOS[photoKey]}?auto=format&fit=crop&w=${width}&q=72`;
 }

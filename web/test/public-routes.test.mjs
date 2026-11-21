@@ -78,16 +78,19 @@ test('structured data describes the site, page hierarchy and visible FAQ answers
   const organization = homeData['@graph'].find((item) => item['@type'] === 'Organization');
   const website = homeData['@graph'].find((item) => item['@type'] === 'WebSite');
   assert.equal(organization?.['@id'], 'https://www.saplaya.org/#organization');
-  assert.equal(organization?.name, 'Saplaya');
+  assert.equal(organization?.name, 'Saplaya Organization');
   assert.equal(organization?.url, 'https://www.saplaya.org/');
+  assert.equal(organization?.legalName, 'SAPLAYA ORGANIZATION LIMITED');
+  assert.deepEqual(organization?.areaServed, { '@type': 'Country', name: 'Tanzania' });
   assert.match(organization?.description, /fresh produce delivery and wholesale marketplace/i);
-  assert.ok(Array.isArray(organization?.sameAs));
-  assert.equal(website?.name, 'Saplaya');
+  assert.equal(organization?.alternateName, 'Saplaya');
+  assert.equal(organization?.sameAs, undefined);
+  assert.equal(website?.name, 'Saplaya Organization');
   assert.equal(website?.url, 'https://www.saplaya.org/');
-  assert.match(home.html, /<meta property="og:site_name" content="Saplaya"/);
-  assert.match(home.html, /Saplaya is a fresh produce delivery and wholesale marketplace connecting customers with local farms\./);
-  assert.equal(website?.potentialAction?.['@type'], 'SearchAction');
-  assert.equal(website?.potentialAction?.target, 'https://www.saplaya.org/fresh-today?q={search_term_string}');
+  assert.match(home.html, /<meta property="og:site_name" content="Saplaya Organization"/);
+  assert.match(home.html, /<h1[^>]*>Saplaya Organization<\/h1>/);
+  assert.equal(website?.potentialAction, undefined);
+  assert.doesNotMatch(JSON.stringify(homeData), /openingHours|sameAs|SearchAction/i);
 
   for (const path of ['/how-it-works', '/fresh-today', '/for-farmers', '/faq', '/help']) {
     const { html } = await readPage(path);

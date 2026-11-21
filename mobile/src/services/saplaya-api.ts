@@ -8,6 +8,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import type { Session } from '@supabase/supabase-js';
 import { safeHttpErrorMessage, UserFacingError } from '../lib/user-facing-error';
+import { API_URL } from '../lib/supabase';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -113,7 +114,7 @@ export class SaplayaApiClient {
   private client: AxiosInstance;
   private token: string | null = null;
 
-  constructor(baseURL: string = process.env.PUBLIC_API_URL || 'http://localhost:3000') {
+  constructor(baseURL: string = API_URL) {
     this.client = axios.create({
       baseURL,
       timeout: 30000,

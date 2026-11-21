@@ -6,7 +6,6 @@ type EmailLink = { tokenHash: string; type: 'invite' | 'recovery'; team: boolean
 const productionCallbackOrigins = new Set([
   'https://www.saplaya.org',
   'https://saplaya.org',
-  'https://saplaya-web.up.railway.app',
 ]);
 
 export function parseEmailLink(href: string): EmailLink {

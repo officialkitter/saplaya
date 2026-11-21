@@ -19,7 +19,7 @@ const PRODUCT_PHOTOS: readonly [RegExp, string][] = [
   [/\bgarlic\b/i, 'photo-1540148426945-6cf22a6b2383'],
 ];
 
-export function productPhotoUrl(name: string, width = 960): string {
+export function productPhotoUrl(name: string, width = 800): string {
   const photo = PRODUCT_PHOTOS.find(([pattern]) => pattern.test(name))?.[1] ?? 'photo-1542838132-92c53300491e';
-  return `https://images.unsplash.com/${photo}?auto=format&fit=crop&w=${width}&q=80`;
+  return `https://images.unsplash.com/${photo}?auto=format&fit=crop&w=${width}&q=72`;
 }

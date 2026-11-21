@@ -115,6 +115,11 @@ async function settleStoredPaymentByGateway(provider: PaymentProviderId, gateway
 
 const app = express();
 app.use(cors({ origin: WEB_ORIGIN === '*' ? true : WEB_ORIGIN.split(',') }));
+app.use((_req, res, next) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
+app.get('/', (_req, res) => res.redirect(301, 'https://www.saplaya.org/'));
 
 // Webhook signatures cover the exact bytes, so these routes must read the raw body before express.json().
 const rawWebhookBody = express.raw({ type: '*/*', limit: '256kb' });

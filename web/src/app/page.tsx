@@ -3,11 +3,11 @@ import type { Metadata } from 'next';
 import { Nav } from '@/components/landing/Nav';
 import { Hero } from '@/components/landing/Hero';
 import { serializeJsonLd } from '@/lib/json-ld';
-import { configuredSocialProfiles, MARKETPLACE_DESCRIPTION, publicMetadata, SITE_URL } from '@/lib/seo';
+import { MARKETPLACE_DESCRIPTION, publicMetadata, SITE_URL } from '@/lib/seo';
 import { fetchStorefrontPage } from '@/lib/storefront-server';
 import type { StorefrontPageData } from '@/lib/storefront-contract';
 
-const title = 'Fresh Produce Delivery & Wholesale | Saplaya';
+const title = 'Saplaya Organization Limited | Tanzania Produce';
 const description = MARKETPLACE_DESCRIPTION;
 
 export const metadata: Metadata = publicMetadata({ title, description, pathname: '/' });
@@ -38,23 +38,20 @@ export default async function Home() {
           {
             '@type': 'Organization',
             '@id': 'https://www.saplaya.org/#organization',
-            name: 'Saplaya',
+            name: 'Saplaya Organization',
+            alternateName: 'Saplaya',
+            legalName: 'SAPLAYA ORGANIZATION LIMITED',
             url: 'https://www.saplaya.org/',
             logo: 'https://www.saplaya.org/saplaya-icon.png',
             description: MARKETPLACE_DESCRIPTION,
-            sameAs: configuredSocialProfiles(),
+            areaServed: { '@type': 'Country', name: 'Tanzania' },
           },
           {
             '@type': 'WebSite',
             '@id': 'https://www.saplaya.org/#website',
-            name: 'Saplaya',
+            name: 'Saplaya Organization',
             url: `${SITE_URL}/`,
             publisher: { '@id': 'https://www.saplaya.org/#organization' },
-            potentialAction: {
-              '@type': 'SearchAction',
-              target: `${SITE_URL}/fresh-today?q={search_term_string}`,
-              'query-input': 'required name=search_term_string',
-            },
           },
         ],
       }) }} />

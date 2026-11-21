@@ -13,22 +13,25 @@ const TILES = [
   'from-[#DCEDC8] to-[#AED581]',
 ];
 
-/** A photo that quietly turns into a coloured emoji tile if the picture can't load. */
+/** Tries the uploaded photo, a matching produce photo, then a coloured emoji tile. */
 export function SmartImage({
   src, alt, emoji = '🥬', className, imgClassName, sizes = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px', priority = false,
 }: { src?: string; alt: string; emoji?: string; className?: string; imgClassName?: string; sizes?: string; priority?: boolean }) {
-  const [failed, setFailed] = useState(false);
+  const [primaryFailed, setPrimaryFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const tile = TILES[(alt.length + emoji.length) % TILES.length];
-  const imageSrc = src || productPhotoUrl(alt);
+  const fallbackSrc = productPhotoUrl(alt, 800);
+  const imageSrc = src && !primaryFailed ? src : fallbackSrc;
   const isAbsolutelyPositioned = className?.split(/\s+/).includes('absolute') ?? false;
 
   useEffect(() => {
-    setFailed(false);
+    setPrimaryFailed(false);
+    setFallbackFailed(false);
     setLoaded(false);
-  }, [imageSrc]);
+  }, [src, fallbackSrc]);
 
-  if (failed) {
+  if (fallbackFailed) {
     return (
       <div
         role="img"
@@ -52,9 +55,13 @@ export function SmartImage({
         fill
         sizes={sizes}
         priority={priority}
+        quality={65}
         referrerPolicy="no-referrer"
         onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
+        onError={() => {
+          if (src && !primaryFailed) setPrimaryFailed(true);
+          else setFallbackFailed(true);
+        }}
         className={cn('h-full w-full object-cover transition-opacity duration-200', loaded ? 'opacity-100' : 'opacity-0', imgClassName)}
       />
     </div>

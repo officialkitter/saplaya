@@ -121,10 +121,10 @@ export function Hero({ initialData, initialError = false }: { initialData?: Stor
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-12 lg:grid-cols-[1.1fr_0.9fr] lg:pb-28 lg:pt-20">
         <div>
           <h1 className="font-display text-[2.9rem] font-extrabold leading-[0.96] tracking-tight text-ink sm:text-6xl lg:text-[5.2rem]">
-            Farm-fresh food, at your door in hours.
+            Saplaya Organization
           </h1>
           <p className="mt-6 max-w-xl text-xl leading-relaxed text-ink-soft">
-            Saplaya is a fresh produce delivery and wholesale marketplace connecting customers with local farms.{' '}
+            Fresh produce delivery and wholesale from local farms.{' '}
             {market.location
               ? market.placeNameStatus === 'ready'
                 ? `Discover stocked farms near ${market.placeName}. Buy a little for your kitchen or a lot for your shop.`

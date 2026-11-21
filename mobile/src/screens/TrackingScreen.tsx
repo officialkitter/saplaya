@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -385,7 +384,7 @@ function OrderCard({
   const { formatPrice } = useCurrency();
   const { mode } = useStore();
   const theme = volumeTheme(mode);
-  const previewImage = order.order_items?.find((item) => item.products?.image_url)?.products?.image_url;
+  const previewItem = order.order_items?.find((item) => item.products?.image_url);
   const status = order.status;
 
   return (
@@ -397,9 +396,14 @@ function OrderCard({
       accessibilityState={{ selected }}
     >
       <View style={[styles.preview, { backgroundColor: theme.soft }]}>
-        {previewImage
-          ? <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="cover" />
-          : <View style={styles.previewFallback}><Ionicons name="basket-outline" size={34} color={theme.icon} /></View>}
+        <ProductImage
+          uri={previewItem?.products?.image_url}
+          name={previewItem?.products?.name ?? 'Order items'}
+          style={styles.previewImage}
+          fallbackColor={theme.soft}
+          iconColor={theme.icon}
+          iconSize={34}
+        />
         <View style={[styles.statusBadge, { backgroundColor: statusColor[status] }]}>
           <Text style={styles.statusBadgeText}>{statusLabel[status]}</Text>
         </View>
@@ -549,7 +553,6 @@ const styles = StyleSheet.create({
   orderCardSelected: { borderColor: colors.green, borderWidth: 2 },
   preview: { height: 148, backgroundColor: '#EFF7EC' },
   previewImage: { width: '100%', height: '100%' },
-  previewFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   statusBadge: { position: 'absolute', left: 10, bottom: 10, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 20 },
   statusBadgeText: { color: colors.white, fontSize: 11, fontWeight: '900' },
   orderCardBody: { padding: 13 },
