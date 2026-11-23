@@ -44,13 +44,13 @@ on conflict (id) do nothing;
 insert into public.team_roles (role_key, name, department_id, scope, permissions, is_builtin)
 values
   ('platform_owner', 'Owner', 'system', 'platform', array[
-    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'catalog.manage',
+    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit', 'catalog.manage',
     'stock.adjust', 'inventory.view', 'suppliers.view_all', 'suppliers.manage', 'team.view',
     'team.manage', 'settings.manage', 'finance.view', 'marketing.view', 'stores.view',
     'system.view', 'team.roles.manage'
   ], true),
   ('platform_manager', 'Operations manager', 'operations', 'platform', array[
-    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
+    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
     'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage', 'team.view'
   ], true),
   ('supplier_owner', 'Farm owner', 'operations', 'farm', array[
@@ -58,7 +58,7 @@ values
     'stock.adjust', 'inventory.view', 'team.view', 'team.manage'
   ], true),
   ('supplier_staff', 'Farm staff', 'operations', 'farm', array[
-    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
+    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
     'stock.adjust', 'inventory.view'
   ], true),
   ('driver', 'Driver', 'logistics', 'platform', array[

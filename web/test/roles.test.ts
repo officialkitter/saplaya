@@ -17,3 +17,10 @@ test('farm staff can add and manage listings without team administration access'
   assert.equal(can('supplier_staff', 'products.edit'), true);
   assert.equal(can('supplier_staff', 'team.manage'), false);
 });
+
+test('server-returned role permissions are authoritative', () => {
+  assert.equal(can('platform_manager', 'products.edit', ['dashboard.view']), false);
+  assert.equal(can('platform_manager', 'team.manage', ['team.manage']), true);
+  assert.equal(can('supervisor', 'products.edit', ['products.view', 'products.edit']), true);
+  assert.equal(can('supervisor', 'products.edit', ['products.view']), false);
+});

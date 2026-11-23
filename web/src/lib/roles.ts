@@ -27,8 +27,11 @@ export const PERMS: Record<BuiltinRole, Perm[]> = {
   driver: ['orders.view', 'orders.update_status', 'claims.view', 'claims.claim'],
 };
 
-export const can = (role: Role | undefined | null, perm: Perm, assignedPermissions?: Perm[]): boolean =>
-  !!role && (PERMS[role as BuiltinRole]?.includes(perm) ?? !!assignedPermissions?.includes(perm));
+export const can = (role: Role | undefined | null, perm: Perm, assignedPermissions?: Perm[]): boolean => {
+  if (!role) return false;
+  if (assignedPermissions) return assignedPermissions.includes(perm);
+  return PERMS[role as BuiltinRole]?.includes(perm) ?? false;
+};
 
 export const isFarmRole = (role: Role, scope?: 'platform' | 'farm') =>
   scope ? scope === 'farm' : role === 'supplier_owner' || role === 'supplier_staff';
