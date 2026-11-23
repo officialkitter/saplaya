@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ban, CheckCircle2, Clock3, Download, FileSpreadsheet, PackageCheck, Upload } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Ban, CheckCircle2, Clock3, Download, PackageCheck, Search, Upload } from 'lucide-react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { fetchAdmin } from '@/lib/supabase';
@@ -9,6 +10,7 @@ import { useToast } from '@/lib/store';
 import { userFacingMessage } from '@/lib/user-facing-error';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { useGlobalMarket } from '@/lib/global-market';
+import { claimMatchesFilters, ordersMatchingProducts } from '@/lib/claims';
 
 type ClaimOrder = {
   id: string;
@@ -30,6 +32,14 @@ const statusStyle: Record<string, { label: string; className: string }> = {
   cancelled: { label: 'Cancelled', className: 'bg-red-50 text-red-700' },
 };
 
+const statusAccent: Record<string, string> = {
+  pending: '#FFB300',
+  packing: '#0288D1',
+  en_route: '#7B1FA2',
+  delivered: '#2E7D32',
+  cancelled: '#D32F2F',
+};
+
 function Claims() {
   const push = useToast((state) => state.push);
   const { formatPrice } = useGlobalMarket();
@@ -39,6 +49,9 @@ function Claims() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [view, setView] = useState<'available' | 'ongoing' | 'history'>('available');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
+  const busyRef = useRef<string | null>(null);
   const [importing, setImporting] = useState(false);
 
   const reload = useCallback(async () => {
@@ -61,9 +74,21 @@ function Claims() {
 
   const ongoing = useMemo(() => mine.filter((order) => ['pending', 'packing', 'en_route'].includes(order.status)), [mine]);
   const history = useMemo(() => mine.filter((order) => ['delivered', 'cancelled'].includes(order.status)), [mine]);
-  const visible = view === 'available' ? available : view === 'ongoing' ? ongoing : history;
+  const productOptions = useMemo(() => {
+    const products = new Map<string, { name: string; image_url: string | null }>();
+    available.forEach((order) => order.items?.forEach((item) => {
+      if (!products.has(item.name)) products.set(item.name, item);
+    }));
+    return [...products.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }, [available]);
+  const baseVisible = view === 'available' ? available : view === 'ongoing' ? ongoing : history;
+  const visible = useMemo(() => {
+    return baseVisible.filter((order) => claimMatchesFilters(order, query, selectedProducts));
+  }, [baseVisible, query, selectedProducts]);
 
   async function claim(order: ClaimOrder) {
+    if (busyRef.current) return;
+    busyRef.current = order.id;
     setBusyId(order.id);
     try {
       await fetchAdmin(`/admin/claims/${encodeURIComponent(order.id)}/claim`, { method: 'POST' });
@@ -73,11 +98,14 @@ function Claims() {
     } catch (error) {
       push(userFacingMessage(error, 'Could not claim this order.'), 'bad');
     } finally {
+      busyRef.current = null;
       setBusyId(null);
     }
   }
 
   async function release(order: ClaimOrder) {
+    if (busyRef.current) return;
+    busyRef.current = order.id;
     setBusyId(order.id);
     try {
       await fetchAdmin(`/admin/claims/${encodeURIComponent(order.id)}/release`, { method: 'POST' });
@@ -86,12 +114,14 @@ function Claims() {
     } catch (error) {
       push(userFacingMessage(error, 'Could not release this claim.'), 'bad');
     } finally {
+      busyRef.current = null;
       setBusyId(null);
     }
   }
 
     async function claimSelected() {
-      if (!selected.size) return;
+      if (!selected.size || busyRef.current) return;
+      busyRef.current = 'bulk';
       setBusyId('bulk');
       try {
         const result = await fetchAdmin<{ claimed: number; skipped: number; failures: { ref: string; reason: string }[] }>('/admin/claims/bulk', {
@@ -105,6 +135,7 @@ function Claims() {
       } catch (error) {
         push(userFacingMessage(error, 'Could not claim selected orders.'), 'bad');
       } finally {
+        busyRef.current = null;
         setBusyId(null);
       }
     }
@@ -165,6 +196,20 @@ function Claims() {
       }
     }
 
+  function toggleProduct(name: string) {
+    setSelectedProducts((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function selectMatchingOrders() {
+    if (!selectedProducts.size) return;
+    setSelected(new Set(ordersMatchingProducts(available, selectedProducts).map((order) => order.id)));
+  }
+
   const tabs = [
     { id: 'available' as const, label: 'Available', count: available.length, icon: Clock3 },
     { id: 'ongoing' as const, label: 'My ongoing', count: ongoing.length, icon: PackageCheck },
@@ -206,14 +251,59 @@ function Claims() {
           );
         })}
       </div>
+      {view === 'available' && (
+        <div className="mb-5 space-y-3 rounded-[1.75rem] border border-line bg-white p-4 shadow-soft sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <div className="relative">
+              <Search size={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-mute" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search orders, farms or products"
+                aria-label="Search claims"
+                className="h-12 w-full rounded-2xl border border-line bg-milk pl-12 pr-4 font-semibold outline-none transition focus:border-leaf focus:ring-2 focus:ring-leaf/15"
+              />
+            </div>
+            <Button
+              variant="soft"
+              disabled={!selectedProducts.size || busyId !== null}
+              onClick={selectMatchingOrders}
+            >
+              Select matching orders
+            </Button>
+          </div>
+          {productOptions.length > 0 && (
+            <div className="overflow-x-auto pb-1">
+              <div className="flex min-w-max gap-2">
+                {productOptions.map((product) => {
+                  const active = selectedProducts.has(product.name);
+                  return (
+                    <motion.button
+                      layout
+                      key={product.name}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggleProduct(product.name)}
+                      className={`flex min-h-12 items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-extrabold transition ${active ? 'border-leaf bg-leaf text-white shadow-soft' : 'border-line bg-milk text-ink-soft hover:border-sprout'}`}
+                    >
+                      <SmartImage src={product.image_url ?? ''} alt={product.name} className="h-9 w-9 shrink-0 rounded-xl" />
+                      {product.name}
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <Panel title={view === 'available' ? 'Available for claim' : view === 'ongoing' ? 'Ongoing claims' : 'Claims history'} subtitle="Every action is visible in one place.">
         {view === 'available' && available.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-milk p-3">
             <label className="flex items-center gap-2 font-bold">
               <input
                 type="checkbox"
-                checked={selected.size === available.length}
-                onChange={(event) => setSelected(event.target.checked ? new Set(available.map((order) => order.id)) : new Set())}
+                checked={visible.length > 0 && visible.every((order) => selected.has(order.id))}
+                onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((order) => order.id)) : new Set())}
               />
               Select all
             </label>
@@ -231,55 +321,84 @@ function Claims() {
           </div>
         ) : (
           <ul className="space-y-3">
-            {visible.map((order) => {
+            {visible.map((order, index) => {
               const status = statusStyle[order.status] ?? { label: order.status, className: 'bg-leaf-soft text-leaf-deep' };
+              const accent = statusAccent[order.status] ?? '#2E7D32';
               return (
-                <li key={order.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 sm:flex-row sm:items-center">
-                  {view === 'available' && (
-                    <input
-                      type="checkbox"
-                      checked={selected.has(order.id)}
-                      onChange={(event) => {
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          if (event.target.checked) next.add(order.id);
-                          else next.delete(order.id);
-                          return next;
-                        });
-                      }}
-                      aria-label={`Select order ${order.code}`}
-                      className="h-5 w-5"
-                    />
-                  )}
-                  {order.items && order.items.length > 0 && (
-                    <div className="flex -space-x-2" aria-label={`${order.item_count ?? 0} basket items`}>
-                      {order.items.slice(0, 4).map((item, index) => (
-                        <SmartImage
-                          key={`${order.id}-${index}`}
-                          src={item.image_url ?? ''}
-                          alt={item.name}
-                          className="h-12 w-12 rounded-xl ring-2 ring-white"
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-lg font-extrabold">{order.code}</p>
-                    <p className="text-sm text-ink-soft">{order.supplier_name}</p>
-                    {(order.item_count !== undefined || order.basket_total !== undefined) && (
-                      <p className="mt-1 text-sm font-bold text-leaf-deep">
-                        {order.item_count ?? 0} items · {formatPrice(order.basket_total ?? 0)}
-                      </p>
-                    )}
-                    {order.claimed_at && <p className="mt-1 text-xs text-ink-mute">Claimed {new Date(order.claimed_at).toLocaleString()}</p>}
-                  </div>
-                  <span className={`w-fit rounded-full px-3 py-1.5 text-sm font-extrabold ${status.className}`}>{status.label}</span>
+                <motion.li
+                  layout
+                  initial={{ opacity: 0, x: 18 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Math.min(index, 8) * 0.035 }}
+                  key={order.id}
+                  className="grid items-stretch overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-soft md:grid-cols-[56px_170px_minmax(220px,1fr)_150px_160px]"
+                  style={{ borderLeft: `6px solid ${accent}` }}
+                >
                   {view === 'available' ? (
-                    <Button disabled={busyId !== null} onClick={() => void claim(order)}>{busyId === order.id ? 'Claiming…' : 'Claim order'}</Button>
-                  ) : view === 'ongoing' ? (
-                    <Button variant="danger" disabled={busyId !== null} onClick={() => void release(order)}>{busyId === order.id ? 'Releasing…' : 'Release claim'}</Button>
-                  ) : null}
-                </li>
+                    <label className="flex min-h-16 items-center justify-center bg-milk/70 px-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(order.id)}
+                        onChange={(event) => {
+                          setSelected((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(order.id);
+                            else next.delete(order.id);
+                            return next;
+                          });
+                        }}
+                        aria-label={`Select order ${order.code}`}
+                        className="h-5 w-5 accent-leaf"
+                      />
+                    </label>
+                  ) : <div className="hidden md:block" />}
+                  <div className="flex min-h-16 items-center border-b border-line px-4 py-3 md:border-b-0 md:border-r">
+                    <div>
+                      <p className="font-display text-lg font-extrabold">{order.code}</p>
+                      <p className="truncate text-sm text-ink-soft">{order.supplier_name}</p>
+                    </div>
+                  </div>
+                  <div className="flex min-h-16 items-center gap-3 border-b border-line px-4 py-3 md:border-b-0 md:border-r">
+                    {order.items && order.items.length > 0 ? (
+                      <>
+                        <div className="flex -space-x-2" aria-label={`${order.item_count ?? 0} basket items`}>
+                          {order.items.slice(0, 4).map((item, itemIndex) => (
+                            <SmartImage
+                              key={`${order.id}-${itemIndex}`}
+                              src={item.image_url ?? ''}
+                              alt={item.name}
+                              className="h-12 w-12 rounded-xl ring-2 ring-white"
+                            />
+                          ))}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-extrabold text-ink">
+                            {order.items.slice(0, 2).map((item) => item.name).join(', ')}
+                            {order.items.length > 2 ? ` +${order.items.length - 2}` : ''}
+                          </p>
+                          <p className="mt-0.5 text-sm font-bold text-leaf-deep">
+                            {order.item_count ?? 0} items · {formatPrice(order.basket_total ?? 0)}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-ink-mute">No product details</p>
+                    )}
+                  </div>
+                  <div className="flex min-h-16 items-center px-4 py-3 md:border-r">
+                    <div>
+                      <span className={`inline-flex rounded-full px-3 py-1.5 text-sm font-extrabold ${status.className}`}>{status.label}</span>
+                      {order.claimed_at && <p className="mt-1 text-xs text-ink-mute">Claimed {new Date(order.claimed_at).toLocaleString()}</p>}
+                    </div>
+                  </div>
+                  <div className="flex min-h-16 items-center justify-end px-4 py-3">
+                    {view === 'available' ? (
+                      <Button className="w-full" disabled={busyId !== null} onClick={() => void claim(order)}>{busyId === order.id ? 'Claiming…' : 'Claim order'}</Button>
+                    ) : view === 'ongoing' ? (
+                      <Button className="w-full" variant="danger" disabled={busyId !== null} onClick={() => void release(order)}>{busyId === order.id ? 'Releasing…' : 'Release claim'}</Button>
+                    ) : null}
+                  </div>
+                </motion.li>
               );
             })}
           </ul>

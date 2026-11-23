@@ -121,6 +121,10 @@ export interface Movement {
   id: string;
   supplierId: string;
   productId: string;
+  productName?: string;
+  productUnit?: string;
+  productImage?: string;
+  farmName?: string;
   kind: MovementKind;
   qtyChange: number;
   stockAfter: number;

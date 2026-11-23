@@ -2971,7 +2971,7 @@ app.get('/admin/inventory-movements', requirePerm('inventory.view'), async (req:
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let q = db
     .from('inventory_movements')
-    .select('id, supplier_id, kind, qty_change, stock_after, created_at, order_id, products(name, unit)')
+    .select('id, supplier_id, product_id, kind, qty_change, stock_after, created_at, order_id, products(name, unit, image_url), suppliers(name)')
     .order('created_at', { ascending: false })
     .limit(200);
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);

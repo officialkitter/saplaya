@@ -11,8 +11,8 @@ declare
   v_product products%rowtype;
   v_stock numeric;
 begin
-  if p_qty <= 0 then
-    raise exception 'Restock quantity must be positive';
+  if p_qty <= 0 or p_qty > 10000 then
+    raise exception 'Restock quantity must be greater than zero and at most 10000';
   end if;
 
   select * into v_product
