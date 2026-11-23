@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useRef, useState, type ButtonHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/format';
 
 type Variant = 'primary' | 'sun' | 'soft' | 'ghost' | 'danger';
@@ -26,8 +26,34 @@ const base =
 export function Button({
   variant = 'primary', size = 'md', className, icon, children, ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; icon?: ReactNode }) {
+  const lock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const originalOnClick = rest.onClick;
+  const guardedOnClick = originalOnClick
+    ? (event: MouseEvent<HTMLButtonElement>) => {
+        if (lock.current || rest.disabled || busy) return;
+        lock.current = true;
+        setBusy(true);
+        try {
+          const result = originalOnClick(event);
+          Promise.resolve(result).then(
+            () => { lock.current = false; setBusy(false); },
+            () => { lock.current = false; setBusy(false); },
+          );
+        } catch {
+          lock.current = false;
+          setBusy(false);
+        }
+      }
+    : undefined;
   return (
-    <button className={cn(base, variant !== 'ghost' && 'tactile-control', VARIANT[variant], SIZE[size], className)} {...rest}>
+    <button
+      {...rest}
+      onClick={guardedOnClick}
+      disabled={rest.disabled || busy}
+      aria-busy={busy || undefined}
+      className={cn(base, variant !== 'ghost' && 'tactile-control', VARIANT[variant], SIZE[size], className)}
+    >
       {icon}
       {children}
     </button>

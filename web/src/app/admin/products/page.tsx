@@ -2,7 +2,7 @@
 
 import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
-import { EyeOff, GitMerge, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { EyeOff, GitMerge, ImagePlus, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { RestockModal } from '@/components/admin/RestockModal';
@@ -16,7 +16,7 @@ import { cn, formatNum } from '@/lib/format';
 import { useGlobalMarket } from '@/lib/global-market';
 import { can } from '@/lib/roles';
 import { isLow } from '@/lib/stats';
-import { fetchAdmin } from '@/lib/supabase';
+import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { useDB, useScope, useToast } from '@/lib/store';
 import type { Product, Supplier } from '@/lib/types';
 import { tierPrices } from '@/lib/volume';
@@ -83,6 +83,7 @@ function Products() {
   const [removingProduct, setRemovingProduct] = useState<Product | null>(null);
   const [productActionBusy, setProductActionBusy] = useState(false);
   const [savingProduct, setSavingProduct] = useState(false);
+  const [uploadingProductPhoto, setUploadingProductPhoto] = useState(false);
   const [form, setForm] = useState<Form>(blank);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pricingPercentages, setPricingPercentages] = useState({ wholesale: 70, bulk: 65, mega_bulk: 55 });
@@ -238,6 +239,34 @@ function Products() {
     setEditing(p);
   }
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function uploadProductPhoto(file: File | undefined) {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
+      push('Choose a JPG, PNG, WebP or HEIC photo.', 'bad');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      push('Choose a product photo smaller than 5 MB.', 'bad');
+      return;
+    }
+    setUploadingProductPhoto(true);
+    try {
+      const signed = await fetchAdmin<{ path: string; token: string; public_url: string }>('/admin/catalog-photo-upload', {
+        method: 'POST',
+        body: JSON.stringify({ content_type: file.type }),
+      });
+      const { error } = await getSupabase().storage.from('catalog-product-images')
+        .uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type, upsert: false });
+      if (error) throw error;
+      setForm((current) => ({ ...current, image: signed.public_url }));
+      push('Product photo uploaded.');
+    } catch (error) {
+      push(userFacingMessage(error, 'Could not upload this product photo.'), 'bad');
+    } finally {
+      setUploadingProductPhoto(false);
+    }
+  }
 
   async function save() {
     if (!pricingPolicyReady) {
@@ -550,7 +579,34 @@ function Products() {
             <Field label="Warn me when stock falls to" hint="You get a Running low alert"><Input type="number" inputMode="numeric" value={form.low} onChange={set('low')} /></Field>
           </div>
           {editing === 'new' && <Field label="Stock you have now" hint="You can add more later with Add stock"><Input type="number" inputMode="decimal" value={form.opening} onChange={set('opening')} /></Field>}
-          <Field label="Photo link (optional)" hint="Paste a link to a bright, clear photo. Leave empty to use a coloured tile."><Input value={form.image} onChange={set('image')} placeholder="https://" /></Field>
+          <div className="rounded-2xl border border-line p-4">
+            <Field label="Product photo (optional)" hint="Upload a JPG, PNG, WebP or HEIC photo, or paste a photo link.">
+              <Input value={form.image} onChange={set('image')} placeholder="https://" />
+            </Field>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-leaf-soft px-4 py-2 font-bold text-leaf-deep hover:bg-[#d7ecd9]">
+                <ImagePlus size={18} />
+                <span>{uploadingProductPhoto ? 'Uploading…' : form.image ? 'Change photo' : 'Upload photo'}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic"
+                  capture="environment"
+                  className="sr-only"
+                  disabled={uploadingProductPhoto}
+                  onChange={(event) => {
+                    void uploadProductPhoto(event.currentTarget.files?.[0]);
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </label>
+              {form.image && (
+                <Button variant="ghost" disabled={uploadingProductPhoto} onClick={() => setForm((current) => ({ ...current, image: '' }))}>
+                  Remove photo
+                </Button>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-ink-mute">Maximum 5 MB. On supported phones this opens the camera or photo library.</p>
+          </div>
           <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-milk p-4">
             <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="h-6 w-6 accent-[#2E7D32]" />
             <span className="font-semibold">Show this product in the Saplaya shop</span>

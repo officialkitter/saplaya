@@ -191,7 +191,7 @@ function AccountPage() {
                 <span className="inline-flex items-center gap-2 rounded-xl border border-line px-3 py-2 font-bold hover:bg-milk">
                   <Upload size={17} />{uploadingPhoto ? 'Uploading…' : 'Upload photo'}
                 </span>
-                <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={uploadingPhoto} onChange={(event) => { void uploadPhoto(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="user" disabled={uploadingPhoto} onChange={(event) => { void uploadPhoto(event.target.files?.[0]); event.currentTarget.value = ''; }} />
                 <span className="mt-1 block text-xs text-ink-mute">JPG, PNG or WebP · up to 10 MB · camera or gallery</span>
               </label>
             </div>

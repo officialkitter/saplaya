@@ -4378,6 +4378,21 @@ app.post('/admin/management/my-avatar-upload', requirePerm(), async (req: Authed
   return res.json({ path: data.path, token: data.token, public_url: db.storage.from('team-avatars').getPublicUrl(data.path).data.publicUrl });
 });
 
+app.post('/admin/catalog-photo-upload', requirePerm(), async (req: AuthedRequest, res: Response) => {
+  const parsed = z.object({ content_type: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/heic']) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const extension = parsed.data.content_type === 'image/jpeg'
+    ? 'jpg'
+    : parsed.data.content_type === 'image/heic' ? 'heic' : parsed.data.content_type.slice('image/'.length);
+  const path = `catalog/${req.member!.id}/${randomUUID()}.${extension}`;
+  const { data, error } = await db.storage.from('catalog-product-images').createSignedUploadUrl(path, { upsert: false });
+  if (error) {
+    console.error('Could not create catalog photo upload URL:', error.message);
+    return res.status(503).json({ error: 'Could not prepare the product photo upload.' });
+  }
+  return res.json({ path: data.path, token: data.token, public_url: db.storage.from('catalog-product-images').getPublicUrl(data.path).data.publicUrl });
+});
+
 app.patch('/admin/management/my-profile', requirePerm(), async (req: AuthedRequest, res: Response) => {
   const parsed = z.object({
     phone: z.string().trim().max(40).nullable(),

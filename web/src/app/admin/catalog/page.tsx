@@ -148,15 +148,18 @@ function SharedCatalog() {
     }
     setUploadingPhoto(true);
     try {
-      const extension = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-      const path = `catalog/${crypto.randomUUID()}.${extension}`;
-      const { error } = await getSupabase().storage.from('catalog-product-images').upload(path, file, {
-        contentType: file.type,
-        upsert: false,
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
+        push('Choose a JPG, PNG, WebP or HEIC photo.', 'bad');
+        return;
+      }
+      const signed = await fetchAdmin<{ path: string; token: string; public_url: string }>('/admin/catalog-photo-upload', {
+        method: 'POST',
+        body: JSON.stringify({ content_type: file.type }),
       });
+      const { error } = await getSupabase().storage.from('catalog-product-images')
+        .uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type, upsert: false });
       if (error) throw error;
-      const { data } = getSupabase().storage.from('catalog-product-images').getPublicUrl(path);
-      setForm((current) => current ? { ...current, image_url: data.publicUrl } : current);
+      setForm((current) => current ? { ...current, image_url: signed.public_url } : current);
       push('Product photo added.');
     } catch (error) {
       push(userFacingMessage(error, 'Could not upload this photo.'), 'bad');
@@ -445,6 +448,7 @@ function SharedCatalog() {
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/heic"
+                    capture="environment"
                     className="sr-only"
                     disabled={uploadingPhoto}
                     onChange={(event) => {
