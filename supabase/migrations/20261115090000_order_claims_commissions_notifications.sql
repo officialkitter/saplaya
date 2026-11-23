@@ -3,13 +3,12 @@
 -- ========================================
 
 -- User roles and agent profiles
-create type user_role as enum ('customer', 'agent', 'supplier_admin', 'platform_admin');
-
-alter table auth.users add column if not exists role user_role default 'customer';
-alter table auth.users add column if not exists phone text;
-alter table auth.users add column if not exists avatar_url text;
-alter table auth.users add column if not exists is_active boolean default true;
-alter table auth.users add column if not exists deleted_at timestamptz;
+do $$
+begin
+  create type user_role as enum ('customer', 'agent', 'supplier_admin', 'platform_admin');
+exception
+  when duplicate_object then null;
+end $$;
 
 -- Agent profiles with commission tracking
 create table if not exists agents (
@@ -313,9 +312,6 @@ declare
   v_order_count integer;
   v_agent_record record;
 begin
-  -- Mark user as deleted
-  update auth.users set deleted_at = now() where id = p_user_id;
-  
   -- Count orders
   select count(*) into v_order_count from orders where customer_id = p_user_id;
   
@@ -360,7 +356,15 @@ alter table deletion_requests enable row level security;
 -- RLS Policies for agents
 create policy "Agents can view their own profile"
   on agents for select
-  using (auth.uid() = user_id or exists (select 1 from auth.users where id = auth.uid() and role = 'platform_admin'));
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1
+      from public.team_members m
+      join public.team_roles r on r.role_key = m.role
+      where m.user_id = auth.uid() and m.status = 'active' and r.role_key = 'platform_owner'
+    )
+  );
 
 create policy "Agents can update their own profile"
   on agents for update
@@ -398,7 +402,14 @@ create policy "Users can update their notifications"
 -- RLS Policies for audit logs (admins only)
 create policy "Platform admins can view audit logs"
   on audit_logs for select
-  using (exists (select 1 from auth.users where id = auth.uid() and role = 'platform_admin'));
+  using (
+    exists (
+      select 1
+      from public.team_members m
+      join public.team_roles r on r.role_key = m.role
+      where m.user_id = auth.uid() and m.status = 'active' and r.role_key = 'platform_owner'
+    )
+  );
 
 -- RLS Policies for deletion requests
 create policy "Users can view their deletion requests"
@@ -407,7 +418,14 @@ create policy "Users can view their deletion requests"
 
 create policy "Platform admins can view all deletion requests"
   on deletion_requests for select
-  using (exists (select 1 from auth.users where id = auth.uid() and role = 'platform_admin'));
+  using (
+    exists (
+      select 1
+      from public.team_members m
+      join public.team_roles r on r.role_key = m.role
+      where m.user_id = auth.uid() and m.status = 'active' and r.role_key = 'platform_owner'
+    )
+  );
 
 -- ========================================
 -- Grant function permissions
