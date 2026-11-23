@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const SITE_URL = 'https://www.saplaya.org';
 export const BRAND_IMAGE = '/saplaya-icon.png';
 export const MARKETPLACE_DESCRIPTION =
-  'Saplaya Organization Limited is a Tanzania-based fresh produce delivery and wholesale marketplace connecting customers with local farms.';
+  'Saplaya Organization is a Tanzania-based fresh produce delivery and wholesale marketplace connecting customers with local farms.';
 
 export function publicMetadata({
   title,

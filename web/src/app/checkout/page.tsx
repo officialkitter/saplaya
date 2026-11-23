@@ -6,8 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStorefrontCart } from '@/lib/cart';
 import { useGlobalMarket } from '@/lib/global-market';
 import { StorefrontRequestError, storefrontRequest } from '@/lib/storefront-auth';
-import { volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
+import { orderMode, volumePrice, volumeTheme, volumeTier } from '@/lib/volume';
 import { DeliveryAddressSearch } from '@/components/DeliveryAddressSearch';
+import { availableDailyDeliveryWindows, dailyDeliveryDay } from '@/lib/delivery-time';
+import { CountryCodePicker } from '@/components/CountryCodePicker';
+import { SmartImage } from '@/components/ui/SmartImage';
 
 type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
@@ -45,9 +48,12 @@ export default function CheckoutPage() {
   const [quoteRefreshVersion, setQuoteRefreshVersion] = useState(0);
   const [quoteError, setQuoteError] = useState('');
   const [contact, setContact] = useState({ name: '', email: '', phone: '' });
+  const [phoneDial, setPhoneDial] = useState('+255');
   const [forSomeoneElse, setForSomeoneElse] = useState(false);
   const [recipient, setRecipient] = useState({ name: '', phone: '' });
+  const [recipientDial, setRecipientDial] = useState('+255');
   const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentPhoneDial, setPaymentPhoneDial] = useState('+255');
   const [preferredProvider, setPreferredProvider] = useState<PaymentProviderOption['id'] | ''>('');
   const [acceptedFee, setAcceptedFee] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -57,10 +63,17 @@ export default function CheckoutPage() {
   const cashRequestKey = useRef<string | null>(null);
 
   const isDailyDelivery = mode === 'retail' || mode === 'wholesale';
+  const effectiveMode = orderMode(lines, preferredMode);
+  const [deliveryClock, setDeliveryClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setDeliveryClock(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const dailyWindows = useMemo(() => availableDailyDeliveryWindows(deliveryClock), [deliveryClock]);
   const availableDeliveryOptions = useMemo(() => deliveryOptions.filter((option) =>
-    isDailyDelivery ? option.value === 'morning' || option.value === 'evening'
+    isDailyDelivery ? dailyWindows.includes(option.value as 'morning' | 'evening')
       : option.value !== 'morning' && option.value !== 'evening',
-  ), [deliveryOptions, isDailyDelivery]);
+  ), [deliveryOptions, isDailyDelivery, dailyWindows]);
   const theme = volumeTheme(mode);
   const currencyProviders = useMemo(
     () => (options?.payment_providers ?? []).filter((provider) => provider.currencies.includes(market.currency)),
@@ -71,7 +84,7 @@ export default function CheckoutPage() {
   const providerNeedsPhone = selectedProvider ? selectedProvider.requires_phone : true;
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
-    mode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
+    mode: effectiveMode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
     currency: paymentMethod === 'online' ? market.currency : 'TZS',
   });
   const currentQuoteKey = useRef(quoteKey);
@@ -106,7 +119,7 @@ export default function CheckoutPage() {
     setAcceptedFee(false);
     if (!items.length || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
     void storefrontRequest<CheckoutQuote>('/checkout/quote', {
-      mode,
+      mode: effectiveMode,
       delivery_window: deliveryWindow,
       items,
       ...(market.location ? { lat: market.location.lat, lng: market.location.lng } : {}),
@@ -128,12 +141,14 @@ export default function CheckoutPage() {
     if (!lines.length) return setError('Add at least one product before checkout.');
     if (!quote) return setError(quoteError || 'Wait for the latest delivery quote before placing your order.');
     if (!quote) return setError(quoteError || 'Wait for the latest delivery quote before placing your order.');
+    const phone = `${phoneDial}${contact.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}`;
+    const recipientPhone = `${recipientDial}${recipient.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}`;
     if (!contact.name.trim() || !contact.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) {
       return setError('Enter your name, a valid email address and a reachable phone number.');
     }
     if (quote.delivery_fee > 0 && !acceptedFee) return setError('Accept the quoted delivery charge to continue.');
-    if (forSomeoneElse && (!recipient.name.trim() || !/^\+[1-9]\d{7,14}$/.test(recipient.phone.trim()))) {
-      return setError('Enter the recipient’s name and phone number with country code.');
+    if (forSomeoneElse && (!recipient.name.trim() || !/^\+[1-9]\d{7,14}$/.test(recipientPhone))) {
+      return setError('Enter the recipient’s name and phone number.');
     }
     if (paymentMethod === 'online' && !options?.online_payment) return setError('Online payment is not available for web checkout yet.');
     if (paymentMethod === 'online' && !options?.payment_currencies.includes(market.currency)) {
@@ -144,16 +159,16 @@ export default function CheckoutPage() {
     try {
       const input = {
         client_platform: 'web' as const,
-        mode,
+        mode: effectiveMode,
         delivery_window: deliveryWindow,
         delivery_fee_accepted: acceptedFee,
         quoted_delivery_fee: quote.delivery_fee,
         quoted_subtotal: quote.subtotal,
         items: quote.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
         ...(market.location ? { lat: market.location.lat, lng: market.location.lng } : {}),
-        customer: { name: contact.name.trim(), email: contact.email.trim(), phone: contact.phone.trim() },
+        customer: { name: contact.name.trim(), email: contact.email.trim(), phone },
         delivery_address: market.placeName || (market.location ? `${market.location.lat}, ${market.location.lng}` : 'Delivery location not provided'),
-        ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
+        ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipientPhone } } : {}),
         currency: paymentMethod === 'online' ? market.currency : 'TZS',
         quoted_payment_amount: quote.payment_amount,
       };
@@ -161,7 +176,9 @@ export default function CheckoutPage() {
         const payment = await storefrontRequest<PaymentSession>('/payments/initialize', {
           ...input,
           ...(selectedProvider ? { payment_provider: selectedProvider.id } : {}),
-          ...(providerNeedsPhone && paymentPhone.trim() ? { payment_phone: paymentPhone.trim() } : {}),
+          ...(providerNeedsPhone && paymentPhone.trim()
+            ? { payment_phone: `${paymentPhoneDial}${paymentPhone.replace(/[^0-9]/g, '').replace(/^0/, '')}` }
+            : {}),
         });
         if (selectedProvider?.id === 'pesapal') {
           window.location.assign(`/checkout/pesapal?tx_ref=${encodeURIComponent(payment.tx_ref ?? '')}&order_tracking_id=${encodeURIComponent(payment.order_tracking_id ?? '')}`);
@@ -189,7 +206,7 @@ export default function CheckoutPage() {
     } finally {
       setBusy(false);
     }
-  }, [lines, market.location, market.placeName, market.currency, quote, quoteError, contact, forSomeoneElse, recipient, paymentPhone, selectedProvider, providerNeedsPhone, acceptedFee, paymentMethod, options, mode, deliveryWindow, quoteKey, clear]);
+  }, [lines, market.location, market.placeName, market.currency, quote, quoteError, contact, phoneDial, forSomeoneElse, recipient, recipientDial, paymentPhone, paymentPhoneDial, selectedProvider, providerNeedsPhone, acceptedFee, paymentMethod, options, mode, effectiveMode, deliveryWindow, quoteKey, clear]);
 
   if (orderId) {
     return (
@@ -219,38 +236,59 @@ export default function CheckoutPage() {
             <Link href="/#fresh" className="mt-3 inline-block font-bold text-leaf-deep underline">Browse products</Link>
           </div>
         ) : (
-          <ul className="mt-6 space-y-3">
-            {lines.map(({ product, qty }) => (
-              <li key={product.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 sm:flex-row sm:items-center sm:gap-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="break-words font-bold">{product.name}</h2>
-                  <p className="text-sm text-ink-mute">{product.category} · {volumePrice(product, qty, preferredMode) === null ? 'Price confirmed at checkout' : `${formatTZS(volumePrice(product, qty, preferredMode)!)} per ${product.unit}`}</p>
-                  <p className="mt-1 text-xs font-extrabold" style={{ color: theme.accent }}>
-                    {volumeTier(product, qty, preferredMode).replace('_', '-')} pricing
-                  </p>
-                  {quote?.items.find((item) => item.requested_product_id === product.id) && (
-                    <p className="mt-1 text-sm font-bold text-leaf-deep">
-                      Quoted {formatTZS(quote.items.find((item) => item.requested_product_id === product.id)!.unit_price)} per {product.unit}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center justify-between gap-4 sm:justify-start">
-                  <label className="sr-only" htmlFor={`quantity-${product.id}`}>Quantity for {product.name}</label>
-                  <input
-                    id={`quantity-${product.id}`}
-                    type="number"
-                    min="0.01"
-                    step="any"
-                    max={Math.min(10000, product.stock)}
-                    value={qty}
-                    onChange={(event) => setQuantity(product.id, Number(event.target.value))}
-                    className="w-24 rounded-xl border border-line px-3 py-2 text-center font-bold"
-                  />
-                  <button type="button" onClick={() => setQuantity(product.id, 0)} className="text-sm font-bold text-red-700 underline">Remove</button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="mt-6 space-y-3">
+              {lines.map(({ product, qty }) => {
+                const unitPrice = volumePrice(product, qty, preferredMode);
+                return (
+                  <li key={product.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 sm:flex-row sm:items-center sm:gap-4">
+                    <SmartImage src={product.image_url ?? ''} alt={product.name} className="h-20 w-20 shrink-0 rounded-2xl" />
+                    <div className="min-w-0 flex-1">
+                      <h2 className="break-words font-bold">{product.name}</h2>
+                      <p className="text-sm text-ink-mute">{product.category} · {unitPrice === null ? 'Price confirmed at checkout' : `${formatTZS(unitPrice)} per ${product.unit}`}</p>
+                      <p className="mt-1 text-xs font-extrabold" style={{ color: theme.accent }}>
+                        {volumeTier(product, qty, preferredMode).replace('_', '-')} pricing
+                      </p>
+                      {quote?.items.find((item) => item.requested_product_id === product.id) && (
+                        <p className="mt-1 text-sm font-bold text-leaf-deep">
+                          Quoted {formatTZS(quote.items.find((item) => item.requested_product_id === product.id)!.unit_price)} per {product.unit}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-4 sm:justify-start">
+                      <label className="sr-only" htmlFor={`quantity-${product.id}`}>Quantity for {product.name}</label>
+                      <input
+                        id={`quantity-${product.id}`}
+                        type="number"
+                        min="0.01"
+                        step="any"
+                        max={Math.min(10000, product.stock)}
+                        value={qty}
+                        onChange={(event) => setQuantity(product.id, Number(event.target.value))}
+                        className="w-24 rounded-xl border border-line px-3 py-2 text-center font-bold"
+                      />
+                      <div className="text-right">
+                        <p className="text-xs text-ink-mute">Line total</p>
+                        <p className="text-lg font-extrabold" style={{ color: theme.accent }}>
+                          {unitPrice === null ? '—' : formatTZS(unitPrice * qty)}
+                        </p>
+                      </div>
+                      <button type="button" onClick={() => setQuantity(product.id, 0)} className="text-sm font-bold text-red-700 underline">Remove</button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-4 flex items-center justify-between rounded-2xl px-4 py-3" style={{ backgroundColor: theme.soft }}>
+              <span className="font-bold" style={{ color: theme.accent }}>Basket total</span>
+              <strong className="text-xl" style={{ color: theme.accent }}>
+                {formatTZS(lines.reduce((total, line) => {
+                  const unit = volumePrice(line.product, line.qty, preferredMode);
+                  return unit === null ? total : total + unit * line.qty;
+                }, 0))}
+              </strong>
+            </div>
+          </>
         )}
       </section>
 
@@ -282,24 +320,30 @@ export default function CheckoutPage() {
                 const title = option.value === 'morning' ? 'Morning (07:00–10:00)'
                   : option.value === 'evening' ? 'Evening (15:00–18:00)'
                     : option.title.replace(/\s+delivery window$/i, '');
-                return <option key={option.value} value={option.value}>{title} · {formatTZS(option.fee)}</option>;
+                const day = option.value === 'morning' || option.value === 'evening'
+                  ? dailyDeliveryDay(option.value, deliveryClock)
+                  : '';
+                return <option key={option.value} value={option.value}>{day ? `${day} · ` : ''}{title} · {formatTZS(option.fee)}</option>;
               })}
             </select>
           </label>
           {isDailyDelivery && <p className="text-xs text-ink-mute">Delivery windows are shown in local time.</p>}
 
-          {(['name', 'email', 'phone'] as const).map((field) => (
-            <label key={field} className="block text-sm font-bold capitalize">{field === 'phone' ? 'Phone number' : field}
-              <input
-                type={field === 'email' ? 'email' : 'text'}
-                placeholder={field === 'name' ? 'Enter your full name' : field === 'email' ? 'Enter your email address' : 'Enter your phone number with country code'}
-                autoComplete={field === 'name' ? 'name' : field === 'email' ? 'email' : 'tel'}
-                value={contact[field]}
-                onChange={(event) => setContact((current) => ({ ...current, [field]: event.target.value }))}
-                className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
-              />
+          <label className="block text-sm font-bold">Name
+            <input value={contact.name} onChange={(event) => setContact((current) => ({ ...current, name: event.target.value }))} placeholder="Enter your full name" autoComplete="name" className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
+          </label>
+          <label className="block text-sm font-bold">Email
+            <input type="email" value={contact.email} onChange={(event) => setContact((current) => ({ ...current, email: event.target.value }))} placeholder="Enter your email address" autoComplete="email" className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
+          </label>
+          <div className="grid grid-cols-[112px_1fr] gap-2">
+            <div>
+              <span className="mb-1 block text-sm font-bold">Country code</span>
+              <CountryCodePicker value={phoneDial} onChange={setPhoneDial} />
+            </div>
+            <label className="block text-sm font-bold">Phone number
+              <input type="tel" value={contact.phone} onChange={(event) => setContact((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" autoComplete="tel" className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
             </label>
-          ))}
+          </div>
           <label className="flex items-center gap-2 text-sm font-bold">
             <input type="checkbox" checked={forSomeoneElse} onChange={(event) => setForSomeoneElse(event.target.checked)} />
             I’m ordering for someone else
@@ -311,9 +355,15 @@ export default function CheckoutPage() {
               <label className="block text-sm font-bold">Recipient name
                 <input value={recipient.name} maxLength={120} placeholder="Enter the recipient’s full name" onChange={(event) => setRecipient((current) => ({ ...current, name: event.target.value }))} className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
               </label>
-              <label className="block text-sm font-bold">Recipient phone number
-                <input type="tel" value={recipient.phone} maxLength={32} placeholder="Enter phone number with country code" onChange={(event) => setRecipient((current) => ({ ...current, phone: event.target.value }))} className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
-              </label>
+              <div className="grid grid-cols-[112px_1fr] gap-2">
+                <div>
+                  <span className="mb-1 block text-sm font-bold">Country code</span>
+                  <CountryCodePicker value={recipientDial} onChange={setRecipientDial} />
+                </div>
+                <label className="block text-sm font-bold">Recipient phone
+                  <input type="tel" value={recipient.phone} maxLength={32} placeholder="Phone number" onChange={(event) => setRecipient((current) => ({ ...current, phone: event.target.value }))} className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal" />
+                </label>
+              </div>
             </fieldset>
           )}
 
@@ -354,17 +404,22 @@ export default function CheckoutPage() {
               )}
               {providerNeedsPhone && (
                 <>
-                  <label className="block text-sm font-bold">Mobile money number (optional)
-                    <input
-                      type="tel"
-                      autoComplete="tel"
-                      value={paymentPhone}
-                      onChange={(event) => setPaymentPhone(event.target.value)}
-                      placeholder="Use your contact number"
-                      className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
-                    />
-                  </label>
-                  <p className="text-xs text-ink-mute">Enter the mobile-money number linked to your account, or leave this blank to use your contact number. Enter your PIN only on your phone or the payment provider&apos;s trusted prompt.</p>
+                  <div className="grid grid-cols-[112px_1fr] gap-2">
+                    <div>
+                      <span className="mb-1 block text-sm font-bold">Country code</span>
+                      <CountryCodePicker value={paymentPhoneDial} onChange={setPaymentPhoneDial} />
+                    </div>
+                    <label className="block text-sm font-bold">Mobile money number
+                      <input
+                        type="tel"
+                        autoComplete="tel"
+                        value={paymentPhone}
+                        onChange={(event) => setPaymentPhone(event.target.value)}
+                        placeholder="Optional"
+                        className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 font-normal"
+                      />
+                    </label>
+                  </div>
                 </>
               )}
               <p className="text-xs font-bold text-ink-mute">Review your total and available payment options before confirming.</p>
@@ -375,7 +430,6 @@ export default function CheckoutPage() {
           {paymentMethod === 'online' && options && !options.payment_currencies.includes(market.currency) && <p role="alert" className="text-sm text-red-700">
             Online payments support {options.payment_currencies.join(', ')}. Choose a supported currency above, or pay on delivery in {options.cash_currency}.
           </p>}
-          {paymentMethod === 'cash_on_delivery' && <p className="text-xs font-bold text-ink-mute">Payment on delivery is collected in {options?.cash_currency || 'TZS'}. Converted prices are for reference.</p>}
           {quote && (
             <div className="space-y-2 border-t border-line pt-3 text-sm">
               <p className="flex justify-between"><span>Items (server quote)</span><strong>{formatTZS(quote.subtotal)}</strong></p>

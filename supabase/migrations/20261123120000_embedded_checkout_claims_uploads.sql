@@ -27,7 +27,7 @@ set permissions = array(
   from unnest(permissions || array['claims.view', 'claims.claim']::text[]) as permission
   order by permission
 )
-where role_key in ('platform_owner', 'platform_manager', 'supplier_owner', 'supplier_staff', 'driver');
+where true;
 
 -- Make employee claims usable without requiring the separate management-assignment permission.
 create or replace function public.validate_supplier_order_assignment()

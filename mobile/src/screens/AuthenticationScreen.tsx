@@ -112,7 +112,7 @@ export default function AuthenticationScreen({ navigation }: any) {
     if (method === 'phone') {
       const normalizedPhone = phone.trim().replace(/[\s()-]/g, '');
       if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
-        Alert.alert('Check your phone number', 'Enter a valid international number beginning with + and its country code.');
+        Alert.alert('Check your phone number', 'Enter a valid phone number.');
         return;
       }
       if (creating && !name.trim()) {
@@ -215,7 +215,7 @@ export default function AuthenticationScreen({ navigation }: any) {
   const requestAnotherCode = async () => {
     const normalizedPhone = phone.trim().replace(/[\s()-]/g, '');
     if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
-      Alert.alert('Check your phone number', 'Enter a valid international number beginning with + and its country code.');
+      Alert.alert('Check your phone number', 'Enter a valid phone number.');
       return;
     }
     setBusy(true);
@@ -301,7 +301,7 @@ export default function AuthenticationScreen({ navigation }: any) {
             ) : (
               <>
                 {creating && !codeSent && <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" />}
-                <Field label="Phone number" value={phone} onChangeText={(value) => { setPhone(value); setCodeSent(false); setCode(''); }} keyboardType="phone-pad" autoComplete="tel" editable={!codeSent} placeholder="Enter your phone number (include country code)" />
+                <Field label="Phone number" value={phone} onChangeText={(value) => { setPhone(value); setCodeSent(false); setCode(''); }} keyboardType="phone-pad" autoComplete="tel" editable={!codeSent} placeholder="Phone number" />
                 {codeSent && (
                   <>
                     <Field label="One-time password (OTP)" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} />

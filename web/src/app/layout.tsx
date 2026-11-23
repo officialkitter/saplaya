@@ -7,18 +7,18 @@ const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.saplaya.org'),
-  title: 'Saplaya Organization Limited | Tanzania Produce',
+  title: 'Saplaya Organization',
   description: MARKETPLACE_DESCRIPTION,
   openGraph: {
     type: 'website',
     siteName: 'Saplaya Organization',
-    title: 'Saplaya Organization Limited | Tanzania Produce',
+    title: 'Saplaya Organization',
     description: MARKETPLACE_DESCRIPTION,
     images: [{ url: BRAND_IMAGE, alt: 'Saplaya fresh produce delivery and wholesale marketplace' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Saplaya Organization Limited | Tanzania Produce',
+    title: 'Saplaya Organization',
     description: MARKETPLACE_DESCRIPTION,
     images: [BRAND_IMAGE],
   },

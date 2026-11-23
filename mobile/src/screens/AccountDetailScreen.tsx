@@ -434,7 +434,7 @@ function PaymentMethods() {
       <View style={[styles.formCard, shadow]}>
         <Text style={styles.cardTitle}>Add mobile money</Text>
         <Field label="Network name" value={label} onChangeText={setLabel} placeholder="e.g. M-Pesa" />
-        <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Enter your phone number (include country code)" />
+        <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" />
         <ActionButton title={busy ? 'Saving…' : 'Save number'} onPress={() => void addMethod()} disabled={busy} />
       </View>
 

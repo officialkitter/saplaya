@@ -46,21 +46,21 @@ export function calculateTierPrices(retailPrice: number, percentages: PricingPer
 export function volumeTierForQuantity(
   quantity: number,
   wholesaleMinimum: number,
-  preferredMode: OrderMode,
+  _preferredMode: OrderMode,
 ): OrderMode {
   if (quantity >= wholesaleMinimum * 100) return 'mega_bulk';
   if (quantity >= wholesaleMinimum * 10) return 'bulk';
-  if (preferredMode === 'wholesale' || quantity >= wholesaleMinimum) return 'wholesale';
+  if (quantity >= wholesaleMinimum) return 'wholesale';
   return 'retail';
 }
 
 export function deriveOrderMode<T extends { qty: number; product: { wholesale_min_qty: number } }>(
   lines: T[],
-  preferredMode: 'retail' | 'wholesale',
+  _preferredMode: 'retail' | 'wholesale',
 ): OrderMode {
-  let mode: OrderMode = preferredMode;
+  let mode: OrderMode = 'retail';
   for (const line of lines) {
-    const tier = volumeTierForQuantity(line.qty, line.product.wholesale_min_qty, preferredMode);
+    const tier = volumeTierForQuantity(line.qty, line.product.wholesale_min_qty, 'retail');
     if (tier === 'mega_bulk' || (tier === 'bulk' && mode !== 'mega_bulk')
       || (tier === 'wholesale' && mode === 'retail')) {
       mode = tier;

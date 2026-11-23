@@ -10,11 +10,11 @@ export function volumeTheme(mode: VolumeTier) {
   return { accent: '#2E7D32', soft: '#E8F5E9', background: '#F9FBF7', label: 'Retail', button: '#2E7D32', buttonText: '#FFFFFF' };
 }
 
-export function volumeTier(product: StorefrontProduct, qty: number, preferredMode: 'retail' | 'wholesale'): VolumeTier {
+export function volumeTier(product: StorefrontProduct, qty: number, _preferredMode: 'retail' | 'wholesale'): VolumeTier {
   const minimum = Math.max(1, product.wholesale_min_qty);
   if (qty >= minimum * 100) return 'mega_bulk';
   if (qty >= minimum * 10) return 'bulk';
-  if (preferredMode === 'wholesale' || qty >= minimum) return 'wholesale';
+  if (qty >= minimum) return 'wholesale';
   return 'retail';
 }
 
@@ -27,10 +27,10 @@ export function volumePrice(product: StorefrontProduct, qty: number, preferredMo
   }
 }
 
-export function orderMode(lines: { product: StorefrontProduct; qty: number }[], preferredMode: 'retail' | 'wholesale'): Mode {
-  let mode: Mode = preferredMode;
+export function orderMode(lines: { product: StorefrontProduct; qty: number }[], _preferredMode: 'retail' | 'wholesale'): Mode {
+  let mode: Mode = 'retail';
   for (const { product, qty } of lines) {
-    const tier = volumeTier(product, qty, preferredMode);
+    const tier = volumeTier(product, qty, 'retail');
     if (tier === 'mega_bulk' || (tier === 'bulk' && mode !== 'mega_bulk')
       || (tier === 'wholesale' && mode === 'retail')) mode = tier;
   }

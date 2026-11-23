@@ -9,11 +9,11 @@ export function quickAddQuantity(product: Pick<Product, 'stock' | 'wholesale_min
   return currentQty + increment <= Math.min(product.stock, 10000) ? increment : 0;
 }
 
-export function volumeTier(product: Product, qty: number, mode: Mode): VolumeTier {
+export function volumeTier(product: Product, qty: number, _mode: Mode): VolumeTier {
   const wholesaleMinimum = Math.max(1, product.wholesale_min_qty);
   if (qty >= wholesaleMinimum * 100) return 'mega_bulk';
   if (qty >= wholesaleMinimum * 10) return 'bulk';
-  if (mode === 'wholesale' || qty >= wholesaleMinimum) return 'wholesale';
+  if (qty >= wholesaleMinimum) return 'wholesale';
   return 'retail';
 }
 
@@ -48,10 +48,10 @@ export function unlockedVolumeTier(product: Product, previousQty: number, nextQt
   return next;
 }
 
-export function orderMode(lines: { product: Product; qty: number }[], preferredMode: BaseMode): Mode {
-  let mode: Mode = preferredMode;
+export function orderMode(lines: { product: Product; qty: number }[], _preferredMode: BaseMode): Mode {
+  let mode: Mode = 'retail';
   for (const { product, qty } of lines) {
-    const tier = volumeTier(product, qty, preferredMode);
+    const tier = volumeTier(product, qty, 'retail');
     if (tier === 'mega_bulk' || (tier === 'bulk' && mode !== 'mega_bulk')
       || (tier === 'wholesale' && mode === 'retail')) mode = tier;
   }

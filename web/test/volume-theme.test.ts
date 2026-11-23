@@ -18,8 +18,8 @@ test('quantity determines the visible price and the automatic basket theme', () 
     assert.equal(orderMode([{ product, qty }], 'retail'), tier);
     assert.equal(volumeTheme(tier).label.toLowerCase().replace('-', '_'), tier);
   }
-  assert.equal(volumePrice(product, 1, 'wholesale'), 80);
-  assert.equal(orderMode([], 'wholesale'), 'wholesale');
+  assert.equal(volumePrice(product, 1, 'wholesale'), 100);
+  assert.equal(orderMode([], 'wholesale'), 'retail');
   assert.equal(volumePrice({ ...product, bulk_price: null }, 100, 'retail'), null);
 });
 

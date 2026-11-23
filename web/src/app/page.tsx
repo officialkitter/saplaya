@@ -7,7 +7,7 @@ import { MARKETPLACE_DESCRIPTION, publicMetadata, SITE_URL } from '@/lib/seo';
 import { fetchStorefrontPage } from '@/lib/storefront-server';
 import type { StorefrontPageData } from '@/lib/storefront-contract';
 
-const title = 'Saplaya Organization Limited | Tanzania Produce';
+const title = 'Saplaya Organization';
 const description = MARKETPLACE_DESCRIPTION;
 
 export const metadata: Metadata = publicMetadata({ title, description, pathname: '/' });

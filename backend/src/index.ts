@@ -28,6 +28,7 @@ import {
   type OperationScope,
 } from './management.js';
 import { ipnAcknowledgement, registerIpn } from './pesapal.js';
+import { isDailyDeliveryWindowAvailable } from './delivery-time.js';
 import { loadPaymentGatewayConfig, PAYMENT_PROVIDER_IDS, type PaymentProviderId } from './payments/config.js';
 import { PaymentGateway, settlePayment, type SettlementStore, type StoredPayment } from './payments/gateway.js';
 import {
@@ -678,9 +679,10 @@ function isDailyDeliveryMode(mode: OrderMode) {
 }
 
 function validDeliveryWindow(mode: OrderMode, window: string) {
-  return isDailyDeliveryMode(mode)
-    ? window === 'morning' || window === 'evening'
-    : DELIVERY_ETAS.some((option) => option.value === window);
+  if (!isDailyDeliveryMode(mode)) return DELIVERY_ETAS.some((option) => option.value === window);
+  if (window === 'morning') return true;
+  if (window === 'evening') return isDailyDeliveryWindowAvailable('evening');
+  return false;
 }
 
 function deliverySpeedFeeFor(mode: OrderMode, window: string, fees: unknown): number | null {
@@ -4014,7 +4016,7 @@ app.get('/admin/claims/available', requirePerm('claims.view'), async (req: Authe
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let query = db
     .from('supplier_orders')
-    .select('id, order_id, supplier_id, status, updated_at, suppliers(name), supplier_order_assignments(team_member_id, team_members(full_name))')
+    .select('id, order_id, supplier_id, status, updated_at, suppliers(name), order_items(qty, unit_price, products(name, image_url)), supplier_order_assignments(team_member_id, team_members(full_name))')
     .in('status', ['pending', 'packing', 'en_route'])
     .order('updated_at', { ascending: false })
     .limit(300);
@@ -4024,21 +4026,35 @@ app.get('/admin/claims/available', requirePerm('claims.view'), async (req: Authe
     console.error('Could not load available claim orders:', error.message);
     return res.status(500).json({ error: 'Could not load claimable orders.' });
   }
-  return res.json((data ?? []).filter((order) => !relationRecord(order.supplier_order_assignments)?.team_member_id).map((order) => ({
-    id: order.id,
-    code: String(order.order_id).slice(0, 8).toUpperCase(),
-    supplier_id: order.supplier_id,
-    supplier_name: relationRecord(order.suppliers)?.name ?? 'Farm',
-    status: order.status,
-    updated_at: order.updated_at,
-  })));
+  return res.json((data ?? []).filter((order) => !relationRecord(order.supplier_order_assignments)?.team_member_id).map((order) => {
+    const items = (Array.isArray(order.order_items) ? order.order_items : []).map((item: Record<string, unknown>) => {
+      const product = relationRecord(item.products);
+      return {
+        name: typeof product?.name === 'string' ? product.name : 'Item',
+        image_url: typeof product?.image_url === 'string' ? product.image_url : null,
+        qty: Number(item.qty),
+        unit_price: Number(item.unit_price),
+      };
+    });
+    return {
+      id: order.id,
+      code: String(order.order_id).slice(0, 8).toUpperCase(),
+      supplier_id: order.supplier_id,
+      supplier_name: relationRecord(order.suppliers)?.name ?? 'Farm',
+      status: order.status,
+      updated_at: order.updated_at,
+      items,
+      item_count: items.reduce((total, item) => total + item.qty, 0),
+      basket_total: items.reduce((total, item) => total + item.qty * item.unit_price, 0),
+    };
+  }));
 });
 
 app.get('/admin/claims/my', requirePerm('claims.view'), async (req: AuthedRequest, res: Response) => {
   const member = req.member!;
   const { data, error } = await db
     .from('supplier_order_assignments')
-    .select('supplier_order_id, assigned_at, supplier_orders(id, order_id, supplier_id, status, updated_at, suppliers(name))')
+    .select('supplier_order_id, assigned_at, supplier_orders(id, order_id, supplier_id, status, updated_at, suppliers(name), order_items(qty, unit_price, products(name, image_url)))')
     .eq('team_member_id', member.id)
     .order('assigned_at', { ascending: false })
     .limit(300);
@@ -4049,6 +4065,15 @@ app.get('/admin/claims/my', requirePerm('claims.view'), async (req: AuthedReques
   return res.json((data ?? []).map((claim) => {
     const order = relationRecord(claim.supplier_orders);
     const supplier = relationRecord(order?.suppliers);
+    const items = (Array.isArray(order?.order_items) ? order.order_items : []).map((item: Record<string, unknown>) => {
+      const product = relationRecord(item.products);
+      return {
+        name: typeof product?.name === 'string' ? product.name : 'Item',
+        image_url: typeof product?.image_url === 'string' ? product.image_url : null,
+        qty: Number(item.qty),
+        unit_price: Number(item.unit_price),
+      };
+    });
     return {
       id: claim.supplier_order_id,
       code: typeof order?.order_id === 'string' ? order.order_id.slice(0, 8).toUpperCase() : claim.supplier_order_id.slice(0, 8).toUpperCase(),
@@ -4056,6 +4081,9 @@ app.get('/admin/claims/my', requirePerm('claims.view'), async (req: AuthedReques
       status: typeof order?.status === 'string' ? order.status : 'pending',
       claimed_at: claim.assigned_at,
       updated_at: typeof order?.updated_at === 'string' ? order.updated_at : claim.assigned_at,
+      items,
+      item_count: items.reduce((total, item) => total + item.qty, 0),
+      basket_total: items.reduce((total, item) => total + item.qty * item.unit_price, 0),
     };
   }));
 });
@@ -4099,6 +4127,68 @@ app.post('/admin/claims/:id/claim', requirePerm('claims.claim'), async (req: Aut
     return res.status(409).json({ error: 'This order could not be claimed. It may have been claimed by someone else.' });
   }
   return res.status(201).json(data);
+});
+
+app.post('/admin/claims/bulk', requirePerm('claims.claim'), async (req: AuthedRequest, res: Response) => {
+  const parsed = z.object({
+    refs: z.array(z.string().trim().min(1).max(100)).min(1).max(500),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Provide between 1 and 500 order references.' });
+
+  const member = req.member!;
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(member);
+  } catch (scopeError) {
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json({ claimed: 0, skipped: parsed.data.refs.length, failures: [] });
+
+  let query = db
+    .from('supplier_orders')
+    .select('id, order_id, supplier_id, status')
+    .in('status', ['pending', 'packing', 'en_route'])
+    .limit(1000);
+  if (allowedSupplierIds) query = query.in('supplier_id', allowedSupplierIds);
+  const { data: candidates, error: candidateError } = await query;
+  if (candidateError) return res.status(500).json({ error: 'Could not load available orders.' });
+
+  const claimed: string[] = [];
+  const skipped: string[] = [];
+  const failures: { ref: string; reason: string }[] = [];
+  for (const rawRef of [...new Set(parsed.data.refs)].map((ref) => ref.trim())) {
+    const normalized = rawRef.toLowerCase();
+    const match = (candidates ?? []).find((candidate) =>
+      candidate.id.toLowerCase() === normalized
+      || candidate.order_id.toLowerCase() === normalized
+      || candidate.order_id.toLowerCase().slice(0, 8) === normalized.slice(0, 8),
+    );
+    if (!match) {
+      skipped.push(rawRef);
+      continue;
+    }
+    const { data: existing } = await db
+      .from('supplier_order_assignments')
+      .select('team_member_id')
+      .eq('supplier_order_id', match.id)
+      .maybeSingle();
+    if (existing) {
+      skipped.push(rawRef);
+      continue;
+    }
+    const { error } = await db.from('supplier_order_assignments').upsert({
+      supplier_order_id: match.id,
+      team_member_id: member.id,
+      assigned_by: member.id,
+      assigned_at: new Date().toISOString(),
+    });
+    if (error) {
+      failures.push({ ref: rawRef, reason: 'The order could not be claimed.' });
+      continue;
+    }
+    claimed.push(match.order_id.slice(0, 8).toUpperCase());
+  }
+  return res.json({ claimed: claimed.length, codes: claimed, skipped: skipped.length, failures });
 });
 
 app.post('/admin/claims/:id/release', requirePerm('claims.claim'), async (req: AuthedRequest, res: Response) => {

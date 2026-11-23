@@ -19,6 +19,9 @@ import { useCurrency } from '../lib/currency';
 import CurrencySelector from '../components/CurrencySelector';
 import { verifyAfterPaymentBrowser } from '../lib/payment-confirmation';
 import { API_URL } from '../lib/supabase';
+import { availableDailyDeliveryWindows, dailyDeliveryDay } from '../lib/delivery-time';
+import CountryCodePicker from '../components/CountryCodePicker';
+import { orderMode } from '../lib/volume';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -33,11 +36,14 @@ export default function CheckoutScreen({ navigation }: any) {
   const { currency, formatPrice: formatTZS } = useCurrency();
   const [forSomeoneElse, setForSomeoneElse] = useState(false);
   const [recipient, setRecipient] = useState({ name: '', phone: '' });
+  const [recipientDial, setRecipientDial] = useState('+255');
   const [checkoutOptions, setCheckoutOptions] = useState<{ payment_currencies: string[]; cash_currency: string } | null>(null);
   const [name, setName] = useState(profile.fullName);
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(profile.phone);
+  const [phoneDial, setPhoneDial] = useState('+255');
   const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentPhoneDial, setPaymentPhoneDial] = useState('+255');
   const [savedPaymentMethods, setSavedPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
@@ -55,18 +61,24 @@ export default function CheckoutScreen({ navigation }: any) {
   const [pendingVerification, setPendingVerification] = useState<{ txRef: string; orderTrackingId: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [paymentVisible, setPaymentVisible] = useState(false);
+  const [deliveryClock, setDeliveryClock] = useState(() => new Date());
   const [paymentOrigin, setPaymentOrigin] = useState('');
   const finishingPayment = useRef(false);
   const dailyDelivery = mode === 'retail' || mode === 'wholesale';
+  const dailyWindows = useMemo(() => availableDailyDeliveryWindows(deliveryClock), [deliveryClock]);
+  const effectiveMode = orderMode(lines, mode === 'wholesale' ? 'wholesale' : 'retail');
   const availableDeliveryOptions = useMemo(() => deliveryOptions.filter((option) =>
-    dailyDelivery ? option.value === 'morning' || option.value === 'evening'
+    dailyDelivery ? dailyWindows.includes(option.value as 'morning' | 'evening')
       : option.value !== 'morning' && option.value !== 'evening',
-  ), [deliveryOptions, dailyDelivery]);
+  ), [deliveryOptions, dailyDelivery, dailyWindows]);
   const tierTheme = volumeTheme(mode);
-
+  useEffect(() => {
+    const timer = setInterval(() => setDeliveryClock(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const quoteKey = useMemo(
     () => JSON.stringify({
-      mode,
+      mode: effectiveMode,
       lines: lines.map(({ product, qty }) => [product.id, qty]),
       lat: place.lat,
       lng: place.lng,
@@ -74,7 +86,7 @@ export default function CheckoutScreen({ navigation }: any) {
       deliveryWindow,
       currency: checkoutPayment === 'online' ? currency : 'TZS',
     }),
-    [mode, lines, place.lat, place.lng, place.approximate, deliveryWindow, checkoutPayment, currency],
+    [effectiveMode, lines, place.lat, place.lng, place.approximate, deliveryWindow, checkoutPayment, currency],
   );
   const quote = quotedBasket?.key === quoteKey ? quotedBasket.quote : null;
   const km = quote?.distance_km;
@@ -82,8 +94,8 @@ export default function CheckoutScreen({ navigation }: any) {
   const estimate = quote?.amount ?? 0;
   const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
   const basketKey = useMemo(
-    () => JSON.stringify({ mode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, label: place.label, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient }),
-    [mode, lines, place.lat, place.lng, place.label, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient],
+    () => JSON.stringify({ mode: effectiveMode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, label: place.label, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient }),
+    [effectiveMode, lines, place.lat, place.lng, place.label, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient],
   );
   const currentBasketKey = useRef(basketKey);
   currentBasketKey.current = basketKey;
@@ -109,7 +121,7 @@ export default function CheckoutScreen({ navigation }: any) {
     }
     setQuoteLoading(true);
     void fetchCheckoutQuote({
-      mode,
+      mode: effectiveMode,
       delivery_window: deliveryWindow,
       items: lines.map((line) => ({ product_id: line.product.id, qty: line.qty })),
       lat: place.lat,
@@ -125,7 +137,7 @@ export default function CheckoutScreen({ navigation }: any) {
     return () => {
       active = false;
     };
-  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, lines, mode, deliveryWindow, place.lat, place.lng, place.approximate, currency, checkoutPayment]);
+  }, [quoteKey, quoteRefreshVersion, availableDeliveryOptions, lines, effectiveMode, deliveryWindow, place.lat, place.lng, place.approximate, currency, checkoutPayment]);
 
   useEffect(() => {
     let active = true;
@@ -211,7 +223,8 @@ export default function CheckoutScreen({ navigation }: any) {
       Alert.alert('Confirm delivery charge', 'Accept the server-quoted delivery charge to continue, or change the delivery address.');
       return false;
     }
-    if (!name.trim() || !email.trim() || !phone.trim()) {
+    const fullPhone = phone.trim().startsWith('+') ? phone.trim() : `${phoneDial}${phone.replace(/[^0-9]/g, '').replace(/^0/, '')}`;
+    if (!name.trim() || !email.trim() || !fullPhone) {
       Alert.alert('Complete your contact details', 'Add your name, email and phone number for the delivery and payment receipt.');
       return false;
     }
@@ -219,12 +232,13 @@ export default function CheckoutScreen({ navigation }: any) {
       Alert.alert('Check your email address', 'Enter a valid email address for the payment receipt.');
       return false;
     }
-    if (phone.trim().length < 5) {
+    if (fullPhone.length < 5) {
       Alert.alert('Check your phone number', 'Enter a phone number where the delivery team can reach you.');
       return false;
     }
-    if (forSomeoneElse && (!recipient.name.trim() || !/^\+[1-9]\d{7,14}$/.test(recipient.phone.trim()))) {
-      Alert.alert('Complete recipient details', 'Enter the recipient’s name and phone number including country code.');
+    const recipientPhone = recipient.phone.trim().startsWith('+') ? recipient.phone.trim() : `${recipientDial}${recipient.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}`;
+    if (forSomeoneElse && (!recipient.name.trim() || !/^\+[1-9]\d{7,14}$/.test(recipientPhone))) {
+      Alert.alert('Complete recipient details', 'Enter the recipient’s name and phone number.');
       return false;
     }
     if (checkoutPayment === 'online' && !checkoutOptions?.payment_currencies.includes(currency)) {
@@ -340,7 +354,7 @@ export default function CheckoutScreen({ navigation }: any) {
         const requestKey = cashRequestKey || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
         if (!cashRequestKey) setCashRequestKey(requestKey);
         const result = await placeCashOrder({
-          mode,
+          mode: effectiveMode,
           delivery_window: deliveryWindow,
           delivery_fee_accepted: acceptedDeliveryFee,
           quoted_delivery_fee: quote!.delivery_fee,
@@ -349,15 +363,15 @@ export default function CheckoutScreen({ navigation }: any) {
           items: quote!.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
           lat: place.lat,
           lng: place.lng,
-          customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+          customer: { name: name.trim(), email: email.trim(), phone: phone.trim().startsWith('+') ? phone.trim() : `${phoneDial}${phone.replace(/[^0-9]/g, '').replace(/^0/, '')}` },
           delivery_address: place.label,
-          ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
+          ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim().startsWith('+') ? recipient.phone.trim() : `${recipientDial}${recipient.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}` } } : {}),
           currency: 'TZS',
         });
         const orderItems = quote ? buildOrderItems(result.items, quote) : null;
         const order = orderItems ? {
           id: result.order_id,
-          mode,
+          mode: effectiveMode,
           status: 'pending' as const,
           subtotal: result.subtotal,
           delivery_fee: result.delivery_fee,
@@ -375,7 +389,7 @@ export default function CheckoutScreen({ navigation }: any) {
 
       if (!payment) {
         const initialized = await initializePayment({
-          mode,
+          mode: effectiveMode,
           delivery_window: deliveryWindow,
           delivery_fee_accepted: acceptedDeliveryFee,
           quoted_delivery_fee: quote!.delivery_fee,
@@ -383,18 +397,18 @@ export default function CheckoutScreen({ navigation }: any) {
           items: quote!.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
           lat: place.lat,
           lng: place.lng,
-          customer: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+          customer: { name: name.trim(), email: email.trim(), phone: phone.trim().startsWith('+') ? phone.trim() : `${phoneDial}${phone.replace(/[^0-9]/g, '').replace(/^0/, '')}` },
           delivery_address: place.label,
-          ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
+          ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim().startsWith('+') ? recipient.phone.trim() : `${recipientDial}${recipient.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}` } } : {}),
           currency,
           quoted_payment_amount: quote!.payment_amount,
-          payment_phone: paymentPhone.trim() || phone.trim(),
+          payment_phone: paymentPhone.trim().startsWith('+') ? paymentPhone.trim() : `${paymentPhoneDial}${(paymentPhone.trim() || phone).replace(/[^0-9]/g, '').replace(/^0/, '')}`,
         });
         const orderItems = buildOrderItems(initialized.items, quote!);
         setPayment(initialized);
         setPaymentBasketKey(basketKey);
         setPaymentSummary(orderItems ? {
-          mode,
+          mode: effectiveMode,
           status: 'pending',
           subtotal: initialized.subtotal,
           delivery_fee: initialized.delivery_fee,
@@ -460,7 +474,13 @@ export default function CheckoutScreen({ navigation }: any) {
           <Text style={styles.subheading}>Who should we contact about this order?</Text>
           <Field label="Full name" placeholder="Enter your full name" value={name} onChangeText={setName} autoComplete="name" editable={!pendingVerification} />
           <Field label="Email for payment receipt" placeholder="Enter your email address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" editable={!pendingVerification} />
-          <Field label="Phone number" placeholder="Enter your phone number with country code" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" editable={!pendingVerification} />
+          <Text style={styles.label}>Phone number</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <CountryCodePicker value={phoneDial} onChange={setPhoneDial} accent={tierTheme.accent} />
+            <View style={{ flex: 1 }}>
+              <Field label="" placeholder="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" editable={!pendingVerification} />
+            </View>
+          </View>
           <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: forSomeoneElse }} disabled={!!pendingVerification} style={styles.acceptDelivery} onPress={() => setForSomeoneElse((value) => !value)}>
             <Ionicons name={forSomeoneElse ? 'checkbox' : 'square-outline'} size={22} color={tierTheme.icon} />
             <Text style={styles.choiceHint}>I’m ordering for someone else</Text>
@@ -469,7 +489,13 @@ export default function CheckoutScreen({ navigation }: any) {
             <View>
               <Text style={styles.helper}>Your receipt stays with you. Delivery goes to the confirmed destination below.</Text>
               <Field label="Recipient name" placeholder="Enter the recipient’s full name" value={recipient.name} onChangeText={(value) => setRecipient((current) => ({ ...current, name: value }))} editable={!pendingVerification} />
-              <Field label="Recipient phone number" placeholder="Enter phone number with country code" keyboardType="phone-pad" value={recipient.phone} onChangeText={(value) => setRecipient((current) => ({ ...current, phone: value }))} editable={!pendingVerification} />
+              <Text style={styles.label}>Recipient phone number</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <CountryCodePicker value={recipientDial} onChange={setRecipientDial} accent={tierTheme.accent} />
+                <View style={{ flex: 1 }}>
+                  <Field label="" placeholder="Phone number" keyboardType="phone-pad" value={recipient.phone} onChangeText={(value) => setRecipient((current) => ({ ...current, phone: value }))} editable={!pendingVerification} />
+                </View>
+              </View>
             </View>
           )}
 
@@ -525,7 +551,11 @@ export default function CheckoutScreen({ navigation }: any) {
                 accessibilityState={{ selected: deliveryWindow === option.value }}
               >
                 <Ionicons name="time-outline" size={20} color={deliveryWindow === option.value ? tierTheme.icon : colors.muted} />
-                <Text style={styles.choiceTitle}>{option.value === 'morning' || option.value === 'evening' ? deliveryWindowLabel(option.value) : option.title}</Text>
+                <Text style={styles.choiceTitle}>
+                  {(option.value === 'morning' || option.value === 'evening')
+                    ? `${dailyDeliveryDay(option.value, deliveryClock)} · ${deliveryWindowLabel(option.value)}`
+                    : option.title}
+                </Text>
                 <Text style={styles.choiceHint}>{option.fee === 0 ? 'No timeframe surcharge' : `+${formatTZS(option.fee)}`}</Text>
               </Pressable>
             ))}
@@ -579,7 +609,7 @@ export default function CheckoutScreen({ navigation }: any) {
           </View>
 
           <Text style={styles.heading}>Payment method</Text>
-          {checkoutPayment === 'cash_on_delivery' && <Text style={styles.helper}>Payment on delivery is collected in {checkoutOptions?.cash_currency || 'TZS'}. Converted prices are for reference.</Text>}
+          {checkoutPayment === 'cash_on_delivery' && <Text style={styles.helper}>Payment on delivery</Text>}
           {checkoutPayment === 'online' && checkoutOptions && !checkoutOptions.payment_currencies.includes(currency) && <Text style={styles.warning}>Online payments support {checkoutOptions.payment_currencies.join(', ')}. Choose a supported currency above or pay on delivery.</Text>}
           <View style={styles.choiceRow}>
             <Pressable
@@ -636,14 +666,20 @@ export default function CheckoutScreen({ navigation }: any) {
                   ))}
                 </View>
               )}
-              <Field
-                label="Mobile money number (optional)"
-                value={paymentPhone}
-                onChangeText={setPaymentPhone}
-                keyboardType="phone-pad"
-                placeholder={phone || 'Enter your phone number (include country code)'}
-                editable={!pendingVerification}
-              />
+              <Text style={styles.label}>Mobile money number</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <CountryCodePicker value={paymentPhoneDial} onChange={setPaymentPhoneDial} accent={tierTheme.accent} />
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label=""
+                    value={paymentPhone}
+                    onChangeText={setPaymentPhone}
+                    keyboardType="phone-pad"
+                    placeholder={phone || 'Phone number'}
+                    editable={!pendingVerification}
+                  />
+                </View>
+              </View>
               <Text style={styles.helper}>Enter your mobile-money number, or leave this blank to use your contact number. You will see the available ways to pay before confirming. Never share your PIN with Saplaya.</Text>
             </>
           )}

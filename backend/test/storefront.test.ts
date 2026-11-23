@@ -105,4 +105,5 @@ test('basket mode unlocks wholesale, bulk, and mega-bulk from one product quanti
   assert.equal(deriveOrderMode(line(100), 'retail'), 'bulk');
   assert.equal(deriveOrderMode(line(1000), 'retail'), 'mega_bulk');
   assert.equal(deriveOrderMode([{ qty: 100, product }, { qty: 10, product }], 'retail'), 'bulk');
+  assert.equal(deriveOrderMode(line(9), 'wholesale'), 'retail');
 });
