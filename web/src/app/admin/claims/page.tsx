@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Ban, CheckCircle2, Clock3, Download, PackageCheck, RefreshCw, Search, Upload } from 'lucide-react';
+import { Ban, CheckCircle2, Clock3, Download, DoorOpen, PackageCheck, RefreshCw, Search, ShoppingBag, Truck, Upload } from 'lucide-react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { fetchAdmin } from '@/lib/supabase';
@@ -39,6 +39,63 @@ const statusAccent: Record<string, string> = {
   delivered: '#2E7D32',
   cancelled: '#D32F2F',
 };
+
+const CLAIM_FLOW = [
+  { status: 'pending', label: 'Available', icon: Clock3, color: '#FFB300' },
+  { status: 'packing', label: 'Packing', icon: ShoppingBag, color: '#0288D1' },
+  { status: 'en_route', label: 'On the way', icon: Truck, color: '#7B1FA2' },
+  { status: 'delivered', label: 'Delivered', icon: DoorOpen, color: '#2E7D32' },
+] as const;
+
+function ClaimFlow({ status }: { status: string }) {
+  if (status === 'cancelled') {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-700">
+        <Ban size={18} /> Cancelled
+      </div>
+    );
+  }
+  const current = CLAIM_FLOW.findIndex((step) => step.status === status);
+  const activeIndex = current >= 0 ? current : 0;
+  return (
+    <div className="flex w-full items-center overflow-hidden" aria-label={`Claim flow: ${CLAIM_FLOW[activeIndex].label}`}>
+      {CLAIM_FLOW.map((step, index) => {
+        const reached = index <= activeIndex;
+        const Icon = step.icon;
+        return (
+          <div key={step.status} className="flex flex-1 items-center last:flex-none">
+            <motion.div
+              initial={false}
+              animate={{
+                scale: index === activeIndex ? 1.08 : 1,
+                backgroundColor: reached ? step.color : '#FFFFFF',
+                borderColor: reached ? step.color : '#E3EBE0',
+                color: reached ? '#FFFFFF' : '#6B7A6C',
+              }}
+              className="relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full border-2"
+              title={step.label}
+            >
+              <Icon size={17} />
+            </motion.div>
+            {index < CLAIM_FLOW.length - 1 && (
+              <div className="mx-[-2px] h-1 flex-1 overflow-hidden rounded-full bg-line">
+                <motion.div
+                  initial={false}
+                  animate={{
+                    width: index < activeIndex ? '100%' : '0%',
+                    backgroundColor: CLAIM_FLOW[index + 1].color,
+                  }}
+                  transition={{ duration: 0.55 }}
+                  className="h-full"
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function Claims() {
   const push = useToast((state) => state.push);
@@ -360,7 +417,7 @@ function Claims() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: Math.min(index, 8) * 0.035 }}
                   key={order.id}
-                  className="grid items-stretch overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-soft md:grid-cols-[56px_170px_minmax(220px,1fr)_150px_160px]"
+                  className="grid items-stretch overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-soft md:grid-cols-[56px_180px_1fr_150px_160px]"
                   style={{ borderLeft: `6px solid ${accent}` }}
                 >
                   {view === 'available' ? (
@@ -427,6 +484,13 @@ function Claims() {
                       <Button className="w-full" variant="danger" disabled={busyId !== null} onClick={() => void release(order)}>{busyId === order.id ? 'Releasing…' : 'Release claim'}</Button>
                     ) : null}
                   </div>
+                  {view !== 'available' && (
+                    <div className="col-span-full border-t border-line bg-milk/60 px-4 py-3">
+                      <div className="mx-auto flex max-w-xl items-center justify-center">
+                        <ClaimFlow status={order.status} />
+                      </div>
+                    </div>
+                  )}
                 </motion.li>
               );
             })}
