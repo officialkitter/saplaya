@@ -1200,8 +1200,8 @@ const checkoutFields = z.object({
       ids.add(item.product_id);
     }
   }),
-  lat: z.number().min(-90).max(90),
-  lng: z.number().min(-180).max(180),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
   customer: z.object({
     name: z.string().trim().min(1).max(120),
     email: z.string().trim().email().max(254),
@@ -1236,8 +1236,8 @@ const checkoutQuoteSchema = z.object({
   mode: z.enum(['retail', 'wholesale', 'bulk', 'mega_bulk']),
   delivery_window: z.enum(DELIVERY_WINDOW_VALUES),
   items: checkoutFields.shape.items,
-  lat: z.number().min(-90).max(90),
-  lng: z.number().min(-180).max(180),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
   currency: z.string().regex(/^[A-Za-z]{3}$/).transform((currency) => currency.toUpperCase()).default('TZS'),
 }).superRefine(refineDeliveryWindow);
 
@@ -1319,12 +1319,15 @@ app.post('/checkout/quote', requireUser, async (req, res) => {
     }
 
     const locatedCandidates = stockedCandidates.flatMap((candidate) => {
-      const candidateDistance = distanceToSupplier(candidate, lat, lng);
-      return candidateDistance === null ? [] : [{ product: candidate, distance: candidateDistance }];
-    });
-    if (!locatedCandidates.length) {
-      return res.status(409).json({ error: `Farm delivery coordinates are not available for ${requested.name}. Please choose another item or try again later.` });
-    }
+        if (lat === undefined || lng === undefined) {
+          return [{ product: candidate, distance: 0 }];
+        }
+        const candidateDistance = distanceToSupplier(candidate, lat, lng);
+        return candidateDistance === null ? [] : [{ product: candidate, distance: candidateDistance }];
+      });
+      if (!locatedCandidates.length) {
+        return res.status(409).json({ error: `A stocked farm could not be matched for ${requested.name}.` });
+      }
 
     locatedCandidates.sort((a, b) => a.distance - b.distance || Number(b.product.stock) - Number(a.product.stock));
     const selected = locatedCandidates.find((candidate) => !selectedProductIds.has(candidate.product.id));
@@ -1500,7 +1503,9 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     if (price === null) {
       return res.status(409).json({ error: `A bulk price is not configured for ${product.name}.` });
     }
-    const supplierDistance = distanceToSupplier(product, lat, lng);
+    const supplierDistance = lat === undefined || lng === undefined
+      ? 0
+      : distanceToSupplier(product, lat, lng);
     if (supplierDistance === null) {
       return res.status(409).json({ error: `Accurate delivery coordinates are not available for ${product.name}.` });
     }
@@ -1557,8 +1562,8 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     delivery_fee: fee,
     delivery_speed_fee: configuredSpeedFee,
     distance_km: Number(distance.toFixed(2)),
-    dest_lat: lat,
-    dest_lng: lng,
+    dest_lat: lat ?? 0,
+    dest_lng: lng ?? 0,
     customer_email: customer.email,
     customer_name: customer.name,
     customer_phone: customer.phone,
@@ -1693,7 +1698,9 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
     if (price === null) {
       return res.status(409).json({ error: `A bulk price is not configured for ${product.name}.` });
     }
-    const supplierDistance = distanceToSupplier(product, lat, lng);
+    const supplierDistance = lat === undefined || lng === undefined
+      ? 0
+      : distanceToSupplier(product, lat, lng);
     if (supplierDistance === null) {
       return res.status(409).json({ error: `Accurate delivery coordinates are not available for ${product.name}.` });
     }
@@ -1726,15 +1733,15 @@ app.post('/orders/cash', requireUser, async (req: AuthedRequest, res) => {
   if (fee > 0 && !deliveryFeeAccepted) {
     return res.status(409).json({ error: 'Accept the quoted delivery charge before placing your order.' });
   }
-  const { data: orderId, error: orderError } = await db.rpc('place_cash_on_delivery_order', {
+  const { data: orderId, error: orderError } = await db  .rpc('place_cash_on_delivery_order', {
     p_customer: req.userId,
     p_request_key: requestKey,
     p_mode: mode,
     p_items: pricedItems,
     p_fee: fee,
     p_distance: Number(distance.toFixed(2)),
-    p_lat: lat,
-    p_lng: lng,
+    p_lat: lat ?? 0,
+    p_lng: lng ?? 0,
     p_delivery_window: deliveryWindow,
     p_customer_name: customer.name,
     p_customer_email: customer.email,

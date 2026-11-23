@@ -104,13 +104,12 @@ export default function CheckoutPage() {
     setQuotedBasket(null);
     setQuoteError('');
     setAcceptedFee(false);
-    if (!items.length || !market.location || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
+    if (!items.length || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) return;
     void storefrontRequest<CheckoutQuote>('/checkout/quote', {
       mode,
       delivery_window: deliveryWindow,
       items,
-      lat: market.location.lat,
-      lng: market.location.lng,
+      ...(market.location ? { lat: market.location.lat, lng: market.location.lng } : {}),
       currency: paymentMethod === 'online' ? market.currency : 'TZS',
     }).then((result) => {
       if (active) setQuotedBasket({ key: quoteKey, quote: result });
@@ -127,7 +126,7 @@ export default function CheckoutPage() {
   const submit = useCallback(async () => {
     setError('');
     if (!lines.length) return setError('Add at least one product before checkout.');
-    if (!market.location) return setError('Search for a delivery address or use GPS to calculate availability and delivery.');
+    if (!quote) return setError(quoteError || 'Wait for the latest delivery quote before placing your order.');
     if (!quote) return setError(quoteError || 'Wait for the latest delivery quote before placing your order.');
     if (!contact.name.trim() || !contact.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) {
       return setError('Enter your name, a valid email address and a reachable phone number.');
@@ -151,10 +150,9 @@ export default function CheckoutPage() {
         quoted_delivery_fee: quote.delivery_fee,
         quoted_subtotal: quote.subtotal,
         items: quote.items.map((item) => ({ product_id: item.product_id, qty: item.qty })),
-        lat: market.location.lat,
-        lng: market.location.lng,
+        ...(market.location ? { lat: market.location.lat, lng: market.location.lng } : {}),
         customer: { name: contact.name.trim(), email: contact.email.trim(), phone: contact.phone.trim() },
-        delivery_address: market.placeName || `${market.location.lat}, ${market.location.lng}`,
+        delivery_address: market.placeName || (market.location ? `${market.location.lat}, ${market.location.lng}` : 'Delivery location not provided'),
         ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim() } } : {}),
         currency: paymentMethod === 'online' ? market.currency : 'TZS',
         quoted_payment_amount: quote.payment_amount,

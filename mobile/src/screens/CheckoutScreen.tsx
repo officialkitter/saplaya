@@ -101,13 +101,6 @@ export default function CheckoutScreen({ navigation }: any) {
     setQuotedBasket(null);
     setQuoteError('');
     setAcceptedDeliveryFee(false);
-    if (place.approximate) {
-      setQuoteError('Choose a saved address or enable precise GPS before checkout.');
-      setQuoteLoading(false);
-      return () => {
-        active = false;
-      };
-    }
     if (!lines.length || !availableDeliveryOptions.some((option) => option.value === deliveryWindow)) {
       setQuoteLoading(false);
       return () => {
@@ -204,10 +197,6 @@ export default function CheckoutScreen({ navigation }: any) {
   const validate = () => {
     if (!lines.length) {
       Alert.alert('Your basket is empty', 'Add an item before starting checkout.');
-      return false;
-    }
-    if (place.approximate) {
-      Alert.alert('Precise delivery location required', 'Choose a saved address or enable GPS before checkout so we can locate the closest stocked farms.');
       return false;
     }
     if (!availableDeliveryOptions.length || speedFee === undefined) {
