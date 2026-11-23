@@ -26,7 +26,9 @@ export type Perm =
   | 'system.view'
   | 'team.roles.manage'
   | 'management.view'
-  | 'management.manage';
+  | 'management.manage'
+  | 'claims.view'
+  | 'claims.claim';
 
 export type OrderStatus = 'pending' | 'packing' | 'en_route' | 'delivered' | 'cancelled';
 export type Mode = 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';

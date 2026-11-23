@@ -35,11 +35,18 @@ export async function fetchAdmin<T>(path: string, init: RequestInit = {}): Promi
 
   try {
     return await withAbortTimeout(async (signal) => {
+      let selectedMemberId: string | null = null;
+      try {
+        selectedMemberId = window.localStorage.getItem('saplaya.team.member');
+      } catch {
+        selectedMemberId = null;
+      }
       const response = await fetch(`${baseUrl.replace(/\/+$/, '')}${path}`, {
         ...init,
         signal,
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(selectedMemberId ? { 'x-saplaya-team-member': selectedMemberId } : {}),
           ...(init.body ? { 'Content-Type': 'application/json' } : {}),
           ...init.headers,
         },

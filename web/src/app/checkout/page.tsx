@@ -30,7 +30,7 @@ type CheckoutOptions = {
   cash_currency: string;
   payment_providers?: PaymentProviderOption[];
 };
-type PaymentSession = { payment_url: string };
+type PaymentSession = { payment_url: string; tx_ref?: string; order_tracking_id?: string };
 type OrderResult = { order_id: string; amount: number };
 
 export default function CheckoutPage() {
@@ -165,6 +165,10 @@ export default function CheckoutPage() {
           ...(selectedProvider ? { payment_provider: selectedProvider.id } : {}),
           ...(providerNeedsPhone && paymentPhone.trim() ? { payment_phone: paymentPhone.trim() } : {}),
         });
+        if (selectedProvider?.id === 'pesapal') {
+          window.location.assign(`/checkout/pesapal?tx_ref=${encodeURIComponent(payment.tx_ref ?? '')}&order_tracking_id=${encodeURIComponent(payment.order_tracking_id ?? '')}`);
+          return;
+        }
         window.location.assign(payment.payment_url);
         return;
       }

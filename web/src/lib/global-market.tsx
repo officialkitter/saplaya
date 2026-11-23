@@ -138,12 +138,19 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
 
   const setDeliveryLocation = useCallback((place: { lat: number; lng: number; label: string }) => {
     locationRequestId.current += 1;
-    setLocation({ lat: place.lat, lng: place.lng, accuracy: 0 });
+    const next = { lat: place.lat, lng: place.lng, accuracy: 0 };
+    setLocation(next);
     setPlaceName(place.label);
     setPlaceNameStatus('ready');
     setLocationError('');
     setCountryName(null);
     setCountryCode(null);
+    try {
+      window.sessionStorage.setItem(LOCATION_KEY, JSON.stringify(next));
+      window.localStorage.setItem(LOCATION_KEY, JSON.stringify({ ...next, placeName: place.label }));
+    } catch (error) {
+      console.error('Could not save the selected delivery location:', error);
+    }
   }, []);
 
   const setCurrency = useCallback((nextCurrency: string) => {
@@ -193,6 +200,11 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
           setCountryName(namedLocation.countryName);
           setCountryCode(namedLocation.countryCode);
           setPlaceNameStatus('ready');
+          try {
+            window.localStorage.setItem(LOCATION_KEY, JSON.stringify({ ...next, placeName: namedLocation.placeName }));
+          } catch (error) {
+            console.error('Could not save the named current location:', error);
+          }
         }).catch((error: unknown) => {
           if (requestId !== locationRequestId.current) return;
           console.error('Could not resolve the current location name:', error);
@@ -242,8 +254,17 @@ export function GlobalMarketProvider({ children }: { children: ReactNode }) {
     let savedCurrency: string | null = null;
     try {
       savedCurrency = window.localStorage.getItem(CURRENCY_KEY);
-      window.sessionStorage.removeItem(LOCATION_KEY);
-      window.localStorage.removeItem(LOCATION_KEY);
+      const savedLocation = window.localStorage.getItem(LOCATION_KEY);
+      if (savedLocation) {
+        const parsed = JSON.parse(savedLocation) as { lat?: unknown; lng?: unknown; accuracy?: unknown; placeName?: unknown };
+        if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number'
+          && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)) {
+          setLocation({ lat: parsed.lat, lng: parsed.lng, accuracy: typeof parsed.accuracy === 'number' ? parsed.accuracy : 0 });
+          setPlaceName(typeof parsed.placeName === 'string' ? parsed.placeName : null);
+          setPlaceNameStatus(typeof parsed.placeName === 'string' ? 'ready' : 'idle');
+          window.sessionStorage.setItem(LOCATION_KEY, JSON.stringify({ lat: parsed.lat, lng: parsed.lng, accuracy: parsed.accuracy }));
+        }
+      }
     } catch (error) {
       console.error('Could not restore market preferences:', error);
     }

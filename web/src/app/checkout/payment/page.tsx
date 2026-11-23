@@ -34,6 +34,9 @@ export default function PaymentReturnPage() {
       setOrderId(result.order_id);
       setMessage('Payment confirmed and your order is placed.');
       clear();
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'saplaya:payment-complete', orderId: result.order_id }, window.location.origin);
+      }
     }).catch((error: unknown) => {
       if (!active) return;
       setMessage(userFacingMessage(error, 'Could not verify the payment.'));

@@ -123,8 +123,8 @@ function AccountPage() {
 
   async function uploadPhoto(file: File | undefined) {
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
-      push('Choose a JPG, PNG or WebP photo smaller than 2 MB.', 'bad');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      push('Choose a JPG, PNG or WebP photo smaller than 10 MB.', 'bad');
       return;
     }
     setUploadingPhoto(true);
@@ -192,7 +192,7 @@ function AccountPage() {
                   <Upload size={17} />{uploadingPhoto ? 'Uploading…' : 'Upload photo'}
                 </span>
                 <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={uploadingPhoto} onChange={(event) => { void uploadPhoto(event.target.files?.[0]); event.currentTarget.value = ''; }} />
-                <span className="mt-1 block text-xs text-ink-mute">JPG, PNG or WebP · up to 2 MB</span>
+                <span className="mt-1 block text-xs text-ink-mute">JPG, PNG or WebP · up to 10 MB · camera or gallery</span>
               </label>
             </div>
             <Field label="Full name">

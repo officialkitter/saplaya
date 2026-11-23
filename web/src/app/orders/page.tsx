@@ -24,6 +24,13 @@ const STATUS: Record<string, string> = {
   delivered: 'Delivered',
   cancelled: 'Cancelled',
 };
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-sun-soft text-sun-deep',
+  packing: 'bg-[#FFF4D6] text-[#8A5A00]',
+  en_route: 'bg-[#E8F0FF] text-[#2457A7]',
+  delivered: 'bg-leaf-soft text-leaf-deep',
+  cancelled: 'bg-red-50 text-red-700',
+};
 
 export default function OrdersPage() {
   const { formatPrice, currency, ratesLoading, ratesUnavailable } = useGlobalMarket();
@@ -73,7 +80,7 @@ export default function OrdersPage() {
                   <p className="mt-1 text-sm text-ink-mute">{new Date(order.created_at).toLocaleString()}</p>
                 </div>
                 <p className="mt-3 text-sm text-ink-soft">{order.delivery_window === 'morning' ? 'Morning (07:00–10:00)' : order.delivery_window === 'evening' ? 'Evening (15:00–18:00)' : order.delivery_window ? `Within ${order.delivery_window}` : 'Delivery timeframe unavailable'} · {order.payment_method === 'cash_on_delivery' ? 'Payment on delivery' : 'Online payment'}</p>
-                <span className="rounded-full bg-leaf-soft px-3 py-1.5 text-sm font-extrabold text-leaf-deep">{STATUS[order.status] ?? order.status}</span>
+                <span className={`rounded-full px-3 py-1.5 text-sm font-extrabold ${STATUS_COLORS[order.status] ?? 'bg-leaf-soft text-leaf-deep'}`}>{STATUS[order.status] ?? order.status}</span>
               </div>
               <ul className="mt-4 space-y-1 text-sm text-ink-soft">
                 {order.order_items.map((item, index) => (

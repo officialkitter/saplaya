@@ -79,7 +79,7 @@ async function loadPesapalIpnId(): Promise<string | null> {
   return data?.ipn_id ?? null;
 }
 
-const STORED_PAYMENT_COLUMNS = 'transaction_ref, provider, gateway_transaction_id, payment_amount, currency, status, order_id';
+const STORED_PAYMENT_COLUMNS = 'transaction_ref, provider, gateway_transaction_id, redirect_url, payment_amount, currency, status, order_id';
 
 const settlementStore: SettlementStore = {
   async markFailed(transactionRef) {
@@ -243,13 +243,15 @@ type Perm =
   | 'suppliers.view_all' | 'suppliers.manage'
   | 'team.view' | 'team.manage' | 'settings.manage'
   | 'finance.view' | 'marketing.view' | 'stores.view' | 'system.view' | 'team.roles.manage'
-  | 'management.view' | 'management.manage';
+  | 'management.view' | 'management.manage'
+  | 'claims.view' | 'claims.claim';
 
 const ALL: Perm[] = [
   'dashboard.view', 'orders.view', 'orders.update_status', 'products.view', 'products.edit',
   'stock.adjust', 'inventory.view', 'catalog.manage', 'suppliers.view_all', 'suppliers.manage',
   'team.view', 'team.manage', 'settings.manage', 'finance.view', 'marketing.view',
   'stores.view', 'system.view', 'team.roles.manage', 'management.view', 'management.manage',
+  'claims.view', 'claims.claim',
 ];
 
 // A driver may only move an order along the road; they cannot pack or cancel.
@@ -491,24 +493,38 @@ function requirePerm(perm?: Perm) {
       if (req.authProvider !== 'supabase') {
         return res.status(403).json({ error: 'Web team accounts must sign in with Supabase Auth.' });
       }
-      let { data, error: memberError } = await db
+      const requestedMemberId = req.get('x-saplaya-team-member');
+      let membershipsQuery = db
         .from('team_members')
         .select('id, user_id, supplier_id, full_name, email, role, status')
         .eq('user_id', req.userId!)
-        .maybeSingle();
+        .in('status', ['invited', 'active'])
+        .limit(100);
+      let { data: memberships, error: memberError } = await membershipsQuery;
       if (memberError) {
         console.error('Could not load team account:', memberError.message);
         return res.status(503).json({ error: 'Could not load your team access.' });
       }
-      if (!data && req.authUser) {
+      if ((!memberships || memberships.length === 0) && req.authUser) {
         try {
-          data = await claimPendingTeamInvitation(db, req.authUser);
+          await claimPendingTeamInvitation(db, req.authUser);
+          const relinked = await db
+            .from('team_members')
+            .select('id, user_id, supplier_id, full_name, email, role, status')
+            .eq('user_id', req.userId!)
+            .in('status', ['invited', 'active'])
+            .limit(100);
+          memberships = relinked.data;
+          if (relinked.error) memberError = relinked.error;
         } catch (error) {
           console.error('Could not link team invitation:', error instanceof Error ? error.message : 'Unknown error');
           return res.status(503).json({ error: 'Could not load your team access.' });
         }
       }
-      if (!data) return res.status(403).json({ error: 'No active team account' });
+      if (!memberships || memberships.length === 0) return res.status(403).json({ error: 'No active team account' });
+      const data = requestedMemberId
+        ? memberships.find((membership) => membership.id === requestedMemberId) ?? memberships.find((membership) => membership.status === 'active') ?? memberships[0]
+        : memberships.find((membership) => membership.status === 'active') ?? memberships[0];
       const [roleResult, profileResult, scopesResult, supplierResult] = await Promise.all([
         db.from('team_roles')
           .select('role_key, name, department_id, scope, permissions')
@@ -1442,7 +1458,8 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     delivery_fee_accepted: deliveryFeeAccepted, quoted_delivery_fee: quotedDeliveryFee,
     currency, quoted_payment_amount: quotedPaymentAmount, recipient, delivery_address: deliveryAddress,
   } = parsed.data;
-  const phone = parsed.data.payment_phone ?? customer.phone;
+  const enteredPhone = parsed.data.payment_phone ?? customer.phone;
+  const phone = normalizedTanzanianPhone(enteredPhone) ?? enteredPhone;
   if (provider.requiresPhone && !isE164Phone(phone)) {
     return res.status(400).json({ error: 'Enter a valid international phone number in E.164 format (for example, +255700000000).' });
   }
@@ -1575,7 +1592,10 @@ app.post('/payments/initialize', requireUser, async (req: AuthedRequest, res) =>
     orderTrackingId = checkout.gatewayId;
     const { data: savedPayment, error: trackingError } = await db
       .from('checkout_payments')
-      .update({ gateway_transaction_id: orderTrackingId })
+      .update({
+        gateway_transaction_id: orderTrackingId,
+        ...(provider.id === 'pesapal' ? { redirect_url: checkout.redirectUrl } : {}),
+      })
       .eq('transaction_ref', transactionRef)
       .eq('status', 'pending')
       .select('transaction_ref')
@@ -1923,6 +1943,42 @@ app.get('/payments/callback', async (req, res) => {
   return res.redirect(302, paymentCallbackUrl(transactionRef, orderTrackingId));
 });
 
+app.get('/payments/pesapal/checkout-session', requireUser, async (req: AuthedRequest, res) => {
+  const transactionRef = String(req.query.tx_ref ?? '');
+  const returnedGatewayId = String(req.query.order_tracking_id ?? '');
+  if (!/^saplaya-[0-9a-f-]{36}$/i.test(transactionRef) || returnedGatewayId.length > 200) {
+    return res.status(400).json({ error: 'Invalid payment session.' });
+  }
+  const { data: payment, error } = await db
+    .from('checkout_payments')
+    .select('provider, customer_id, gateway_transaction_id, redirect_url, status')
+    .eq('transaction_ref', transactionRef)
+    .eq('customer_id', req.userId!)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: 'Could not load the payment session.' });
+  if (!payment || payment.provider !== 'pesapal' || payment.status !== 'pending'
+    || payment.gateway_transaction_id !== returnedGatewayId
+    || typeof payment.redirect_url !== 'string') {
+    return res.status(404).json({ error: 'Payment session was not found or is no longer active.' });
+  }
+  let redirectUrl: URL;
+  try {
+    redirectUrl = new URL(payment.redirect_url);
+  } catch {
+    return res.status(409).json({ error: 'The payment session is invalid.' });
+  }
+  const allowedOrigins = new Set(['cybqa.pesapal.com', 'pay.pesapal.com']);
+  if (redirectUrl.protocol !== 'https:' || !allowedOrigins.has(redirectUrl.hostname)) {
+    return res.status(409).json({ error: 'The payment session uses an untrusted destination.' });
+  }
+  res.set('Cache-Control', 'no-store');
+  return res.json({
+    redirect_url: redirectUrl.toString(),
+    tx_ref: transactionRef,
+    order_tracking_id: returnedGatewayId,
+  });
+});
+
 // The Saplaya payment page mounts Stripe Elements from this. The unguessable tx_ref is the capability,
 // because the mobile in-app browser that opens the page carries no Saplaya session.
 app.get('/payments/stripe/elements-session', async (req, res) => {
@@ -2177,6 +2233,27 @@ app.get('/admin/me', requirePerm(), (req: AuthedRequest, res: Response) => {
       ? db.storage.from('team-avatars').getPublicUrl(m.avatar_url).data.publicUrl
       : null,
   });
+});
+
+app.get('/admin/memberships', requirePerm(), async (req: AuthedRequest, res: Response) => {
+  const { data: memberships, error } = await db
+    .from('team_members')
+    .select('id, supplier_id, full_name, email, role, status')
+    .eq('user_id', req.userId!)
+    .in('status', ['active', 'invited'])
+    .limit(100);
+  if (error) return res.status(503).json({ error: 'Could not load your role memberships.' });
+  const roleKeys = [...new Set((memberships ?? []).map((membership) => membership.role))];
+  const { data: roles } = await db
+    .from('team_roles')
+    .select('role_key, name, scope')
+    .in('role_key', roleKeys);
+  const roleByKey = new Map((roles ?? []).map((role) => [role.role_key, role]));
+  return res.json((memberships ?? []).map((membership) => ({
+    ...membership,
+    role_label: roleByKey.get(membership.role)?.name ?? membership.role,
+    role_scope: roleByKey.get(membership.role)?.scope ?? 'platform',
+  })));
 });
 
 app.patch('/admin/me', requirePerm(), async (req: AuthedRequest, res: Response) => {
@@ -3133,7 +3210,6 @@ app.post('/admin/suppliers', requirePerm('suppliers.manage'), async (req: Authed
     status: 'invited',
   }).select().single();
   if (memberError) {
-    await db.auth.admin.deleteUser(invited.data.user.id);
     await db.from('suppliers').delete().eq('id', supplier.id);
     return res.status(500).json({ error: 'The farm owner invitation could not be saved.' });
   }
@@ -3609,10 +3685,6 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
   }).select().single();
   if (error) {
     console.error('Could not save invited team member:', error.message);
-    const { error: cleanupError } = await db.auth.admin.deleteUser(invited.data.user.id);
-    if (cleanupError) {
-      console.error('Could not remove orphaned auth invite:', cleanupError.message);
-    }
     return res.status(500).json({ error: 'Could not save the team invitation.' });
   }
   if (role.scope === 'platform' && scopeMode === 'restricted') {
@@ -3625,8 +3697,6 @@ app.post('/admin/team', requirePerm('team.manage'), async (req: AuthedRequest, r
       console.error('Could not apply the inviter’s operation scopes to a new team member:', scopeError.message);
       const { error: memberCleanupError } = await db.from('team_members').delete().eq('id', data.id);
       if (memberCleanupError) console.error('Could not remove team member after scope assignment failed:', memberCleanupError.message);
-      const { error: authCleanupError } = await db.auth.admin.deleteUser(invited.data.user.id);
-      if (authCleanupError) console.error('Could not remove auth invite after scope assignment failed:', authCleanupError.message);
       return res.status(500).json({ error: 'Could not save the team invitation with its operation-area restrictions.' });
     }
   }
@@ -3802,12 +3872,7 @@ app.post('/admin/team/:id/reinvite', requirePerm('team.manage'), async (req: Aut
     return sendFreshInvite();
   }
   if (!authUser.user.email_confirmed_at && !authUser.user.last_sign_in_at) {
-    // The original invite link expired before it was ever used. Replace the stale account with a fresh invitation.
-    const removed = await db.auth.admin.deleteUser(target.user_id);
-    if (removed.error) {
-      console.error('Could not replace the expired invitation:', removed.error.message);
-      return res.status(502).json({ error: 'Could not replace the expired invitation. Try again.' });
-    }
+    // Preserve the Auth identity because it may also own customer or other team memberships.
     return sendFreshInvite();
   }
   const { error: recoveryError } = await db.auth.resetPasswordForEmail(target.email, { redirectTo });
@@ -3930,6 +3995,120 @@ app.get('/admin/management/commission-summary', requirePerm('management.view'), 
       }, commissionTiers),
     })),
   });
+});
+
+app.get('/admin/claims/available', requirePerm('claims.view'), async (req: AuthedRequest, res: Response) => {
+  let allowedSupplierIds: string[] | null;
+  try {
+    allowedSupplierIds = await scopedSupplierIds(req.member!);
+  } catch (scopeError) {
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
+  }
+  if (allowedSupplierIds?.length === 0) return res.json([]);
+  let query = db
+    .from('supplier_orders')
+    .select('id, order_id, supplier_id, status, updated_at, suppliers(name), supplier_order_assignments(team_member_id, team_members(full_name))')
+    .in('status', ['pending', 'packing', 'en_route'])
+    .order('updated_at', { ascending: false })
+    .limit(300);
+  if (allowedSupplierIds) query = query.in('supplier_id', allowedSupplierIds);
+  const { data, error } = await query;
+  if (error) {
+    console.error('Could not load available claim orders:', error.message);
+    return res.status(500).json({ error: 'Could not load claimable orders.' });
+  }
+  return res.json((data ?? []).filter((order) => !relationRecord(order.supplier_order_assignments)?.team_member_id).map((order) => ({
+    id: order.id,
+    code: String(order.order_id).slice(0, 8).toUpperCase(),
+    supplier_id: order.supplier_id,
+    supplier_name: relationRecord(order.suppliers)?.name ?? 'Farm',
+    status: order.status,
+    updated_at: order.updated_at,
+  })));
+});
+
+app.get('/admin/claims/my', requirePerm('claims.view'), async (req: AuthedRequest, res: Response) => {
+  const member = req.member!;
+  const { data, error } = await db
+    .from('supplier_order_assignments')
+    .select('supplier_order_id, assigned_at, supplier_orders(id, order_id, supplier_id, status, updated_at, suppliers(name))')
+    .eq('team_member_id', member.id)
+    .order('assigned_at', { ascending: false })
+    .limit(300);
+  if (error) {
+    console.error('Could not load employee claims:', error.message);
+    return res.status(500).json({ error: 'Could not load your claims.' });
+  }
+  return res.json((data ?? []).map((claim) => {
+    const order = relationRecord(claim.supplier_orders);
+    const supplier = relationRecord(order?.suppliers);
+    return {
+      id: claim.supplier_order_id,
+      code: typeof order?.order_id === 'string' ? order.order_id.slice(0, 8).toUpperCase() : claim.supplier_order_id.slice(0, 8).toUpperCase(),
+      supplier_name: typeof supplier?.name === 'string' ? supplier.name : 'Farm',
+      status: typeof order?.status === 'string' ? order.status : 'pending',
+      claimed_at: claim.assigned_at,
+      updated_at: typeof order?.updated_at === 'string' ? order.updated_at : claim.assigned_at,
+    };
+  }));
+});
+
+app.post('/admin/claims/:id/claim', requirePerm('claims.claim'), async (req: AuthedRequest, res: Response) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid order ID.' });
+  const member = req.member!;
+  const { data: order, error: orderError } = await db
+    .from('supplier_orders')
+    .select('id, supplier_id, status')
+    .eq('id', id.data)
+    .in('status', ['pending', 'packing', 'en_route'])
+    .maybeSingle();
+  if (orderError) return res.status(500).json({ error: 'Could not check this order.' });
+  if (!order) return res.status(404).json({ error: 'This order is no longer available to claim.' });
+  try {
+    if (!await memberCanAccessSupplier(member, order.supplier_id)) return res.status(404).json({ error: 'This order is outside your work area.' });
+  } catch (scopeError) {
+    return res.status(503).json({ error: publicErrorMessage(scopeError) });
+  }
+  const { data: existing, error: existingError } = await db
+    .from('supplier_order_assignments')
+    .select('team_member_id')
+    .eq('supplier_order_id', id.data)
+    .maybeSingle();
+  if (existingError) return res.status(500).json({ error: 'Could not check claim availability.' });
+  if (existing) return res.status(409).json({ error: 'Another employee already claimed this order.' });
+  const { data, error } = await db
+    .from('supplier_order_assignments')
+    .upsert({
+      supplier_order_id: id.data,
+      team_member_id: member.id,
+      assigned_by: member.id,
+      assigned_at: new Date().toISOString(),
+    })
+    .select('supplier_order_id, team_member_id, assigned_at')
+    .single();
+  if (error) {
+    console.error('Could not claim supplier order:', error.message);
+    return res.status(409).json({ error: 'This order could not be claimed. It may have been claimed by someone else.' });
+  }
+  return res.status(201).json(data);
+});
+
+app.post('/admin/claims/:id/release', requirePerm('claims.claim'), async (req: AuthedRequest, res: Response) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid order ID.' });
+  const member = req.member!;
+  const { data: claim, error: claimError } = await db
+    .from('supplier_order_assignments')
+    .select('team_member_id')
+    .eq('supplier_order_id', id.data)
+    .maybeSingle();
+  if (claimError) return res.status(500).json({ error: 'Could not check this claim.' });
+  if (!claim) return res.json({ ok: true });
+  if (claim.team_member_id !== member.id) return res.status(403).json({ error: 'Only the employee who claimed this order can release it.' });
+  const { error } = await db.from('supplier_order_assignments').delete().eq('supplier_order_id', id.data);
+  if (error) return res.status(500).json({ error: 'Could not release this claim.' });
+  return res.json({ ok: true });
 });
 
 app.get('/admin/management/assignable-orders', requirePerm('management.manage'), async (req: AuthedRequest, res: Response) => {

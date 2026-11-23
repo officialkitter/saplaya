@@ -142,8 +142,8 @@ function SharedCatalog() {
       push('Choose an image file.', 'bad');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      push('Choose an image smaller than 5 MB.', 'bad');
+    if (file.size > 10 * 1024 * 1024) {
+      push('Choose an image smaller than 10 MB.', 'bad');
       return;
     }
     setUploadingPhoto(true);
@@ -445,7 +445,6 @@ function SharedCatalog() {
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/heic"
-                    capture="environment"
                     className="sr-only"
                     disabled={uploadingPhoto}
                     onChange={(event) => {

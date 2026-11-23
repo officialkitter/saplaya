@@ -4,7 +4,7 @@ import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
 import {
   ClipboardList, LayoutDashboard, LogOut, Menu, Package, Settings as SettingsIcon, UserRound,
-  Tractor, Users, Warehouse, X, Tags, BriefcaseBusiness,
+  Tractor, Users, Warehouse, X, Tags, BriefcaseBusiness, HandCoins,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -13,8 +13,9 @@ import { Logo, LogoMark } from '@/components/ui/Logo';
 import { cn, initials } from '@/lib/format';
 import { useGlobalMarket } from '@/lib/global-market';
 import { can, isFarmRole, roleInfo } from '@/lib/roles';
-import { getSupabase } from '@/lib/supabase';
+import { fetchAdmin, getSupabase } from '@/lib/supabase';
 import { useBoot, useDB, useMe, useScope, useToast } from '@/lib/store';
+import { loadAdminData } from '@/lib/admin-data';
 import type { Perm } from '@/lib/types';
 
 interface NavItem { href: string; label: string; icon: typeof Package; perm: Perm; exact?: boolean }
@@ -23,6 +24,7 @@ function navFor(farm: boolean): NavItem[] {
   return [
     { href: '/admin', label: 'Home', icon: LayoutDashboard, perm: 'dashboard.view', exact: true },
     { href: '/admin/orders', label: 'Orders', icon: ClipboardList, perm: 'orders.view' },
+    { href: '/admin/claims', label: 'Claims', icon: HandCoins, perm: 'claims.view' },
     { href: '/admin/products', label: farm ? 'My products' : 'Products', icon: Package, perm: 'products.view' },
     { href: '/admin/catalog', label: 'Shared catalog', icon: Tags, perm: 'catalog.manage' },
     { href: '/admin/inventory', label: 'Stock history', icon: Warehouse, perm: 'inventory.view' },
@@ -41,6 +43,23 @@ function SidebarBody({ onNavigate, animatedPill = true }: { onNavigate?: () => v
   const applications = useDB((s) => s.applications);
   const push = useToast((s) => s.push);
   const { currency, setCurrency, currencies, ratesLoading, ratesUnavailable } = useGlobalMarket();
+  const [memberships, setMemberships] = useState<Array<{ id: string; role_label: string; role_scope: 'platform' | 'farm' }>>([]);
+  useEffect(() => {
+    if (!me) return;
+    let active = true;
+    void fetchAdmin<Array<{ id: string; role_label: string; role_scope: 'platform' | 'farm' }>>('/admin/memberships')
+      .then((result) => { if (active) setMemberships(result); })
+      .catch(() => { if (active) setMemberships([]); });
+    return () => { active = false; };
+  }, [me?.id]);
+  const switchMembership = async (memberId: string) => {
+    if (!me) return;
+    if (memberId === me.id) return;
+    window.localStorage.setItem('saplaya.team.member', memberId);
+    const data = await loadAdminData();
+    useDB.setState(data);
+    router.replace('/admin');
+  };
   if (!me) return null;
 
   const info = roleInfo(me.role, me.roleLabel, me.roleScope);
@@ -141,6 +160,22 @@ function SidebarBody({ onNavigate, animatedPill = true }: { onNavigate?: () => v
             <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-bold', info.badge)}>{info.label}</span>
           </div>
         </div>
+        {memberships.length > 1 && (
+          <label className="mt-3 block text-xs font-bold text-ink-mute">
+            Active role
+            <select
+              value={me.id}
+              onChange={(event) => { void switchMembership(event.target.value); }}
+              className="mt-1 block min-h-10 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink"
+            >
+              {memberships.map((membership) => (
+                <option key={membership.id} value={membership.id}>
+                  {membership.role_label}{membership.role_scope === 'farm' ? ' · Farm' : ' · Saplaya'}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           onClick={() => { void signOut(); }}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 font-bold text-ink-soft transition hover:bg-white"

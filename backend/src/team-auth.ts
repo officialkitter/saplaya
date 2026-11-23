@@ -28,32 +28,30 @@ export async function claimPendingTeamInvitation(db: SupabaseClient, user: User)
   const { data: candidates, error } = await db.from('team_members')
     .select(memberColumns)
     .ilike('email', pattern)
-    .limit(2);
+    .limit(100);
   if (error) throw new Error('Could not look up the team invitation.');
-  if (candidates?.length !== 1) return null;
-  const candidate = candidates[0];
-  if (candidate.email.toLowerCase() !== email.toLowerCase()) return null;
-  if (candidate.user_id === user.id) return candidate;
-  if (candidate.user_id !== null || candidate.status !== 'invited') return null;
+  const exactMatches = (candidates ?? []).filter((candidate) =>
+    candidate.email.trim().toLowerCase() === email.toLowerCase()
+  );
+  if (!exactMatches.length) return null;
 
-  const { data: claimed, error: claimError } = await db.from('team_members')
-    .update({ user_id: user.id })
-    .eq('id', candidate.id)
-    .eq('email', candidate.email)
-    .is('user_id', null)
-    .eq('status', 'invited')
-    .select(memberColumns)
-    .maybeSingle();
-  if (claimError) throw new Error('Could not link the team invitation.');
-  if (claimed) return claimed;
+  for (const candidate of exactMatches) {
+    if (candidate.user_id === user.id) continue;
+    if (candidate.user_id !== null || candidate.status !== 'invited') continue;
+    await db.from('team_members')
+      .update({ user_id: user.id })
+      .eq('id', candidate.id)
+      .is('user_id', null)
+      .eq('status', 'invited');
+  }
 
-  // Another request may have claimed this same invitation in the meantime.
   const { data: existing, error: lookupError } = await db.from('team_members')
     .select(memberColumns)
     .eq('user_id', user.id)
-    .maybeSingle();
+    .in('status', ['invited', 'active'])
+    .limit(100);
   if (lookupError) throw new Error('Could not look up the linked team invitation.');
-  return existing;
+  return existing?.[0] ?? null;
 }
 
 export async function activateTeamInvitation(db: SupabaseClient, memberId: string, userId: string) {
