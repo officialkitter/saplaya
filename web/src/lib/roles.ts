@@ -25,6 +25,14 @@ export const PERMS: Record<BuiltinRole, Perm[]> = {
     'products.edit', 'stock.adjust', 'inventory.view', 'claims.view', 'claims.claim',
   ],
   driver: ['orders.view', 'orders.update_status', 'claims.view', 'claims.claim'],
+  supervisor: [
+    'dashboard.view', 'orders.view', 'orders.update_status', 'products.view',
+    'products.edit', 'catalog.manage', 'stock.adjust', 'inventory.view',
+    'suppliers.view_all', 'suppliers.manage', 'team.view', 'team.manage',
+    'settings.manage', 'finance.view', 'marketing.view', 'stores.view',
+    'system.view', 'team.roles.manage', 'management.view', 'management.manage',
+    'claims.view', 'claims.claim',
+  ],
 };
 
 export const can = (role: Role | undefined | null, perm: Perm, assignedPermissions?: Perm[]): boolean => {
@@ -81,11 +89,19 @@ export const ROLE_INFO: Record<BuiltinRole, RoleInfo> = {
     badge: 'bg-[#F3E5F5] text-[#7B1FA2]',
     cannot: ['Pack or cancel orders', 'See products, stock or money', 'See the team'],
   },
+  supervisor: {
+    label: 'Supervisor',
+    scope: 'Saplaya team',
+    blurb: 'Supervises operations, products, claims and team workflows.',
+    badge: 'bg-leaf text-white',
+    cannot: [],
+  },
 };
 
 export const ROLE_ORDER: BuiltinRole[] = [
   'platform_owner',
   'platform_manager',
+  'supervisor',
   'supplier_owner',
   'supplier_staff',
   'driver',
@@ -120,6 +136,7 @@ export const PERM_ROWS: { perm: Perm; label: string }[] = [
 export const ASSIGNABLE: Record<BuiltinRole, BuiltinRole[]> = {
   platform_owner: ['platform_manager', 'driver', 'supplier_owner', 'supplier_staff'],
   platform_manager: [],
+  supervisor: [],
   supplier_owner: ['supplier_staff'],
   supplier_staff: [],
   driver: [],

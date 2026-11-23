@@ -3,7 +3,8 @@ export type BuiltinRole =
   | 'platform_manager'
   | 'supplier_owner'
   | 'supplier_staff'
-  | 'driver';
+  | 'driver'
+  | 'supervisor';
 export type Role = BuiltinRole | (string & {});
 export type DepartmentScope = 'platform' | 'farm';
 export type Perm =

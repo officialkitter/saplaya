@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Ban, CheckCircle2, Clock3, Download, PackageCheck, Search, Upload } from 'lucide-react';
+import { Ban, CheckCircle2, Clock3, Download, PackageCheck, RefreshCw, Search, Upload } from 'lucide-react';
 import { Guarded, PageHeader, Panel } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
 import { fetchAdmin } from '@/lib/supabase';
@@ -53,9 +53,12 @@ function Claims() {
   const [query, setQuery] = useState('');
   const busyRef = useRef<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
+  const reload = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     try {
       const [availableRows, mineRows] = await Promise.all([
         fetchAdmin<ClaimOrder[]>('/admin/claims/available'),
@@ -63,14 +66,27 @@ function Claims() {
       ]);
       setAvailable(availableRows);
       setMine(mineRows);
+      setLastRefresh(new Date());
     } catch (error) {
       push(userFacingMessage(error, 'Could not load orders.'), 'bad');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+      setRefreshing(false);
     }
   }, [push]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+    const interval = window.setInterval(() => void reload(true), 10000);
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') void reload(true);
+    };
+    document.addEventListener('visibilitychange', refreshOnVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshOnVisible);
+    };
+  }, [reload]);
 
   const ongoing = useMemo(() => mine.filter((order) => ['pending', 'packing', 'en_route'].includes(order.status)), [mine]);
   const history = useMemo(() => mine.filter((order) => ['delivered', 'cancelled'].includes(order.status)), [mine]);
@@ -232,6 +248,19 @@ function Claims() {
           />
         </label>
         <Button variant="soft" icon={<Download size={18} />} onClick={() => void exportClaims()}>Export Excel</Button>
+        <Button
+          variant="ghost"
+          icon={<RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />}
+          disabled={refreshing}
+          onClick={() => void reload(true)}
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh now'}
+        </Button>
+        {lastRefresh && (
+          <span className="ml-auto self-center text-xs font-semibold text-ink-mute">
+            Live · updated {lastRefresh.toLocaleTimeString()}
+          </span>
+        )}
       </div>
       <div className="mb-5 grid gap-2 sm:grid-cols-3">
         {tabs.map((tab) => {
