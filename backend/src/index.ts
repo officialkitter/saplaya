@@ -2977,10 +2977,20 @@ app.get('/admin/inventory-movements', requirePerm('inventory.view'), async (req:
   if (allowedSupplierIds) q = q.in('supplier_id', allowedSupplierIds);
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: publicErrorMessage(error) });
-  res.json(data);
+  res.json((data ?? []).map((movement) => {
+    const product = relationRecord(movement.products);
+    const supplier = relationRecord(movement.suppliers);
+    return {
+      ...movement,
+      product_name: typeof product?.name === 'string' ? product.name : null,
+      product_unit: typeof product?.unit === 'string' ? product.unit : null,
+      product_image: typeof product?.image_url === 'string' ? product.image_url : null,
+      farm_name: typeof supplier?.name === 'string' ? supplier.name : null,
+    };
+  }));
 });
 
-const restockSchema = z.object({ product_id: z.string().uuid(), qty: z.number().positive() });
+const restockSchema = z.object({ product_id: z.string().uuid(), qty: z.number().positive().max(10000) });
 
 app.post('/admin/restock', requirePerm('stock.adjust'), async (req: AuthedRequest, res: Response) => {
   const parsed = restockSchema.safeParse(req.body);

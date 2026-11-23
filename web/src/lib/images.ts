@@ -49,7 +49,18 @@ const PRODUCT_PHOTOS: readonly [RegExp, PhotoKey][] = [
   [/\bgarlic\b/i, 'garlic'],
 ];
 
+export function generatedProductPhotoUrl(name: string, width = 800): string {
+  const safeName = name.trim().slice(0, 28).replace(/[&<>"']/g, '');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${width}" viewBox="0 0 ${width} ${width}">
+    <rect width="100%" height="100%" fill="#ffffff"/>
+    <circle cx="${width * 0.5}" cy="${width * 0.42}" r="${width * 0.23}" fill="#eef7ef"/>
+    <path d="M${width * 0.5} ${width * 0.28}c${width * 0.07}-${width * 0.09} ${width * 0.16}-${width * 0.09} ${width * 0.19}-${width * 0.05}c-${width * 0.02} ${width * 0.08}-${width * 0.09} ${width * 0.15}-${width * 0.19} ${width * 0.18}c-${width * 0.1}-${width * 0.03}-${width * 0.17}-${width * 0.1}-${width * 0.19}-${width * 0.18}c${width * 0.03}-${width * 0.04} ${width * 0.12}-${width * 0.04} ${width * 0.19} ${width * 0.05}z" fill="#56a85c"/>
+    <text x="50%" y="${width * 0.78}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${Math.max(22, width * 0.055)}" font-weight="700" fill="#203528">${safeName || 'Fresh product'}</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 export function productPhotoUrl(name: string, width = 800): string {
   const photoKey = PRODUCT_PHOTOS.find(([pattern]) => pattern.test(name))?.[1] ?? 'box';
-  return `https://images.unsplash.com/${PHOTOS[photoKey]}?auto=format&fit=crop&w=${width}&q=72`;
+  return `https://images.unsplash.com/${PHOTOS[photoKey]}?auto=format&fit=contain&bg=%23ffffff&w=${width}&q=72`;
 }

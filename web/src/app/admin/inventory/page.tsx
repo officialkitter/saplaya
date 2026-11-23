@@ -109,19 +109,23 @@ function Inventory() {
           {rows.slice(0, limit).map((m, i) => {
             const p = byId.get(m.productId);
             const plus = m.qtyChange > 0;
+            const realName = m.productName || p?.name || 'Unknown product';
+            const realUnit = m.productUnit || p?.unit || 'unit';
+            const realImage = m.productImage || p?.image;
+            const realFarm = m.farmName || farmName.get(m.supplierId);
             return (
               <motion.li key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 10) * 0.02 }}               className="flex items-center gap-x-3 gap-y-1 px-3.5 py-3.5 sm:gap-x-4 sm:p-4">
-                              <SmartImage src={p?.image} alt={p?.name ?? 'Item'} emoji={p?.emoji} className="h-11 w-11 shrink-0 rounded-2xl text-lg sm:h-12 sm:w-12" />
+                              <SmartImage src={realImage} alt={realName} emoji={p?.emoji ?? '🥬'} className="h-11 w-11 shrink-0 rounded-2xl text-lg sm:h-12 sm:w-12" />
                 <div className="min-w-0 flex-1">
-                                <p className="truncate font-bold">{p?.name ?? 'Item'}</p>
-                                {!farmId && <p className="truncate text-sm font-medium text-ink-mute">{farmName.get(m.supplierId)}</p>}
+                                <p className="truncate font-bold">{realName}</p>
+                                {!farmId && <p className="truncate text-sm font-medium text-ink-mute">{realFarm ?? 'Unknown farm'}</p>}
                   <p className="break-words text-sm text-ink-mute">{timeAgo(m.at)}{m.orderCode ? ` · order ${m.orderCode}` : ''}{m.by ? ` · ${m.by}` : ''}</p>
                 </div>
                 <span className={cn('hidden rounded-full px-3 py-1 text-sm font-bold sm:inline-block', KIND[m.kind].chip)}>{KIND[m.kind].label}</span>
                 <div className="shrink-0 text-right">
                   <p className={cn('inline-flex items-center gap-1 whitespace-nowrap font-display text-base font-extrabold sm:text-lg', plus ? 'text-leaf' : 'text-[#0277BD]')}>
                     {m.kind === 'cancel_return' ? <RotateCcw size={16} /> : plus ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
-                    {plus ? '+' : ''}{formatNum(m.qtyChange)} {p?.unit}
+                    {plus ? '+' : ''}{formatNum(m.qtyChange)} {realUnit}
                   </p>
                   <p className="text-sm text-ink-mute">{formatNum(m.stockAfter)} left</p>
                 </div>

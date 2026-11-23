@@ -21,5 +21,11 @@ const PRODUCT_PHOTOS: readonly [RegExp, string][] = [
 
 export function productPhotoUrl(name: string, width = 800): string {
   const photo = PRODUCT_PHOTOS.find(([pattern]) => pattern.test(name))?.[1] ?? 'photo-1542838132-92c53300491e';
-  return `https://images.unsplash.com/${photo}?auto=format&fit=crop&w=${width}&q=72`;
+  return `https://images.unsplash.com/${photo}?auto=format&fit=contain&bg=%23ffffff&w=${width}&q=72`;
+}
+
+export function generatedProductPhotoUri(name: string): string {
+  const safeName = name.trim().slice(0, 28).replace(/[&<>"']/g, '');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800"><rect width="800" height="800" fill="#ffffff"/><circle cx="400" cy="336" r="184" fill="#eef7ef"/><text x="400" y="624" text-anchor="middle" font-family="Arial" font-size="44" font-weight="700" fill="#203528">${safeName || 'Fresh product'}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }

@@ -205,20 +205,14 @@ export async function loadAdminData(sections?: readonly AdminDataSection[]): Pro
 
   if (raw.movements) {
     mapped.movements = raw.movements.map((movement) => {
-      const product = movement.products && typeof movement.products === 'object'
-        ? movement.products as Row
-        : null;
-      const supplier = movement.suppliers && typeof movement.suppliers === 'object'
-        ? movement.suppliers as Row
-        : null;
       return {
         id: text(movement.id),
         supplierId: text(movement.supplier_id),
         productId: text(movement.product_id),
-        productName: text(product?.name),
-        productUnit: text(product?.unit, 'unit'),
-        productImage: text(product?.image_url),
-        farmName: text(supplier?.name),
+        productName: text(movement.product_name),
+        productUnit: text(movement.product_unit, 'unit'),
+        productImage: text(movement.product_image),
+        farmName: text(movement.farm_name),
         kind: text(movement.kind, 'adjustment') as DB['movements'][number]['kind'],
         qtyChange: number(movement.qty_change),
         stockAfter: number(movement.stock_after),

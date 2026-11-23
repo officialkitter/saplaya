@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { productPhotoUrl } from '../lib/product-images';
+import { generatedProductPhotoUri, productPhotoUrl } from '../lib/product-images';
 
 export default function ProductImage({
   uri,
@@ -20,10 +19,10 @@ export default function ProductImage({
   iconSize?: number;
 }) {
   const fallbackUri = productPhotoUrl(name);
+  const generatedUri = generatedProductPhotoUri(name);
   const [primaryFailed, setPrimaryFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
-  const sourceUri = uri && !primaryFailed ? uri : fallbackUri;
-  const showIcon = fallbackFailed;
+  const sourceUri = uri && !primaryFailed ? uri : fallbackFailed ? generatedUri : fallbackUri;
 
   useEffect(() => {
     setPrimaryFailed(false);
@@ -35,13 +34,12 @@ export default function ProductImage({
       accessible
       accessibilityRole="image"
       accessibilityLabel={name}
-      style={[style, styles.container, { backgroundColor: fallbackColor }]}
+      style={[style, styles.container, { backgroundColor: '#FFFFFF' }]}
     >
-      {!showIcon && (
-        <Image
+      <Image
           source={{ uri: sourceUri }}
           style={StyleSheet.absoluteFill}
-          contentFit="cover"
+          contentFit="contain"
           cachePolicy="memory-disk"
           transition={180}
           onError={() => {
@@ -49,12 +47,6 @@ export default function ProductImage({
             else setFallbackFailed(true);
           }}
         />
-      )}
-      {showIcon && (
-        <View style={styles.fallback}>
-          <Ionicons name="leaf-outline" size={iconSize} color={iconColor} />
-        </View>
-      )}
     </View>
   );
 }
