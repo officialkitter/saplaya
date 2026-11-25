@@ -110,7 +110,7 @@ export interface SupplierOrder {
   customerEmail?: string;
   deliveryFee?: number;
   deliveryWindow?: DeliveryEta;
-  paymentMethod?: 'pesapal' | 'stripe' | 'snippe' | 'cash_on_delivery';
+  paymentMethod?: 'pesapal' | 'stripe' | 'snippe' | 'paypal' | 'cash_on_delivery';
   area: string;
   mode: Mode;
   items: OrderItem[];

@@ -21,6 +21,19 @@ interface Actions {
   stockCatalogProduct: (catalogProductId: string, supplierId: string, qty: number) => Promise<{ already_stocked: boolean; stock: number }>;
   publishCatalogProduct: (catalogProductId: string, supplierId: string) => Promise<void>;
   setOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  addOrder: (order: {
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    recipientName?: string;
+    recipientPhone?: string;
+    deliveryAddress?: string;
+    deliveryWindow: string;
+    mode: 'retail' | 'wholesale' | 'bulk' | 'mega_bulk';
+    lat?: number;
+    lng?: number;
+    items: { productId: string; qty: number }[];
+  }) => Promise<{ order_id: string; delivery_fee: number }>;
   restock: (productId: string, qty: number, by: string) => Promise<void>;
   addProduct: (p: Omit<Product, 'id' | 'stock' | 'harvestedHoursAgo'>, openingStock: number, by: string) => Promise<void>;
   updateProduct: (id: string, patch: Partial<Omit<Product, 'id' | 'stock' | 'supplierId'>>) => Promise<void>;
@@ -179,6 +192,30 @@ const createAdminStore: StateCreator<DB> = (set) => {
         body: JSON.stringify({ status }),
       });
       await reload(['orders']);
+    },
+
+    addOrder: async (order) => {
+      const result = await fetchAdmin<{ order_id: string; delivery_fee: number }>('/admin/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_name: order.customerName,
+          customer_email: order.customerEmail,
+          customer_phone: order.customerPhone,
+          recipient_name: order.recipientName,
+          recipient_phone: order.recipientPhone,
+          delivery_address: order.deliveryAddress,
+          delivery_window: order.deliveryWindow,
+          mode: order.mode,
+          lat: order.lat,
+          lng: order.lng,
+          items: order.items.map((item) => ({
+            product_id: item.productId,
+            qty: item.qty,
+          })),
+        }),
+      });
+      await reload(['orders', 'products', 'movements']);
+      return result;
     },
 
     restock: async (productId, qty, _by) => {

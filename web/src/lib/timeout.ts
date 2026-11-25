@@ -1,4 +1,4 @@
-export async function withTimeout<T>(promise: Promise<T>, timeoutMs = 15000): Promise<T> {
+export async function withTimeout<T>(promise: Promise<T>, timeoutMs = 45000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -22,7 +22,7 @@ export class RequestTimeoutError extends Error {
 export async function withAbortTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   parentSignal?: AbortSignal | null,
-  timeoutMs = 15000,
+  timeoutMs = 45000,
 ): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(parentSignal?.reason);

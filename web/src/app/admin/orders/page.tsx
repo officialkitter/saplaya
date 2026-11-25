@@ -2,7 +2,7 @@
 
 import { userFacingMessage } from '@/lib/user-facing-error';
 import { motion } from 'framer-motion';
-import { Ban, ClipboardList, DoorOpen, Lock, Search, ShoppingBag, Truck } from 'lucide-react';
+import { Ban, ClipboardList, DoorOpen, Lock, Plus, Search, ShoppingBag, Truck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Guarded, PageHeader } from '@/components/admin/Guard';
 import { Button } from '@/components/ui/Button';
@@ -78,6 +78,7 @@ function Orders() {
   const { formatPrice } = useGlobalMarket();
   const { me, farmId, suppliers, products, orders } = useScope();
   const setOrderStatus = useDB((s) => s.setOrderStatus);
+  const addOrder = useDB((s) => s.addOrder);
   const push = useToast((s) => s.push);
 
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
@@ -88,6 +89,18 @@ function Orders() {
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
   const busyOrder = useRef<string | null>(null);
+  const [addingOrder, setAddingOrder] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const savingOrderRef = useRef(false);
+  const [orderQuery, setOrderQuery] = useState('');
+  const [orderItems, setOrderItems] = useState<Record<string, number>>({});
+  const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhoneInput, setCustomerPhoneInput] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryWindow, setDeliveryWindow] = useState('morning');
 
   useEffect(() => {
     const h = window.location.hash.replace('#', '');
@@ -145,6 +158,71 @@ function Orders() {
     }
   }
 
+  function openAddOrder() {
+    setOrderQuery('');
+    setOrderItems({});
+    setCustomerName('');
+    setCustomerEmail('');
+    setCustomerPhoneInput('');
+    setRecipientName('');
+    setRecipientPhone('');
+    setDeliveryAddress('');
+    setDeliveryWindow('morning');
+    setAddingOrder(true);
+  }
+
+  const orderProductOptions = useMemo(() => {
+    const term = orderQuery.trim().toLowerCase();
+    return products
+      .filter((product) => product.active && product.stock > 0)
+      .filter((product) => (farmId ? product.supplierId === farmId : true))
+      .filter((product) => !term
+        || product.name.toLowerCase().includes(term)
+        || product.category.toLowerCase().includes(term));
+  }, [products, orderQuery, farmId]);
+
+  async function saveNewOrder() {
+    if (savingOrderRef.current) return;
+    const items = Object.entries(orderItems)
+      .filter(([, qty]) => qty > 0)
+      .map(([productId, qty]) => ({ productId, qty }));
+    if (!customerName.trim() || !/^\S+@\S+\.\S+$/.test(customerEmail) || customerPhoneInput.trim().length < 5) {
+      push('Enter the customer name, email and phone.', 'bad');
+      return;
+    }
+    if ((recipientName.trim() && !/^\+[1-9]\d{7,14}$/.test(recipientPhone))
+      || (!recipientName.trim() && recipientPhone.trim())) {
+      push('If you add recipient details, enter the recipient name and a valid +phone number.', 'bad');
+      return;
+    }
+    if (!items.length) {
+      push('Choose at least one product.', 'bad');
+      return;
+    }
+    savingOrderRef.current = true;
+    setSavingOrder(true);
+    try {
+      const result = await addOrder({
+        customerName: customerName.trim(),
+        customerEmail: customerEmail.trim(),
+        customerPhone: customerPhoneInput.trim(),
+        recipientName: recipientName.trim() || undefined,
+        recipientPhone: recipientPhone.trim() || undefined,
+        deliveryAddress: deliveryAddress.trim() || undefined,
+        deliveryWindow,
+        mode: 'retail',
+        items,
+      });
+      push(`Order ${result.order_id.slice(0, 8).toUpperCase()} was added.`);
+      setAddingOrder(false);
+    } catch (error) {
+      push(userFacingMessage(error, 'Could not add this order.',), 'bad');
+    } finally {
+      savingOrderRef.current = false;
+      setSavingOrder(false);
+    }
+  }
+
   function ActionButtons({ o, size = 'sm' }: { o: SupplierOrder; size?: 'sm' | 'md' }) {
     const a = actionsFor(me!.role, o.status, me!.permissions);
     if (!a.next && !a.cancel) return null;
@@ -161,6 +239,9 @@ function Orders() {
       <PageHeader
         title="Orders"
         subtitle={farmId ? 'Pack what is new, send out what is packed. Customers see every change in their app.' : 'Every farm’s part of every order, newest first.'}
+        actions={can(me.role, 'orders.view', me.permissions) ? (
+          <Button icon={<Plus size={20} />} onClick={openAddOrder}>Add order</Button>
+        ) : undefined}
       />
 
       <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Order status">
@@ -287,6 +368,79 @@ function Orders() {
           </div>
         )}
       </Drawer>
+
+      <Modal open={addingOrder} onClose={() => { if (!savingOrder) setAddingOrder(false); }} title="Add order" wide>
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Customer name"><Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Full name" /></Field>
+            <Field label="Customer email"><Input type="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="customer@example.com" /></Field>
+            <Field label="Customer phone"><Input value={customerPhoneInput} onChange={(event) => setCustomerPhoneInput(event.target.value)} placeholder="+255..." /></Field>
+            <Field label="Delivery timeframe">
+              <Select value={deliveryWindow} onChange={(event) => setDeliveryWindow(event.target.value)}>
+                <option value="morning">Morning (07:00–10:00)</option>
+                <option value="evening">Evening (15:00–18:00)</option>
+                <option value="12h">Within 12 hours</option>
+                <option value="24h">Within 24 hours</option>
+                <option value="48h">Within 48 hours</option>
+                <option value="72h">Within 72 hours</option>
+                <option value="7d">Within 7 days</option>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Recipient name (optional)"><Input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name" /></Field>
+            <Field label="Recipient phone (optional)"><Input value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="+255..." /></Field>
+          </div>
+          <Field label="Delivery address (optional)"><Input value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} placeholder="Street, area or landmark" /></Field>
+
+          <div>
+            <Field label="Choose products" hint="Search live database products, then set the quantity">
+              <div className="relative">
+                <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-mute" />
+                <Input value={orderQuery} onChange={(event) => setOrderQuery(event.target.value)} placeholder="Search product or category" className="pl-10" />
+              </div>
+            </Field>
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-2xl border border-line bg-milk p-2">
+              {orderProductOptions.length === 0 ? (
+                <p className="p-5 text-center text-sm text-ink-mute">No available products match your search.</p>
+              ) : orderProductOptions.map((product) => {
+                const qty = orderItems[product.id] ?? 0;
+                return (
+                  <div key={product.id} className={cn('flex items-center gap-3 rounded-xl border p-2 transition', qty > 0 ? 'border-leaf bg-leaf-soft' : 'border-transparent bg-white')}>
+                    <SmartImage src={product.image} alt={product.name} emoji={product.emoji} className="h-12 w-12 shrink-0 rounded-xl" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-extrabold">{product.name}</p>
+                      <p className="text-sm text-ink-mute">{formatNum(product.stock)} {product.unit} available · {farmName.get(product.supplierId)}</p>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={Math.min(10000, product.stock)}
+                      step="any"
+                      value={qty || ''}
+                      placeholder="Qty"
+                      onChange={(event) => setOrderItems((current) => ({
+                        ...current,
+                        [product.id]: Math.max(0, Math.min(Number(event.target.value) || 0, Math.min(10000, product.stock))),
+                      }))}
+                      className="w-24 shrink-0 text-center"
+                      aria-label={`Quantity for ${product.name}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
+            <Button variant="ghost" disabled={savingOrder} onClick={() => setAddingOrder(false)}>Cancel</Button>
+            <Button disabled={savingOrder} onClick={() => void saveNewOrder()}>
+              {savingOrder ? 'Adding order…' : 'Create order'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={!!cancelling} onClose={() => { if (!busyOrderId) setCancelId(null); }} title="Cancel this order?">
         {cancelling && (

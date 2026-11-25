@@ -1,6 +1,6 @@
 import { currencyFractionDigits, supportedPaymentCurrencies } from '../currency.js';
 
-export const PAYMENT_PROVIDER_IDS = ['stripe', 'snippe', 'pesapal'] as const;
+export const PAYMENT_PROVIDER_IDS = ['stripe', 'snippe', 'pesapal', 'paypal'] as const;
 export type PaymentProviderId = (typeof PAYMENT_PROVIDER_IDS)[number];
 export type PaymentEnvironment = 'live' | 'test';
 
@@ -27,7 +27,16 @@ export type PesapalSettings = {
   currencies: string[];
 };
 
-export type ProviderSettings = StripeSettings | SnippeSettings | PesapalSettings;
+export type PayPalSettings = {
+  id: 'paypal';
+  clientId: string;
+  clientSecret: string;
+  webhookId: string;
+  currencies: string[];
+  environment: PaymentEnvironment;
+};
+
+export type ProviderSettings = StripeSettings | SnippeSettings | PesapalSettings | PayPalSettings;
 
 export type PaymentGatewayConfig = {
   // Explicit mode is enabled by PAYMENT_PROVIDERS; legacy mode preserves the Pesapal-only deployment.
@@ -187,6 +196,27 @@ function pesapalSettings(
   return { id: 'pesapal', currencies };
 }
 
+const PAYPAL_CURRENCIES = new Set([
+  'AUD', 'BRL', 'CAD', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY',
+  'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TWD', 'USD',
+]);
+
+function paypalSettings(env: Env, environment: PaymentEnvironment, problems: string[]): PayPalSettings {
+  const clientId = requireSecret(env, 'PAYPAL_CLIENT_ID', problems, (key) =>
+    /^[A-Za-z0-9._-]{8,200}$/.test(key) ? null : 'must be a PayPal REST application client ID.');
+  const clientSecret = requireSecret(env, 'PAYPAL_CLIENT_SECRET', problems, (secret) =>
+    secret.length >= 8 ? null : 'must be a PayPal REST application secret.');
+  const webhookId = requireSecret(env, 'PAYPAL_WEBHOOK_ID', problems, (id) =>
+    /^[A-Za-z0-9_-]{8,200}$/.test(id) ? null : 'must be the webhook ID registered for this API URL.');
+  const currencies = parseCurrencyList(value(env, 'PAYPAL_CURRENCIES') ?? 'USD', 'PAYPAL_CURRENCIES', problems);
+  for (const currency of currencies) {
+    if (!PAYPAL_CURRENCIES.has(currency)) {
+      problems.push(`PAYPAL_CURRENCIES: ${currency} is not supported by PayPal checkout.`);
+    }
+  }
+  return { id: 'paypal', clientId, clientSecret, webhookId, currencies, environment };
+}
+
 export function loadPaymentGatewayConfig(env: Env = process.env): PaymentGatewayConfig {
   const declared = value(env, 'PAYMENT_PROVIDERS');
   const publicApiUrl = value(env, 'PUBLIC_API_URL');
@@ -245,6 +275,7 @@ export function loadPaymentGatewayConfig(env: Env = process.env): PaymentGateway
     if (id === 'stripe') providers.push(stripeSettings(env, environment, problems));
     else if (id === 'snippe') providers.push(snippeSettings(env, environment, problems));
     else if (id === 'pesapal') providers.push(pesapalSettings(env, environment, problems, 'PESAPAL_CURRENCIES'));
+    else if (id === 'paypal') providers.push(paypalSettings(env, environment, problems));
     else problems.push(`PAYMENT_PROVIDERS contains unknown provider "${id}". Use: ${PAYMENT_PROVIDER_IDS.join(', ')}.`);
   }
 

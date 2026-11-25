@@ -1,4 +1,4 @@
--- Run as postgres after 20261117100000_payment_gateway_providers.sql.
+-- Run as postgres after 20261125090000_paypal_payment_provider.sql.
 -- No provider requests are made; all fixtures and stock changes are rolled back.
 begin;
 set local lock_timeout = '5s';
@@ -32,7 +32,7 @@ begin
   ) values (v_product, v_supplier, v_product, 'Gateway test ' || v_product, 10000, 7000, 10, 20, true);
   v_items := jsonb_build_array(jsonb_build_object('product_id', v_product, 'qty', 1, 'unit_price', 10000));
 
-  foreach v_provider in array array['stripe', 'snippe', 'pesapal'] loop
+  foreach v_provider in array array['stripe', 'snippe', 'pesapal', 'paypal'] loop
     v_reference := 'gateway-test-' || gen_random_uuid();
     v_gateway_id := 'provider-test-' || gen_random_uuid();
     insert into public.checkout_payments (
@@ -97,6 +97,6 @@ end;
 $test$;
 
 rollback;
-select 'PASS' as status, 'Provider binding and persisted fulfillment for Stripe, Snippe and Pesapal' as scenario
+select 'PASS' as status, 'Provider binding and persisted fulfillment for Stripe, Snippe, Pesapal and PayPal' as scenario
 union all select 'PASS', 'Idempotent completion, stock accounting and legacy Pesapal wrapper'
 union all select 'PASS', 'Customer roles cannot execute gateway completion';

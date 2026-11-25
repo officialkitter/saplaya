@@ -33,6 +33,7 @@ import { loadPaymentGatewayConfig, PAYMENT_PROVIDER_IDS, type PaymentProviderId 
 import { PaymentGateway, settlePayment, type SettlementStore, type StoredPayment } from './payments/gateway.js';
 import {
   PaymentProviderError,
+  PayPalProvider,
   StripeProvider,
   verifySnippeWebhook,
   verifyStripeWebhook,
@@ -200,6 +201,57 @@ app.post('/api/v1/payments/snippe-webhook', rawWebhookBody, async (req, res) => 
     return res.json({ received: true });
   } catch (error) {
     console.error('Snippe webhook settlement failed:', error);
+    return res.status(503).json({ error: 'Settlement temporarily unavailable.' });
+  }
+});
+
+app.post('/api/v1/payments/paypal-webhook', rawWebhookBody, async (req, res) => {
+  const paypal = paymentGateway.get('paypal');
+  if (!(paypal instanceof PayPalProvider)) return res.status(404).json({ error: 'PayPal is not enabled.' });
+  let event: Record<string, unknown> | null;
+  try {
+    event = await paypal.verifyWebhook(
+      Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0),
+      {
+        transmissionId: req.get('paypal-transmission-id'),
+        transmissionTime: req.get('paypal-transmission-time'),
+        certUrl: req.get('paypal-cert-url'),
+        authAlgo: req.get('paypal-auth-algo'),
+        transmissionSig: req.get('paypal-transmission-sig'),
+      },
+    );
+  } catch (error) {
+    if (error instanceof WebhookVerificationError) {
+      console.warn('Rejected PayPal webhook:', error.message);
+      return res.status(400).json({ error: 'Invalid signature.' });
+    }
+    console.error('Could not verify PayPal webhook:', error);
+    return res.status(503).json({ error: 'Webhook verification temporarily unavailable.' });
+  }
+  if (!event) return res.status(401).json({ error: 'Invalid signature.' });
+
+  const eventType = String(event.event_type ?? '');
+  const supportedEvents = new Set(['CHECKOUT.ORDER.APPROVED', 'CHECKOUT.ORDER.COMPLETED', 'PAYMENT.CAPTURE.COMPLETED']);
+  if (!supportedEvents.has(eventType)) return res.json({ received: true });
+  const resource = event.resource && typeof event.resource === 'object'
+    ? event.resource as Record<string, unknown>
+    : {};
+  const supplementary = resource.supplementary_data && typeof resource.supplementary_data === 'object'
+    ? resource.supplementary_data as Record<string, unknown>
+    : {};
+  const relatedIds = supplementary.related_ids && typeof supplementary.related_ids === 'object'
+    ? supplementary.related_ids as Record<string, unknown>
+    : {};
+  const gatewayId = eventType === 'PAYMENT.CAPTURE.COMPLETED'
+    ? String(relatedIds.order_id ?? '')
+    : String(resource.id ?? '');
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(gatewayId)) return res.json({ received: true });
+  try {
+    const result = await settleStoredPaymentByGateway('paypal', gatewayId);
+    if (result?.outcome === 'mismatch') console.error('PayPal payment mismatch:', gatewayId, result.reason);
+    return res.json({ received: true });
+  } catch (error) {
+    console.error('PayPal webhook settlement failed:', error);
     return res.status(503).json({ error: 'Settlement temporarily unavailable.' });
   }
 });
@@ -1140,23 +1192,22 @@ app.get('/admin/pricing-policy', requirePerm('products.view'), async (_req: Auth
 });
 
 app.get('/checkout/options', async (_req, res) => {
-  let providers: Awaited<ReturnType<PaymentGateway['readyProviders']>> = [];
-  if (WEB_CHECKOUT_CALLBACK_URL) {
-    try {
-      providers = await paymentGateway.readyProviders();
-    } catch (error) {
-      console.error('Could not check web payment readiness:', error);
-      return res.status(503).json({ error: 'Could not load checkout payment options.' });
-    }
+  let providers: Awaited<ReturnType<PaymentGateway['readyProviders']>>;
+  try {
+    providers = await paymentGateway.readyProviders();
+  } catch (error) {
+    console.error('Could not check payment readiness:', error);
+    return res.status(503).json({ error: 'Could not load checkout payment options.' });
   }
   return res.json({
     cash_on_delivery: true,
     cash_currency: 'TZS',
-    online_payment: providers.length > 0,
+    online_payment: providers.length > 0 && Boolean(WEB_CHECKOUT_CALLBACK_URL),
     payment_currencies: [...new Set(providers.flatMap((provider) => provider.currencies))],
     payment_providers: providers.map((provider) => ({
       id: provider.id,
       label: provider.label,
+      channels: provider.channels,
       methods: provider.methods,
       currencies: provider.currencies,
       requires_phone: provider.requiresPhone,
@@ -1926,7 +1977,7 @@ async function notifyCustomerOrderStatus(orderId: string, status: string) {
 
 app.get('/payments/callback', async (req, res) => {
   const transactionRef = String(req.query.OrderMerchantReference ?? req.query.tx_ref ?? '');
-  const returnedGatewayId = String(req.query.OrderTrackingId ?? req.query.order_tracking_id ?? '');
+  const returnedGatewayId = String(req.query.OrderTrackingId ?? req.query.order_tracking_id ?? req.query.token ?? '');
   if (!/^saplaya-[0-9a-f-]{36}$/i.test(transactionRef) || returnedGatewayId.length > 200) {
     return res.redirect(302, paymentCallbackUrl('', ''));
   }
@@ -2478,6 +2529,147 @@ app.get('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, 
       })),
     };
   }));
+});
+
+const adminOrderItemSchema = z.object({
+  product_id: z.string().uuid(),
+  qty: z.number().positive().max(10000),
+});
+
+const adminCreateOrderSchema = z.object({
+  customer_name: z.string().trim().min(2).max(120),
+  customer_email: z.string().trim().email().max(254),
+  customer_phone: z.string().trim().min(5).max(32),
+  recipient_name: z.string().trim().min(1).max(120).optional(),
+  recipient_phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/).optional(),
+  delivery_address: z.string().trim().min(1).max(500).optional(),
+  delivery_window: z.enum(['morning', 'evening', '12h', '24h', '48h', '72h', '7d', '10d', '14d']),
+  mode: z.enum(['retail', 'wholesale', 'bulk', 'mega_bulk']).default('retail'),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  items: z.array(adminOrderItemSchema).min(1).max(100).superRefine((items, ctx) => {
+    const ids = new Set<string>();
+    items.forEach((item, index) => {
+      if (ids.has(item.product_id)) ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, 'product_id'],
+        message: 'Each product can only appear once.',
+      });
+      ids.add(item.product_id);
+    });
+  }),
+}).refine((value) => (value.recipient_name == null) === (value.recipient_phone == null), {
+  message: 'Provide both recipient name and recipient phone.',
+  path: ['recipient_phone'],
+});
+
+app.post('/admin/orders', requirePerm('orders.view'), async (req: AuthedRequest, res: Response) => {
+  const parsed = adminCreateOrderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const member = req.member!;
+
+  const normalizedEmail = parsed.data.customer_email.toLowerCase();
+  const { data: users, error: listError } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (listError) return res.status(503).json({ error: 'Could not look up the customer account.' });
+  let customer = (users.users ?? []).find((user) =>
+    typeof user.email === 'string' && user.email.trim().toLowerCase() === normalizedEmail
+  );
+  if (!customer) {
+    const created = await db.auth.admin.createUser({
+      email: normalizedEmail,
+      email_confirm: true,
+      user_metadata: { full_name: parsed.data.customer_name },
+    });
+    if (created.error || !created.data.user) {
+      return res.status(409).json({ error: 'Could not create or find this customer account.' });
+    }
+    customer = created.data.user;
+  }
+
+  await db.from('customer_profiles').upsert({
+    customer_id: customer.id,
+    full_name: parsed.data.customer_name,
+    phone: parsed.data.customer_phone,
+  });
+
+  const { data: products, error: productError } = await db
+    .from('products')
+    .select('id, name, supplier_id, stock, active, retail_price, wholesale_price, wholesale_min_qty, bulk_price, mega_bulk_price, suppliers(latitude, longitude, status)')
+    .in('id', parsed.data.items.map((item) => item.product_id));
+  if (productError) return res.status(500).json({ error: 'Could not validate the selected products.' });
+  if (!products || products.length !== parsed.data.items.length) {
+    return res.status(400).json({ error: 'One or more selected products are unavailable.' });
+  }
+
+  let distance = 0;
+  const pricedItems: { product_id: string; qty: number; unit_price: number }[] = [];
+  for (const item of parsed.data.items) {
+    const product = products.find((candidate) => candidate.id === item.product_id);
+    if (!product || !product.active) {
+      return res.status(409).json({ error: 'One or more selected products are not active.' });
+    }
+    if (product.supplier_id && member.supplier_id && product.supplier_id !== member.supplier_id) {
+      return res.status(403).json({ error: 'You can only add orders for your own farm.' });
+    }
+    if (member.supplier_id === null) {
+      // Platform users may select products from all active farms.
+    }
+    if (Number(product.stock) < item.qty) {
+      return res.status(409).json({ error: `${product.name} no longer has enough stock.` });
+    }
+    const unitPrice = priceForQuantity(product, item.qty, parsed.data.mode);
+    if (unitPrice === null) {
+      return res.status(409).json({ error: `A configured price is missing for ${product.name}.` });
+    }
+    if (parsed.data.mode === 'wholesale' && item.qty < Number(product.wholesale_min_qty)) {
+      return res.status(409).json({ error: `Wholesale minimum for ${product.name} is ${product.wholesale_min_qty}.` });
+    }
+    pricedItems.push({ product_id: item.product_id, qty: item.qty, unit_price: unitPrice });
+
+    if (parsed.data.lat !== undefined && parsed.data.lng !== undefined) {
+      const supplier = relationRecord(product.suppliers);
+      if (supplier?.latitude != null && supplier?.longitude != null) {
+        distance = Math.max(distance, haversineKm(
+          parsed.data.lat,
+          parsed.data.lng,
+          Number(supplier.latitude),
+          Number(supplier.longitude),
+        ));
+      }
+    }
+  }
+
+  const { data: settings, error: settingsError } = await db
+    .from('platform_settings')
+    .select('free_radius_km, mid_radius_km, mid_fee, far_fee')
+    .eq('id', 'primary')
+    .maybeSingle();
+  if (settingsError || !settings) return res.status(503).json({ error: 'Delivery pricing is not configured.' });
+  const deliveryFee = deliveryFor(Number(distance.toFixed(2)), settings);
+  const requestKey = `admin-${randomUUID()}`;
+
+  const { data: orderId, error: orderError } = await db.rpc('place_cash_on_delivery_order', {
+    p_customer: customer.id,
+    p_request_key: requestKey,
+    p_mode: parsed.data.mode,
+    p_items: pricedItems,
+    p_fee: deliveryFee,
+    p_distance: Number(distance.toFixed(2)),
+    p_lat: parsed.data.lat ?? 0,
+    p_lng: parsed.data.lng ?? 0,
+    p_delivery_window: parsed.data.delivery_window,
+    p_customer_name: parsed.data.customer_name,
+    p_customer_email: normalizedEmail,
+    p_customer_phone: parsed.data.customer_phone,
+    p_recipient_name: parsed.data.recipient_name ?? null,
+    p_recipient_phone: parsed.data.recipient_phone ?? null,
+    p_delivery_address: parsed.data.delivery_address ?? null,
+  });
+  if (orderError || !orderId) {
+    console.error('Could not create admin order:', orderError?.message ?? 'Order ID was not returned.');
+    return res.status(409).json({ error: 'Could not create this order. Check product stock and prices, then try again.' });
+  }
+  return res.status(201).json({ order_id: orderId, delivery_fee: deliveryFee });
 });
 
 const statusSchema = z.object({ status: z.enum(['pending', 'packing', 'en_route', 'delivered', 'cancelled']) });
@@ -4026,7 +4218,7 @@ app.get('/admin/claims/available', requirePerm('claims.view'), async (req: Authe
   if (allowedSupplierIds?.length === 0) return res.json([]);
   let query = db
     .from('supplier_orders')
-    .select('id, order_id, supplier_id, status, updated_at, suppliers(name), order_items(qty, unit_price, products(name, image_url)), supplier_order_assignments(team_member_id, team_members(full_name))')
+    .select('id, order_id, supplier_id, status, updated_at, suppliers(name), order_items(qty, unit_price, products(name, image_url)), supplier_order_assignments(team_member_id)')
     .in('status', ['pending', 'packing', 'en_route'])
     .order('updated_at', { ascending: false })
     .limit(300);

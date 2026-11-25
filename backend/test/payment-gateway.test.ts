@@ -6,6 +6,7 @@ import { loadPaymentGatewayConfig, PaymentConfigurationError } from '../src/paym
 import { PaymentGateway, settlePayment, type SettlementStore, type StoredPayment } from '../src/payments/gateway.js';
 import {
   SnippeProvider,
+  PayPalProvider,
   StripeProvider,
   stripePaymentPageUrl,
   toStripeMinorUnits,
@@ -25,6 +26,16 @@ const liveStripeEnv = {
   STRIPE_PAYMENT_PAGE_URL: 'https://shop.example.com/checkout/pay',
   STRIPE_WEBHOOK_SECRET: 'whsec_abcdefghijklmnop1234',
   STRIPE_CURRENCIES: 'USD,EUR',
+};
+
+const livePayPalEnv = {
+  PAYMENT_PROVIDERS: 'paypal',
+  PAYMENT_ENVIRONMENT: 'live',
+  PUBLIC_API_URL: 'https://api.example.com',
+  PAYPAL_CLIENT_ID: 'client-id-1234',
+  PAYPAL_CLIENT_SECRET: 'paypal-secret-value',
+  PAYPAL_WEBHOOK_ID: 'webhook-id-1234',
+  PAYPAL_CURRENCIES: 'USD,EUR',
 };
 
 function configProblems(env: Record<string, string>): string[] {
@@ -47,7 +58,7 @@ test('explicit payment config fails closed on unsafe or incomplete settings', ()
   assert.match(configProblems({ ...liveStripeEnv, STRIPE_CURRENCIES: 'USD,HUF' }).join(), /HUF uses Stripe special-case/);
   assert.match(configProblems({ ...liveStripeEnv, PUBLIC_API_URL: 'http://api.example.com' }).join(), /https/);
   assert.match(configProblems({ ...liveStripeEnv, PAYMENT_PROVIDERS: 'stripe,stripe' }).join(), /more than once/);
-  assert.match(configProblems({ ...liveStripeEnv, PAYMENT_PROVIDERS: 'stripe,paypal' }).join(), /unknown provider "paypal"/);
+  assert.match(configProblems({ ...liveStripeEnv, PAYMENT_PROVIDERS: 'stripe,unknown' }).join(), /unknown provider "unknown"/);
   assert.match(configProblems({ ...liveStripeEnv, PAYMENT_SUPPORTED_CURRENCIES: 'USD' }).join(), /remove it/);
   assert.match(configProblems({
     ...liveStripeEnv,
@@ -58,6 +69,9 @@ test('explicit payment config fails closed on unsafe or incomplete settings', ()
     SNIPPE_API_KEY: 'snp_abcdefghijklmnop1234',
     SNIPPE_WEBHOOK_SECRET: 'x'.repeat(32),
   }).join(), /Snippe has no sandbox/);
+  assert.deepEqual(configProblems(livePayPalEnv), []);
+  assert.match(configProblems({ ...livePayPalEnv, PAYPAL_WEBHOOK_ID: '' }).join(), /PAYPAL_WEBHOOK_ID is required/);
+  assert.match(configProblems({ ...livePayPalEnv, PAYPAL_CURRENCIES: 'USD,TZS' }).join(), /TZS is not supported by PayPal/);
 });
 
 test('legacy config keeps the existing Pesapal-only deployment working', () => {
@@ -219,9 +233,80 @@ test('Snippe hosted checkout fixes the charge and re-verifies completed sessions
   await assert.rejects(snippe.createCheckout({ ...request, amount: 499 }), /at least 500/);
 });
 
+test('PayPal creates an approval order, captures it once approved, and verifies its webhook', async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const reference = 'saplaya-123e4567-e89b-12d3-a456-426614174000';
+  const purchaseUnit = {
+    reference_id: reference,
+    custom_id: reference,
+    amount: { currency_code: 'USD', value: '19.99' },
+  };
+  const paypal = new PayPalProvider({
+    id: 'paypal',
+    clientId: 'client-id-1234',
+    clientSecret: 'paypal-secret-value',
+    webhookId: 'webhook-id-1234',
+    currencies: ['USD'],
+    environment: 'live',
+  }, fakeFetch([
+    { access_token: 'access-token', expires_in: 3600 },
+    {
+      id: 'ORDER-123456789',
+      purchase_units: [{ reference_id: reference, amount: purchaseUnit.amount }],
+      links: [{ rel: 'approve', href: 'https://www.paypal.com/checkoutnow?token=ORDER-123456789' }],
+    },
+    { id: 'ORDER-123456789', status: 'APPROVED', purchase_units: [purchaseUnit] },
+    {
+      id: 'ORDER-123456789',
+      status: 'COMPLETED',
+      purchase_units: [{
+        ...purchaseUnit,
+        payments: { captures: [{ status: 'COMPLETED', amount: { currency_code: 'USD', value: '19.99' } }] },
+      }],
+    },
+    { verification_status: 'SUCCESS' },
+  ], calls));
+  const checkout = await paypal.createCheckout({
+    reference, amount: 19.99, currency: 'USD', description: 'Saplaya order',
+    callbackUrl: 'https://api.example.com/payments/callback',
+    webhookUrl: 'https://api.example.com/api/v1/payments/paypal-webhook',
+    customer: { name: 'Buyer', email: 'buyer@example.com', phone: '' },
+  });
+  assert.deepEqual(checkout, {
+    gatewayId: 'ORDER-123456789',
+    redirectUrl: 'https://www.paypal.com/checkoutnow?token=ORDER-123456789',
+  });
+  const orderRequest = JSON.parse(String(calls[1].init?.body));
+  assert.equal(orderRequest.intent, 'CAPTURE');
+  assert.equal(orderRequest.purchase_units[0].amount.value, '19.99');
+  assert.equal(orderRequest.purchase_units[0].custom_id, reference);
+  assert.equal(orderRequest.payment_source.paypal.experience_context.return_url,
+    `https://api.example.com/payments/callback?tx_ref=${reference}`);
+  assert.match((calls[1].init?.headers as Record<string, string>)['PayPal-Request-Id'], /^sp-[a-f0-9]{32}$/);
+
+  assert.deepEqual(await paypal.verify('ORDER-123456789'), {
+    gatewayId: 'ORDER-123456789', reference, state: 'paid', amount: 19.99, currency: 'USD',
+  });
+  assert.equal(calls[3].url, 'https://api-m.paypal.com/v2/checkout/orders/ORDER-123456789/capture');
+  assert.equal((calls[3].init?.headers as Record<string, string>)['PayPal-Request-Id'], 'spcap-ORDER-123456789');
+  assert.deepEqual(await paypal.verifyWebhook(Buffer.from(JSON.stringify({ id: 'event-1' })), {
+    transmissionId: 'transmission-1',
+    transmissionTime: '2026-11-25T00:00:00Z',
+    certUrl: 'https://api.paypal.com/cert',
+    authAlgo: 'SHA256withRSA',
+    transmissionSig: 'signature',
+  }), { id: 'event-1' });
+  const webhookRequest = JSON.parse(String(calls[4].init?.body));
+  assert.equal(webhookRequest.webhook_id, 'webhook-id-1234');
+  assert.equal(webhookRequest.webhook_event.id, 'event-1');
+
+  await assert.rejects(paypal.verify('ORDER-123456789?redirect=elsewhere'), /Invalid PayPal order ID/);
+});
+
 function stubProvider(id: 'stripe' | 'pesapal', currencies: string[], verified?: VerifiedPayment): PaymentProvider {
   return {
     id, label: id, methods: [], currencies, requiresPhone: id === 'pesapal',
+    channels: id === 'pesapal' ? ['mobile_money', 'cards'] : ['cards'],
     createCheckout: async () => ({ gatewayId: 'gw', redirectUrl: 'https://pay.example' }),
     verify: async () => verified!,
   };
@@ -274,4 +359,8 @@ test('payment gateway migration records the provider on paid orders', async () =
   assert.match(sql, /payment_method = v_payment\.provider/);
   assert.match(sql, /v_payment\.provider is distinct from p_provider/);
   assert.match(sql, /grant execute on function public\.complete_checkout_payment\(text, text, text\) to service_role/);
+  const paypalSql = await readFile(new URL('../../supabase/migrations/20261125090000_paypal_payment_provider.sql', import.meta.url), 'utf8');
+  assert.match(paypalSql, /check \(provider in \('pesapal', 'stripe', 'snippe', 'paypal'\)\)/);
+  assert.match(paypalSql, /payment_method in \('pesapal', 'stripe', 'snippe', 'paypal', 'cash_on_delivery'\)/);
+  assert.match(paypalSql, /if p_provider not in \('pesapal', 'stripe', 'snippe', 'paypal'\)/);
 });

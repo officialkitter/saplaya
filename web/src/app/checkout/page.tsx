@@ -11,6 +11,7 @@ import { DeliveryAddressSearch } from '@/components/DeliveryAddressSearch';
 import { availableDailyDeliveryWindows, dailyDeliveryDay } from '@/lib/delivery-time';
 import { CountryCodePicker } from '@/components/CountryCodePicker';
 import { SmartImage } from '@/components/ui/SmartImage';
+import { CreditCard, Smartphone, Wallet } from 'lucide-react';
 
 type DeliveryEta = 'morning' | 'evening' | '12h' | '24h' | '48h' | '72h' | '7d' | '10d' | '14d';
 type DeliveryOption = { value: DeliveryEta; title: string; fee: number };
@@ -25,7 +26,28 @@ type CheckoutQuote = {
   payment_amount: number;
   exchange_rate: number;
 };
-type PaymentProviderOption = { id: 'stripe' | 'snippe' | 'pesapal'; label: string; methods: string[]; currencies: string[]; requires_phone: boolean };
+type PaymentProviderOption = {
+  id: 'stripe' | 'snippe' | 'pesapal' | 'paypal';
+  label: string;
+  channels?: PaymentChannel[];
+  methods: string[];
+  currencies: string[];
+  requires_phone: boolean;
+};
+type PaymentChannel = 'mobile_money' | 'cards' | 'other';
+const paymentChannels: { id: PaymentChannel; label: string; icon: typeof CreditCard }[] = [
+  { id: 'mobile_money', label: 'Mobile money', icon: Smartphone },
+  { id: 'cards', label: 'Cards & wallets', icon: CreditCard },
+  { id: 'other', label: 'Other methods', icon: Wallet },
+];
+
+function providerSupportsChannel(provider: PaymentProviderOption, channel: PaymentChannel): boolean {
+  if (provider.channels) return provider.channels.includes(channel);
+  if (channel === 'mobile_money') return provider.requires_phone;
+  if (channel === 'cards') return provider.id !== 'snippe';
+  return provider.id === 'stripe' || provider.id === 'paypal';
+}
+
 type CheckoutOptions = {
   cash_on_delivery: boolean;
   online_payment: boolean;
@@ -55,6 +77,7 @@ export default function CheckoutPage() {
   const [paymentPhone, setPaymentPhone] = useState('');
   const [paymentPhoneDial, setPaymentPhoneDial] = useState('+255');
   const [preferredProvider, setPreferredProvider] = useState<PaymentProviderOption['id'] | ''>('');
+  const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>('mobile_money');
   const [acceptedFee, setAcceptedFee] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -79,7 +102,15 @@ export default function CheckoutPage() {
     () => (options?.payment_providers ?? []).filter((provider) => provider.currencies.includes(market.currency)),
     [options, market.currency],
   );
-  const selectedProvider = currencyProviders.find((provider) => provider.id === preferredProvider) ?? currencyProviders[0];
+  const availablePaymentChannels = paymentChannels.filter((channel) =>
+    currencyProviders.some((provider) => providerSupportsChannel(provider, channel.id)),
+  );
+  const selectedChannel = availablePaymentChannels.find((channel) => channel.id === paymentChannel)
+    ?? availablePaymentChannels[0];
+  const channelProviders = selectedChannel
+    ? currencyProviders.filter((provider) => providerSupportsChannel(provider, selectedChannel.id))
+    : [];
+  const selectedProvider = channelProviders.find((provider) => provider.id === preferredProvider) ?? channelProviders[0];
   // Older API responses omit payment_providers; those deployments are Pesapal-only and need a phone.
   const providerNeedsPhone = selectedProvider ? selectedProvider.requires_phone : true;
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
@@ -367,36 +398,106 @@ export default function CheckoutPage() {
             </fieldset>
           )}
 
-          {options?.online_payment && (
-            <label className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm font-bold">
-              <input type="radio" name="payment" checked={paymentMethod === 'online'} onChange={() => setPaymentMethod('online')} />
-              Pay online securely
-            </label>
-          )}
-          {options?.cash_on_delivery && (
-            <label className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm font-bold">
-              <input type="radio" name="payment" checked={paymentMethod === 'cash_on_delivery'} onChange={() => setPaymentMethod('cash_on_delivery')} />
-              Payment on delivery
-            </label>
+          {(options?.online_payment || options?.cash_on_delivery) && (
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-extrabold">Choose a payment method</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {options?.online_payment && (
+                  <label
+                    className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm backdrop-blur-xl transition duration-200 focus-within:ring-2 focus-within:ring-leaf/40 ${
+                      paymentMethod === 'online'
+                        ? 'border-leaf bg-white/90 shadow-soft'
+                        : 'border-white/80 bg-white/60 hover:bg-white/80'
+                    }`}
+                    style={paymentMethod === 'online' ? { borderColor: `${theme.accent}88`, boxShadow: `0 8px 24px ${theme.accent}18` } : undefined}
+                  >
+                    <input type="radio" name="payment" className="sr-only" checked={paymentMethod === 'online'} onChange={() => setPaymentMethod('online')} />
+                    <span className="mt-0.5 rounded-xl bg-leaf/10 p-2 text-leaf-deep"><CreditCard size={19} aria-hidden="true" /></span>
+                    <span>
+                      <span className="block font-extrabold">Pay online securely</span>
+                      <span className="mt-1 block text-xs font-medium leading-5 text-ink-mute">Mobile money, cards, wallets and other available methods</span>
+                    </span>
+                  </label>
+                )}
+                {options?.cash_on_delivery && (
+                  <label
+                    className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm backdrop-blur-xl transition duration-200 focus-within:ring-2 focus-within:ring-leaf/40 ${
+                      paymentMethod === 'cash_on_delivery'
+                        ? 'border-leaf bg-white/90 shadow-soft'
+                        : 'border-white/80 bg-white/60 hover:bg-white/80'
+                    }`}
+                    style={paymentMethod === 'cash_on_delivery' ? { borderColor: `${theme.accent}88`, boxShadow: `0 8px 24px ${theme.accent}18` } : undefined}
+                  >
+                    <input type="radio" name="payment" className="sr-only" checked={paymentMethod === 'cash_on_delivery'} onChange={() => setPaymentMethod('cash_on_delivery')} />
+                    <span className="mt-0.5 rounded-xl bg-amber-100/80 p-2 text-amber-800"><Wallet size={19} aria-hidden="true" /></span>
+                    <span>
+                      <span className="block font-extrabold">Payment on delivery</span>
+                      <span className="mt-1 block text-xs font-medium leading-5 text-ink-mute">Pay when your order arrives</span>
+                    </span>
+                  </label>
+                )}
+              </div>
+            </fieldset>
           )}
 
           {paymentMethod === 'online' && options?.online_payment && (
-            <div className="space-y-2 rounded-xl border border-line p-3">
-              {currencyProviders.length > 1 && (
+            <div className="space-y-3 rounded-2xl border border-white/80 bg-white/55 p-4 shadow-soft backdrop-blur-xl">
+              {currencyProviders.length > 0 && (
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-bold">Choose how to pay</legend>
-                  {currencyProviders.map((provider) => (
-                    <label key={provider.id} className="flex items-start gap-3 rounded-xl border border-line p-3 text-sm">
-                      <input
-                        type="radio"
-                        name="payment-provider"
-                        className="mt-1"
-                        checked={selectedProvider?.id === provider.id}
-                        onChange={() => setPreferredProvider(provider.id)}
-                      />
-                      <span>
-                        <span className="block font-bold">{provider.label}</span>
-                        <span className="block text-xs text-ink-mute">{provider.methods.join(' · ')}</span>
+                  <legend className="text-sm font-extrabold">Choose how you’d like to pay</legend>
+                  <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/80 bg-white/45 p-1.5 backdrop-blur-xl">
+                    {availablePaymentChannels.map((channel) => {
+                      const Icon = channel.icon;
+                      const selected = selectedChannel?.id === channel.id;
+                      return (
+                        <label
+                          key={channel.id}
+                          className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl px-2 py-3 text-center text-xs font-extrabold transition focus-within:ring-2 focus-within:ring-leaf/40 ${
+                            selected ? 'bg-white/95 text-leaf-deep shadow-soft' : 'text-ink-mute hover:bg-white/60'
+                          }`}
+                          style={selected ? { color: theme.accent, boxShadow: `0 5px 16px ${theme.accent}18` } : undefined}
+                        >
+                          <input
+                            type="radio"
+                            name="payment-channel"
+                            className="sr-only"
+                            checked={selected}
+                            onChange={() => {
+                              setPaymentChannel(channel.id);
+                              setPreferredProvider('');
+                            }}
+                          />
+                          <Icon size={17} aria-hidden="true" />
+                          <span>{channel.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs leading-5 text-ink-mute">Choose a gateway below. Its secure checkout confirms the exact methods available to you.</p>
+                  {channelProviders.map((provider) => (
+                    <label
+                      key={provider.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm backdrop-blur transition ${
+                        selectedProvider?.id === provider.id
+                          ? 'border-leaf bg-white/90 shadow-sm'
+                          : 'border-white/80 bg-white/55 hover:bg-white/85'
+                      }`}
+                      style={selectedProvider?.id === provider.id ? { borderColor: `${theme.accent}88` } : undefined}
+                    >
+                      <input type="radio" name="payment-provider" className="sr-only" checked={selectedProvider?.id === provider.id} onChange={() => setPreferredProvider(provider.id)} />
+                      <span className="rounded-xl bg-leaf/10 p-2 text-leaf-deep">
+                        {provider.requires_phone
+                          ? <Smartphone size={18} aria-hidden="true" />
+                          : provider.id === 'paypal'
+                            ? <Wallet size={18} aria-hidden="true" />
+                            : <CreditCard size={18} aria-hidden="true" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-extrabold">{provider.label}</span>
+                        <span className="mt-0.5 block text-xs leading-5 text-ink-mute">{provider.methods.join(' · ')}</span>
+                      </span>
+                      <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selectedProvider?.id === provider.id ? 'border-leaf bg-leaf text-white' : 'border-line bg-white'}`}>
+                        {selectedProvider?.id === provider.id && <span className="h-2 w-2 rounded-full bg-white" />}
                       </span>
                     </label>
                   ))}
@@ -422,7 +523,11 @@ export default function CheckoutPage() {
                   </div>
                 </>
               )}
-              <p className="text-xs font-bold text-ink-mute">Review your total and available payment options before confirming.</p>
+              <p className="text-xs leading-5 text-ink-mute">
+                {providerNeedsPhone
+                  ? 'Enter a reachable mobile-money number. Never share your PIN with Saplaya.'
+                  : 'Your payment details are entered only on the provider’s secure checkout.'}
+              </p>
             </div>
           )}
 

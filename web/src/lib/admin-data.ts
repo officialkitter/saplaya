@@ -1,5 +1,5 @@
 import type { DB } from '@/lib/store';
-import { fetchAdmin } from '@/lib/supabase';
+import { fetchAdmin } from './supabase';
 import type { Perm, Role, TeamMember } from '@/lib/types';
 
 type MemberResponse = {

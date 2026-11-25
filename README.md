@@ -70,7 +70,7 @@ Location access is optional when browsing and helps prioritize nearby farms. Sea
 
 The selected currency is used throughout the web storefront and admin, including monetary entry fields; the mobile app offers a searchable currency picker. Admin inputs are converted to whole TZS for accounting and pricing storage without changing saved values just by switching currencies. Online checkout charges the selected currency only when it is enabled for the merchant; it shows the exact server-quoted amount before payment. Cash on delivery remains payable in TZS.
 
-Deployment: apply the latest Supabase migration before deploying the API, enable Google Geocoding API for the server's `GOOGLE_MAPS_API_KEY`, and set `PAYMENT_SUPPORTED_CURRENCIES` only to currencies enabled on your Pesapal merchant account (defaults to `TZS`). An exchange rate alone does not mean a currency can be charged.
+Deployment: apply the latest Supabase migration before deploying the API, enable Google Geocoding API for the server's `GOOGLE_MAPS_API_KEY`, and configure each enabled provider's currency allow-list (`PESAPAL_CURRENCIES`, `PAYPAL_CURRENCIES`, `STRIPE_CURRENCIES`, or `SNIPPE_CURRENCIES`). An exchange rate alone does not mean a currency can be charged; PayPal does not support TZS.
 
 ```mermaid
 flowchart LR

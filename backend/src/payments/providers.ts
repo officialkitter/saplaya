@@ -1,5 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { amountInMinorUnits } from '../currency.js';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { amountInMinorUnits, currencyFractionDigits } from '../currency.js';
 import {
   getTransactionStatus,
   isPaymentCompleted,
@@ -9,6 +9,7 @@ import {
 import {
   stripeCurrencyExponent,
   type PaymentProviderId,
+  type PayPalSettings,
   type PesapalSettings,
   type SnippeSettings,
   type StripeSettings,
@@ -37,9 +38,12 @@ export type VerifiedPayment = {
   currency?: string;
 };
 
+export type PaymentChannel = 'mobile_money' | 'cards' | 'other';
+
 export interface PaymentProvider {
   readonly id: PaymentProviderId;
   readonly label: string;
+  readonly channels: PaymentChannel[];
   readonly methods: string[];
   readonly currencies: string[];
   readonly requiresPhone: boolean;
@@ -215,6 +219,7 @@ const STRIPE_INTENT_ID = /^pi_[A-Za-z0-9]{8,}$/;
 export class StripeProvider implements PaymentProvider {
   readonly id = 'stripe' as const;
   readonly label = 'Card & wallets';
+  readonly channels: PaymentChannel[] = ['cards', 'other'];
   readonly methods = ['card', 'wallets', 'local payment methods enabled in Stripe'];
   readonly requiresPhone = false;
   readonly currencies: string[];
@@ -333,6 +338,7 @@ export function snippeSessionState(status: unknown): PaymentState {
 export class SnippeProvider implements PaymentProvider {
   readonly id = 'snippe' as const;
   readonly label = 'Mobile money';
+  readonly channels: PaymentChannel[] = ['mobile_money'];
   readonly methods = ['M-Pesa', 'Airtel Money', 'Mixx by Yas', 'Halotel'];
   readonly requiresPhone = true;
   readonly currencies: string[];
@@ -420,9 +426,209 @@ export class SnippeProvider implements PaymentProvider {
   }
 }
 
+  const PAYPAL_ORDER_ID = /^[A-Za-z0-9-]{8,64}$/;
+
+  export class PayPalProvider implements PaymentProvider {
+    readonly id = 'paypal' as const;
+    readonly label = 'PayPal';
+    readonly channels: PaymentChannel[] = ['cards', 'other'];
+    readonly methods = ['PayPal balance, cards and eligible local payment methods'];
+    readonly requiresPhone = false;
+    readonly currencies: string[];
+    private readonly apiUrl: string;
+    private token = '';
+    private tokenExpiresAt = 0;
+    private tokenRequest: Promise<string> | null = null;
+
+    constructor(private readonly settings: PayPalSettings, private readonly fetchImpl: FetchLike = fetch) {
+      this.currencies = settings.currencies;
+      this.apiUrl = settings.environment === 'live'
+        ? 'https://api-m.paypal.com'
+        : 'https://api-m.sandbox.paypal.com';
+    }
+
+    private async accessToken(): Promise<string> {
+      if (this.token && Date.now() < this.tokenExpiresAt) return this.token;
+      if (this.tokenRequest) return this.tokenRequest;
+      this.tokenRequest = (async () => {
+        const response = await this.fetchImpl(`${this.apiUrl}/v1/oauth2/token`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(20_000),
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${this.settings.clientId}:${this.settings.clientSecret}`).toString('base64')}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json',
+          },
+          body: 'grant_type=client_credentials',
+        });
+        const body = await readJson(response, 'PayPal');
+        if (!response.ok) throw new PaymentProviderError(`PayPal authentication failed with HTTP ${response.status}.`, response.status);
+        if (typeof body.access_token !== 'string' || typeof body.expires_in !== 'number') {
+          throw new PaymentProviderError('PayPal returned an invalid access token response.');
+        }
+        this.token = body.access_token;
+        this.tokenExpiresAt = Date.now() + Math.max(0, body.expires_in - 60) * 1000;
+        return this.token;
+      })();
+      try {
+        return await this.tokenRequest;
+      } finally {
+        this.tokenRequest = null;
+      }
+    }
+
+    private async call(path: string, init: { method: 'GET' | 'POST'; body?: JsonObject; requestId?: string }) {
+      const token = await this.accessToken();
+      const response = await this.fetchImpl(`${this.apiUrl}${path}`, {
+        method: init.method,
+        signal: AbortSignal.timeout(20_000),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(init.requestId ? { 'PayPal-Request-Id': init.requestId } : {}),
+        },
+        body: init.body ? JSON.stringify(init.body) : undefined,
+      });
+      const body = await readJson(response, 'PayPal');
+      if (!response.ok) {
+        const issue = typeof body.name === 'string' ? ` (${body.name})` : '';
+        throw new PaymentProviderError(`PayPal request failed with HTTP ${response.status}${issue}.`, response.status);
+      }
+      return body;
+    }
+
+    private amountValue(amount: number, currency: string): string {
+      const minorUnits = amountInMinorUnits(amount, currency);
+      if (minorUnits === null || minorUnits <= 0) {
+        throw new PaymentProviderError(`The ${currency} amount cannot be charged exactly.`);
+      }
+      return (minorUnits / 10 ** currencyFractionDigits(currency)).toFixed(currencyFractionDigits(currency));
+    }
+
+    async createCheckout(request: CheckoutRequest): Promise<CreatedCheckout> {
+      const currency = request.currency.toUpperCase();
+      if (!this.currencies.includes(currency)) {
+        throw new PaymentProviderError(`PayPal is not configured for ${currency}.`);
+      }
+      const callback = new URL(request.callbackUrl);
+      callback.searchParams.set('tx_ref', request.reference);
+      const body = await this.call('/v2/checkout/orders', {
+        method: 'POST',
+        requestId: `sp-${createHash('sha256').update(request.reference).digest('hex').slice(0, 32)}`,
+        body: {
+          intent: 'CAPTURE',
+          purchase_units: [{
+            reference_id: request.reference,
+            custom_id: request.reference,
+            invoice_id: request.reference,
+            description: request.description.slice(0, 127),
+            amount: { currency_code: currency, value: this.amountValue(request.amount, currency) },
+          }],
+          payment_source: {
+            paypal: {
+              experience_context: {
+                brand_name: 'Saplaya',
+                user_action: 'PAY_NOW',
+                shipping_preference: 'NO_SHIPPING',
+                return_url: callback.toString(),
+                cancel_url: callback.toString(),
+              },
+            },
+          },
+        },
+      });
+      const orderId = typeof body.id === 'string' ? body.id : '';
+      if (!PAYPAL_ORDER_ID.test(orderId)) throw new PaymentProviderError('PayPal did not return a valid order ID.');
+      const units = Array.isArray(body.purchase_units) ? body.purchase_units : [];
+      const unit = isObject(units[0]) ? units[0] : {};
+      const orderAmount = isObject(unit.amount) ? unit.amount : {};
+      const returnedReference = typeof unit.custom_id === 'string' ? unit.custom_id : unit.reference_id;
+      if (returnedReference !== request.reference
+        || orderAmount.currency_code !== currency || orderAmount.value !== this.amountValue(request.amount, currency)) {
+        throw new PaymentProviderError('PayPal created an order with an unexpected reference, amount or currency.');
+      }
+      const links = Array.isArray(body.links) ? body.links : [];
+      const approvalLink = links.find((link) => isObject(link) && (link.rel === 'approve' || link.rel === 'payer-action'));
+      return {
+        gatewayId: orderId,
+        redirectUrl: requireHttpsUrl(isObject(approvalLink) ? approvalLink.href : undefined, ['paypal.com'], 'PayPal'),
+      };
+    }
+
+    async verify(gatewayId: string): Promise<VerifiedPayment> {
+      if (!PAYPAL_ORDER_ID.test(gatewayId)) throw new PaymentProviderError('Invalid PayPal order ID.');
+      let order = await this.call(`/v2/checkout/orders/${encodeURIComponent(gatewayId)}`, { method: 'GET' });
+      if (order.id !== gatewayId) throw new PaymentProviderError('PayPal returned a different order.');
+      if (order.status === 'APPROVED') {
+        order = await this.call(`/v2/checkout/orders/${encodeURIComponent(gatewayId)}/capture`, {
+          method: 'POST',
+          body: {},
+          requestId: `spcap-${gatewayId}`,
+        });
+        if (order.id !== gatewayId) throw new PaymentProviderError('PayPal captured a different order.');
+      }
+      const units = Array.isArray(order.purchase_units) ? order.purchase_units : [];
+      if (units.length !== 1 || !isObject(units[0])) {
+        throw new PaymentProviderError('PayPal order does not contain exactly one purchase unit.');
+      }
+      const unit = units[0];
+      const payments = isObject(unit.payments) ? unit.payments : {};
+      const captures = Array.isArray(payments.captures) ? payments.captures : [];
+      const completedCaptures = captures.filter((capture) => isObject(capture) && capture.status === 'COMPLETED');
+      const currency = completedCaptures.length && isObject(completedCaptures[0].amount)
+        && typeof completedCaptures[0].amount.currency_code === 'string'
+        ? completedCaptures[0].amount.currency_code.toUpperCase()
+        : isObject(unit.amount) && typeof unit.amount.currency_code === 'string'
+          ? unit.amount.currency_code.toUpperCase()
+          : undefined;
+      const amount = completedCaptures.length
+        ? completedCaptures.reduce((sum, capture) => {
+          const captureAmount = isObject(capture) && isObject(capture.amount) ? Number(capture.amount.value) : NaN;
+          return sum + (Number.isFinite(captureAmount) ? captureAmount : 0);
+        }, 0)
+        : undefined;
+      const state: PaymentState = order.status === 'COMPLETED' && completedCaptures.length === captures.length && captures.length > 0
+        ? 'paid'
+        : order.status === 'VOIDED' ? 'failed' : 'pending';
+      const reference = typeof unit.custom_id === 'string' ? unit.custom_id
+        : typeof unit.reference_id === 'string' ? unit.reference_id : undefined;
+      return { gatewayId, reference, state, amount, currency };
+    }
+
+    async verifyWebhook(rawBody: Buffer, headers: {
+      transmissionId?: string;
+      transmissionTime?: string;
+      certUrl?: string;
+      authAlgo?: string;
+      transmissionSig?: string;
+    }): Promise<JsonObject | null> {
+      const event = parseVerifiedBody(rawBody);
+      if (!headers.transmissionId || !headers.transmissionTime || !headers.certUrl
+        || !headers.authAlgo || !headers.transmissionSig) {
+        throw new WebhookVerificationError('PayPal webhook signature headers are missing.');
+      }
+      const result = await this.call('/v1/notifications/verify-webhook-signature', {
+        method: 'POST',
+        body: {
+          auth_algo: headers.authAlgo,
+          cert_url: headers.certUrl,
+          transmission_id: headers.transmissionId,
+          transmission_sig: headers.transmissionSig,
+          transmission_time: headers.transmissionTime,
+          webhook_id: this.settings.webhookId,
+          webhook_event: event,
+        },
+      });
+      if (result.verification_status !== 'SUCCESS') return null;
+      return event;
+    }
+  }
+
 export class PesapalProvider implements PaymentProvider {
   readonly id = 'pesapal' as const;
   readonly label = 'Pesapal (mobile money & cards)';
+  readonly channels: PaymentChannel[] = ['mobile_money', 'cards'];
   readonly methods = ['mobile money', 'cards'];
   readonly requiresPhone = true;
   readonly currencies: string[];

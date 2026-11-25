@@ -76,6 +76,7 @@ export type CheckoutInput = {
   lng: number;
   customer: { name: string; email: string; phone: string };
   payment_phone?: string;
+  payment_provider?: 'pesapal' | 'stripe' | 'snippe' | 'paypal';
   currency?: string;
   quoted_payment_amount?: number;
   recipient?: { name: string; phone: string };
@@ -147,7 +148,7 @@ export type CustomerOrder = {
   delivery_fee: number;
   created_at: string;
   delivery_window?: DeliveryEta;
-  payment_method?: 'pesapal' | 'stripe' | 'snippe' | 'cash_on_delivery';
+  payment_method?: 'pesapal' | 'stripe' | 'snippe' | 'paypal' | 'cash_on_delivery';
   customer_email?: string;
   order_items: OrderItem[];
 };
@@ -155,7 +156,7 @@ export type CustomerOrder = {
 export function initializePayment(input: CheckoutInput) {
   return authenticatedRequest<{
     payment_url: string;
-    payment_provider?: 'pesapal' | 'stripe' | 'snippe';
+    payment_provider?: 'pesapal' | 'stripe' | 'snippe' | 'paypal';
     tx_ref: string;
     order_tracking_id: string;
     amount: number;

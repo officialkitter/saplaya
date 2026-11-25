@@ -2,6 +2,7 @@ import { paymentAmountsMatch } from '../currency.js';
 import type { PaymentGatewayConfig, PaymentProviderId } from './config.js';
 import {
   PaymentProviderError,
+  PayPalProvider,
   PesapalProvider,
   SnippeProvider,
   StripeProvider,
@@ -12,6 +13,7 @@ import {
 export type ProviderReadiness = {
   id: PaymentProviderId;
   label: string;
+  channels: PaymentProvider['channels'];
   methods: string[];
   currencies: string[];
   ready: boolean;
@@ -29,6 +31,7 @@ export class PaymentGateway {
     this.providers = providers ?? config.providers.map((settings) => {
       if (settings.id === 'stripe') return new StripeProvider(settings, options.fetchImpl);
       if (settings.id === 'snippe') return new SnippeProvider(settings, options.fetchImpl);
+      if (settings.id === 'paypal') return new PayPalProvider(settings, options.fetchImpl);
       return new PesapalProvider(settings, options.loadPesapalIpnId);
     });
     this.loadPesapalIpnId = options.loadPesapalIpnId;
@@ -42,7 +45,13 @@ export class PaymentGateway {
 
   async readiness(): Promise<ProviderReadiness[]> {
     return Promise.all(this.providers.map(async (provider) => {
-      const base = { id: provider.id, label: provider.label, methods: provider.methods, currencies: provider.currencies };
+      const base = {
+        id: provider.id,
+        label: provider.label,
+        channels: provider.channels,
+        methods: provider.methods,
+        currencies: provider.currencies,
+      };
       if (provider.id !== 'pesapal') return { ...base, ready: true };
       const ipnId = await this.loadPesapalIpnId();
       return ipnId ? { ...base, ready: true } : { ...base, ready: false, reason: 'Pesapal IPN is not registered.' };

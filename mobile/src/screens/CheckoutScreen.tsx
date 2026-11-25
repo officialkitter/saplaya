@@ -27,6 +27,33 @@ WebBrowser.maybeCompleteAuthSession();
 
 type PaymentSession = Awaited<ReturnType<typeof initializePayment>>;
 type CheckoutPayment = 'online' | 'cash_on_delivery';
+type PaymentProviderOption = {
+  id: 'stripe' | 'snippe' | 'pesapal' | 'paypal';
+  label: string;
+  channels?: PaymentChannel[];
+  methods: string[];
+  currencies: string[];
+  requires_phone: boolean;
+};
+type PaymentChannel = 'mobile_money' | 'cards' | 'other';
+const paymentChannels: { id: PaymentChannel; label: string }[] = [
+  { id: 'mobile_money', label: 'Mobile money' },
+  { id: 'cards', label: 'Cards & wallets' },
+  { id: 'other', label: 'Other methods' },
+];
+
+function providerSupportsChannel(provider: PaymentProviderOption, channel: PaymentChannel): boolean {
+  if (provider.channels) return provider.channels.includes(channel);
+  if (channel === 'mobile_money') return provider.requires_phone;
+  if (channel === 'cards') return provider.id !== 'snippe';
+  return provider.id === 'stripe' || provider.id === 'paypal';
+}
+
+type CheckoutOptions = {
+  payment_currencies: string[];
+  cash_currency: string;
+  payment_providers?: PaymentProviderOption[];
+};
 
 export default function CheckoutScreen({ navigation }: any) {
   const { lines, mode, priceOf, clear, setLastOrderId } = useStore();
@@ -37,13 +64,15 @@ export default function CheckoutScreen({ navigation }: any) {
   const [forSomeoneElse, setForSomeoneElse] = useState(false);
   const [recipient, setRecipient] = useState({ name: '', phone: '' });
   const [recipientDial, setRecipientDial] = useState('+255');
-  const [checkoutOptions, setCheckoutOptions] = useState<{ payment_currencies: string[]; cash_currency: string } | null>(null);
+  const [checkoutOptions, setCheckoutOptions] = useState<CheckoutOptions | null>(null);
   const [name, setName] = useState(profile.fullName);
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(profile.phone);
   const [phoneDial, setPhoneDial] = useState('+255');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [paymentPhoneDial, setPaymentPhoneDial] = useState('+255');
+  const [preferredPaymentProvider, setPreferredPaymentProvider] = useState<PaymentProviderOption['id'] | ''>('');
+  const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>('mobile_money');
   const [savedPaymentMethods, setSavedPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(addresses.find((address) => address.isDefault)?.id ?? null);
   const [payment, setPayment] = useState<PaymentSession | null>(null);
@@ -72,6 +101,19 @@ export default function CheckoutScreen({ navigation }: any) {
       : option.value !== 'morning' && option.value !== 'evening',
   ), [deliveryOptions, dailyDelivery, dailyWindows]);
   const tierTheme = volumeTheme(mode);
+  const currencyPaymentProviders = (checkoutOptions?.payment_providers ?? [])
+    .filter((provider) => provider.currencies.includes(currency));
+  const availablePaymentChannels = paymentChannels.filter((channel) =>
+    currencyPaymentProviders.some((provider) => providerSupportsChannel(provider, channel.id)),
+  );
+  const selectedChannel = availablePaymentChannels.find((channel) => channel.id === paymentChannel)
+    ?? availablePaymentChannels[0];
+  const channelPaymentProviders = selectedChannel
+    ? currencyPaymentProviders.filter((provider) => providerSupportsChannel(provider, selectedChannel.id))
+    : [];
+  const selectedPaymentProvider = channelPaymentProviders.find((provider) => provider.id === preferredPaymentProvider)
+    ?? channelPaymentProviders[0];
+  const providerNeedsPhone = selectedPaymentProvider ? selectedPaymentProvider.requires_phone : true;
   useEffect(() => {
     const timer = setInterval(() => setDeliveryClock(new Date()), 60_000);
     return () => clearInterval(timer);
@@ -94,8 +136,8 @@ export default function CheckoutScreen({ navigation }: any) {
   const estimate = quote?.amount ?? 0;
   const paidDelivery = (quote?.delivery_fee ?? 0) > 0;
   const basketKey = useMemo(
-    () => JSON.stringify({ mode: effectiveMode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, label: place.label, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient }),
-    [effectiveMode, lines, place.lat, place.lng, place.label, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, forSomeoneElse, recipient],
+    () => JSON.stringify({ mode: effectiveMode, lines: lines.map(({ product, qty }) => [product.id, qty]), lat: place.lat, lng: place.lng, label: place.label, approximate: place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, paymentChannel, preferredPaymentProvider, forSomeoneElse, recipient }),
+    [effectiveMode, lines, place.lat, place.lng, place.label, place.approximate, name, email, phone, paymentPhone, deliveryWindow, checkoutPayment, currency, paymentChannel, preferredPaymentProvider, forSomeoneElse, recipient],
   );
   const currentBasketKey = useRef(basketKey);
   currentBasketKey.current = basketKey;
@@ -143,7 +185,7 @@ export default function CheckoutScreen({ navigation }: any) {
     let active = true;
     void fetch(`${API_URL}/checkout/options`).then(async (response) => {
       if (!response.ok) throw new Error('Could not load supported payment currencies.');
-      const options = await response.json();
+      const options = await response.json() as CheckoutOptions;
       if (active) setCheckoutOptions(options);
     }).catch((error: unknown) => {
       console.error('Could not load supported payment currencies:', error);
@@ -245,6 +287,10 @@ export default function CheckoutScreen({ navigation }: any) {
       Alert.alert('Payment currency unavailable', checkoutOptions
         ? `Online payments support ${checkoutOptions.payment_currencies.join(', ')}. Choose a supported currency or pay on delivery in ${checkoutOptions.cash_currency}.`
         : 'Supported payment currencies could not be loaded. Please try again.');
+      return false;
+    }
+    if (checkoutPayment === 'online' && checkoutOptions?.payment_providers && !currencyPaymentProviders.length) {
+      Alert.alert('Payment method unavailable', `No online payment provider is currently available for ${currency}. Choose another currency or pay on delivery.`);
       return false;
     }
     if (mode === 'wholesale') {
@@ -402,7 +448,12 @@ export default function CheckoutScreen({ navigation }: any) {
           ...(forSomeoneElse ? { recipient: { name: recipient.name.trim(), phone: recipient.phone.trim().startsWith('+') ? recipient.phone.trim() : `${recipientDial}${recipient.phone.replace(/[^0-9]/g, '').replace(/^0/, '')}` } } : {}),
           currency,
           quoted_payment_amount: quote!.payment_amount,
-          payment_phone: paymentPhone.trim().startsWith('+') ? paymentPhone.trim() : `${paymentPhoneDial}${(paymentPhone.trim() || phone).replace(/[^0-9]/g, '').replace(/^0/, '')}`,
+          ...(selectedPaymentProvider ? { payment_provider: selectedPaymentProvider.id } : {}),
+          ...(providerNeedsPhone ? {
+            payment_phone: paymentPhone.trim().startsWith('+')
+              ? paymentPhone.trim()
+              : `${paymentPhoneDial}${(paymentPhone.trim() || phone).replace(/[^0-9]/g, '').replace(/^0/, '')}`,
+          } : {}),
         });
         const orderItems = buildOrderItems(initialized.items, quote!);
         setPayment(initialized);
@@ -613,7 +664,7 @@ export default function CheckoutScreen({ navigation }: any) {
           {checkoutPayment === 'online' && checkoutOptions && !checkoutOptions.payment_currencies.includes(currency) && <Text style={styles.warning}>Online payments support {checkoutOptions.payment_currencies.join(', ')}. Choose a supported currency above or pay on delivery.</Text>}
           <View style={styles.choiceRow}>
             <Pressable
-              style={[styles.choiceCard, checkoutPayment === 'online' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
+              style={[styles.choiceCard, glassSoft, checkoutPayment === 'online' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
               disabled={!!pendingVerification}
               onPress={() => {
                 setCheckoutPayment('online');
@@ -622,12 +673,12 @@ export default function CheckoutScreen({ navigation }: any) {
               accessibilityRole="radio"
               accessibilityState={{ selected: checkoutPayment === 'online' }}
             >
-              <Ionicons name="phone-portrait-outline" size={21} color={checkoutPayment === 'online' ? tierTheme.icon : colors.muted} />
+              <Ionicons name="card-outline" size={21} color={checkoutPayment === 'online' ? tierTheme.icon : colors.muted} />
               <Text style={styles.choiceTitle}>Pay online</Text>
-              <Text style={styles.choiceHint}>Mobile money or card</Text>
+              <Text style={styles.choiceHint}>Mobile money, cards and wallets</Text>
             </Pressable>
             <Pressable
-              style={[styles.choiceCard, checkoutPayment === 'cash_on_delivery' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
+              style={[styles.choiceCard, glassSoft, checkoutPayment === 'cash_on_delivery' && [styles.choiceSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }]]}
               disabled={!!pendingVerification}
               onPress={() => {
                 setCheckoutPayment('cash_on_delivery');
@@ -644,8 +695,90 @@ export default function CheckoutScreen({ navigation }: any) {
 
           {checkoutPayment === 'online' && (
             <>
-              {savedPaymentMethods.length > 0 && (
-                <View style={styles.savedMethods}>
+              {checkoutOptions?.payment_providers && (
+                <View style={[styles.gatewayPanel, glassSoft]}>
+                  <View style={styles.gatewayHeading}>
+                    <View style={[styles.gatewayIcon, { backgroundColor: tierTheme.soft }]}>
+                      <Ionicons name="shield-checkmark-outline" size={19} color={tierTheme.icon} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.choiceTitle}>Choose a payment gateway</Text>
+                      <Text style={styles.choiceHint}>Available methods are confirmed by each provider.</Text>
+                    </View>
+                  </View>
+                  {availablePaymentChannels.length > 0 && (
+                    <View style={styles.paymentChannels}>
+                      {availablePaymentChannels.map((channel) => {
+                        const selected = selectedChannel?.id === channel.id;
+                        return (
+                          <Pressable
+                            key={channel.id}
+                            style={[
+                              styles.paymentChannel,
+                              selected && [styles.paymentChannelSelected, { backgroundColor: tierTheme.soft }],
+                            ]}
+                            onPress={() => {
+                              setPaymentChannel(channel.id);
+                              setPreferredPaymentProvider('');
+                              setPayment(null);
+                            }}
+                            disabled={!!pendingVerification}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                          >
+                            {channel.id === 'mobile_money'
+                              ? <Ionicons name="phone-portrait-outline" size={17} color={selected ? tierTheme.icon : colors.muted} />
+                              : channel.id === 'cards'
+                                ? <Ionicons name="card-outline" size={17} color={selected ? tierTheme.icon : colors.muted} />
+                                : <Ionicons name="ellipsis-horizontal-circle-outline" size={17} color={selected ? tierTheme.icon : colors.muted} />}
+                            <Text style={[styles.paymentChannelText, selected && { color: tierTheme.accent }]}>{channel.label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {currencyPaymentProviders.length === 0 && (
+                    <Text style={styles.warning}>No online provider supports {currency} right now. Choose another currency or pay on delivery.</Text>
+                  )}
+                  {channelPaymentProviders.map((provider) => {
+                    const selected = selectedPaymentProvider?.id === provider.id;
+                    return (
+                      <Pressable
+                        key={provider.id}
+                        disabled={!!pendingVerification}
+                        style={[
+                          styles.gatewayOption,
+                          glassSoft,
+                          selected && [styles.gatewayOptionSelected, { borderColor: tierTheme.button, backgroundColor: tierTheme.soft }],
+                        ]}
+                        onPress={() => {
+                          setPreferredPaymentProvider(provider.id);
+                          setPayment(null);
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                      >
+                        {provider.requires_phone
+                          ? <Ionicons name="phone-portrait-outline" size={21} color={selected ? tierTheme.icon : colors.muted} />
+                          : provider.id === 'paypal'
+                            ? <Ionicons name="wallet-outline" size={21} color={selected ? tierTheme.icon : colors.muted} />
+                            : <Ionicons name="card-outline" size={21} color={selected ? tierTheme.icon : colors.muted} />}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.choiceTitle}>{provider.label}</Text>
+                          <Text style={styles.choiceHint}>{provider.methods.join(' · ')}</Text>
+                        </View>
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={21}
+                          color={selected ? tierTheme.icon : colors.muted}
+                        />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+              {providerNeedsPhone && savedPaymentMethods.length > 0 && (
+                <View style={[styles.savedMethods, glassSoft]}>
                   <Text style={styles.label}>Saved mobile money numbers</Text>
                   {savedPaymentMethods.map((method) => (
                     <Pressable
@@ -666,21 +799,28 @@ export default function CheckoutScreen({ navigation }: any) {
                   ))}
                 </View>
               )}
-              <Text style={styles.label}>Mobile money number</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <CountryCodePicker value={paymentPhoneDial} onChange={setPaymentPhoneDial} accent={tierTheme.accent} />
-                <View style={{ flex: 1 }}>
-                  <Field
-                    label=""
-                    value={paymentPhone}
-                    onChangeText={setPaymentPhone}
-                    keyboardType="phone-pad"
-                    placeholder={phone || 'Phone number'}
-                    editable={!pendingVerification}
-                  />
-                </View>
-              </View>
-              <Text style={styles.helper}>Enter your mobile-money number, or leave this blank to use your contact number. You will see the available ways to pay before confirming. Never share your PIN with Saplaya.</Text>
+              {providerNeedsPhone && (
+                <>
+                  <Text style={styles.label}>Mobile money number</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <CountryCodePicker value={paymentPhoneDial} onChange={setPaymentPhoneDial} accent={tierTheme.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Field
+                        label=""
+                        value={paymentPhone}
+                        onChangeText={setPaymentPhone}
+                        keyboardType="phone-pad"
+                        placeholder={phone || 'Phone number'}
+                        editable={!pendingVerification}
+                      />
+                    </View>
+                  </View>
+                  <Text style={styles.helper}>Use a reachable number for the mobile-money prompt. Never share your PIN with Saplaya.</Text>
+                </>
+              )}
+              {!providerNeedsPhone && (
+                <Text style={styles.helper}>Card and wallet details are entered only on the provider’s secure checkout.</Text>
+              )}
             </>
           )}
 
@@ -782,6 +922,15 @@ const styles = StyleSheet.create({
   deliveryCard: { marginVertical: 10, padding: 15, borderRadius: radius.md, backgroundColor: colors.white, ...shadow },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 13 },
   choiceCard: { flexGrow: 1, flexBasis: '42%', minWidth: 130, minHeight: 102, padding: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.92)', borderRadius: radius.lg, backgroundColor: 'rgba(255,255,255,0.78)', alignItems: 'flex-start', justifyContent: 'center', gap: 5, shadowColor: '#1B4D22', shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  gatewayPanel: { marginBottom: 12, padding: 14, borderRadius: radius.lg, gap: 9 },
+  gatewayHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 4 },
+  gatewayIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  paymentChannels: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.45)' },
+  paymentChannel: { flexGrow: 1, flexBasis: '30%', minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 7, borderRadius: 11 },
+  paymentChannelSelected: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.94)', shadowColor: '#1B4D22', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  paymentChannelText: { color: colors.muted, fontSize: 10, fontWeight: '800' },
+  gatewayOption: { minHeight: 68, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.88)', borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  gatewayOptionSelected: { borderWidth: 1.5 },
   choiceSelected: { borderColor: colors.green, backgroundColor: '#EFF7EC' },
   choiceTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   choiceHint: { color: colors.muted, fontSize: 11, lineHeight: 15 },

@@ -25,11 +25,11 @@ type ClaimOrder = {
 };
 
 const statusStyle: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Available', className: 'bg-sun-soft text-sun-deep' },
-  packing: { label: 'Packing', className: 'bg-[#FFF4D6] text-[#8A5A00]' },
-  en_route: { label: 'On the way', className: 'bg-[#E8F0FF] text-[#2457A7]' },
-  delivered: { label: 'Delivered', className: 'bg-leaf-soft text-leaf-deep' },
-  cancelled: { label: 'Cancelled', className: 'bg-red-50 text-red-700' },
+  pending: { label: 'Available', className: 'bg-[#FFF8E1] text-[#8A5A00] ring-1 ring-[#FFB300]/40' },
+  packing: { label: 'Packing', className: 'bg-[#E1F5FE] text-[#01579B] ring-1 ring-[#0288D1]/30' },
+  en_route: { label: 'On the way', className: 'bg-[#F3E5F5] text-[#7B1FA2] ring-1 ring-[#7B1FA2]/30' },
+  delivered: { label: 'Delivered', className: 'bg-[#E8F5E9] text-[#2E7D32] ring-1 ring-[#2E7D32]/30' },
+  cancelled: { label: 'Cancelled', className: 'bg-[#FFEBEE] text-[#D32F2F] ring-1 ring-[#D32F2F]/30' },
 };
 
 const statusAccent: Record<string, string> = {
