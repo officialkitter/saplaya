@@ -23,6 +23,8 @@ type GatewayStatus = {
 function PaymentGatewayPanel() {
   const [status, setStatus] = useState<GatewayStatus | null>(null);
   const [error, setError] = useState('');
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
   useEffect(() => {
     let active = true;
     fetchAdmin<GatewayStatus>('/admin/payments/gateway-status')
@@ -30,6 +32,28 @@ function PaymentGatewayPanel() {
       .catch((cause) => { if (active) setError(userFacingMessage(cause, 'Could not load payment gateway status.')); });
     return () => { active = false; };
   }, []);
+
+  async function verifyPaymentNotifications() {
+    setNotificationBusy(true);
+    setError('');
+    setNotificationMessage('');
+    try {
+      const result = await fetchAdmin<{ already_registered: boolean; replaced: boolean }>(
+        '/admin/payments/pesapal/register-ipn',
+        { method: 'POST' },
+      );
+      setNotificationMessage(result.replaced
+        ? 'Payment notifications are now connected to the current backend.'
+        : result.already_registered
+          ? 'Payment notifications are already connected to the current backend.'
+          : 'Payment notifications are registered for this backend.');
+      setStatus(await fetchAdmin<GatewayStatus>('/admin/payments/gateway-status'));
+    } catch (cause) {
+      setError(userFacingMessage(cause, 'Could not verify payment notifications.'));
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
 
   return (
     <Panel title="Payment gateway" subtitle="Providers, currencies and keys are set on the server. Secrets are never shown here.">
@@ -60,6 +84,16 @@ function PaymentGatewayPanel() {
           </ul>
           <p className="text-xs text-ink-mute">Checkout uses the first ready provider that accepts the customer&apos;s currency unless the customer picks another.</p>
           <p className="text-xs text-ink-mute">Configuration checks do not verify account activation, merchant capabilities or successful payment delivery. Confirm these in each provider&apos;s dashboard before going live.</p>
+          {status.providers.some((provider) => provider.id === 'pesapal') && (
+            <div className="space-y-2 rounded-xl border border-line bg-white/70 p-3">
+              <p className="text-sm font-bold">Payment notifications</p>
+              <p className="text-xs leading-5 text-ink-mute">Verify that payment updates are registered to the current public backend. This is required to confirm completed payments.</p>
+              <Button type="button" size="sm" onClick={verifyPaymentNotifications} disabled={notificationBusy}>
+                {notificationBusy ? 'Verifying…' : 'Verify payment notifications'}
+              </Button>
+              {notificationMessage && <p role="status" className="text-xs font-semibold text-leaf-deep">{notificationMessage}</p>}
+            </div>
+          )}
         </div>
       )}
     </Panel>

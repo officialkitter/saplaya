@@ -10,7 +10,7 @@ type Session = {
   order_tracking_id: string;
 };
 
-export default function PesapalEmbeddedCheckoutPage() {
+export default function SecureCheckoutPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [message, setMessage] = useState('Preparing your secure checkout…');
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -62,11 +62,11 @@ export default function PesapalEmbeddedCheckoutPage() {
             </span>
             <div>
               <p className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-widest text-leaf-deep">
-                <ShieldCheck size={15} aria-hidden="true" /> Secure PesaPal checkout
+                <ShieldCheck size={15} aria-hidden="true" /> Secure payment
               </p>
               <h1 className="mt-1 font-display text-xl font-extrabold text-ink sm:text-2xl">Complete your payment</h1>
               <p className="mt-1 max-w-xl text-sm leading-5 text-ink-mute">
-                Choose an available card, wallet or mobile-money method in Pesapal’s hosted checkout.
+                Choose an available card, wallet or mobile-money method in the secure checkout.
               </p>
             </div>
           </div>
@@ -75,13 +75,13 @@ export default function PesapalEmbeddedCheckoutPage() {
         {session ? (
           <iframe
             ref={frameRef}
-            title="PesaPal secure payment checkout"
+            title="Secure payment checkout"
             src={session.redirect_url}
             className="block w-full border-0 bg-transparent"
             style={{ height: 'clamp(680px, calc(100dvh - 190px), 980px)', minHeight: '680px' }}
             allow="payment *"
             referrerPolicy="strict-origin-when-cross-origin"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
           />
         ) : (
           <div className="grid min-h-[520px] place-items-center px-5 text-center">
@@ -89,7 +89,7 @@ export default function PesapalEmbeddedCheckoutPage() {
           </div>
         )}
         <p className="border-t border-white/70 bg-white/45 px-4 py-3 text-center text-xs leading-5 text-ink-mute sm:px-6">
-          Your payment details are entered with Pesapal and are not stored by Saplaya.
+          Your payment details are handled by the secure payment service and are not stored by Saplaya.
         </p>
       </section>
     </main>

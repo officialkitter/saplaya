@@ -68,9 +68,9 @@ export class PaymentGateway {
     const ready = await this.readyProviders();
     if (preferred) {
       const provider = ready.find((candidate) => candidate.id === preferred);
-      if (!provider) return { error: 'The selected payment provider is not available.', status: 400 };
+      if (!provider) return { error: 'That payment method is not available. Choose another option.', status: 400 };
       if (!provider.currencies.includes(currency)) {
-        return { error: `${provider.label} does not accept ${currency}.`, status: 400 };
+        return { error: `That payment method does not support ${currency}. Choose another option.`, status: 400 };
       }
       return provider;
     }

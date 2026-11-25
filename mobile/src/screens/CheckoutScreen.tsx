@@ -113,7 +113,9 @@ export default function CheckoutScreen({ navigation }: any) {
     : [];
   const selectedPaymentProvider = channelPaymentProviders.find((provider) => provider.id === preferredPaymentProvider)
     ?? channelPaymentProviders[0];
-  const providerNeedsPhone = selectedPaymentProvider ? selectedPaymentProvider.requires_phone : true;
+  const providerNeedsPhone = selectedPaymentProvider
+    ? selectedPaymentProvider.requires_phone && selectedChannel?.id === 'mobile_money'
+    : true;
   useEffect(() => {
     const timer = setInterval(() => setDeliveryClock(new Date()), 60_000);
     return () => clearInterval(timer);
@@ -290,7 +292,7 @@ export default function CheckoutScreen({ navigation }: any) {
       return false;
     }
     if (checkoutPayment === 'online' && checkoutOptions?.payment_providers && !currencyPaymentProviders.length) {
-      Alert.alert('Payment method unavailable', `No online payment provider is currently available for ${currency}. Choose another currency or pay on delivery.`);
+      Alert.alert('Payment method unavailable', `Online payments are currently unavailable for ${currency}. Choose another currency or pay on delivery.`);
       return false;
     }
     if (mode === 'wholesale') {
@@ -702,8 +704,8 @@ export default function CheckoutScreen({ navigation }: any) {
                       <Ionicons name="shield-checkmark-outline" size={19} color={tierTheme.icon} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.choiceTitle}>Choose a payment gateway</Text>
-                      <Text style={styles.choiceHint}>Available methods are confirmed by each provider.</Text>
+                      <Text style={styles.choiceTitle}>Choose a payment method</Text>
+                      <Text style={styles.choiceHint}>Available options depend on your currency and location.</Text>
                     </View>
                   </View>
                   {availablePaymentChannels.length > 0 && (
@@ -758,9 +760,9 @@ export default function CheckoutScreen({ navigation }: any) {
                         accessibilityRole="radio"
                         accessibilityState={{ selected }}
                       >
-                        {provider.requires_phone
+                        {selectedChannel?.id === 'mobile_money'
                           ? <Ionicons name="phone-portrait-outline" size={21} color={selected ? tierTheme.icon : colors.muted} />
-                          : provider.id === 'paypal'
+                          : selectedChannel?.id === 'other'
                             ? <Ionicons name="wallet-outline" size={21} color={selected ? tierTheme.icon : colors.muted} />
                             : <Ionicons name="card-outline" size={21} color={selected ? tierTheme.icon : colors.muted} />}
                         <View style={{ flex: 1 }}>

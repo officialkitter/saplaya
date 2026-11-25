@@ -156,6 +156,38 @@ export async function registerIpn(url: string): Promise<string> {
   return response.ipn_id;
 }
 
+export type PesapalIpnRegistration = { ipn_id: string; url: string };
+
+export async function getRegisteredIpns(): Promise<PesapalIpnRegistration[]> {
+  const token = await getAccessToken();
+  const response = await fetch(`${baseUrl}/api/URLSetup/GetIpnList`, {
+    signal: AbortSignal.timeout(15_000),
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    throw new PesapalApiError(`Pesapal IPN lookup returned a non-JSON response (${response.status}).`);
+  }
+  if (!response.ok) {
+    const apiError = isJsonObject(parsed) ? standardError(parsed) : undefined;
+    if (apiError) throw new PesapalApiError(apiError.message, apiError);
+    throw new PesapalApiError(`Pesapal IPN lookup failed with HTTP ${response.status}.`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new PesapalApiError('Pesapal IPN lookup returned an invalid response.');
+  }
+
+  return parsed.map((entry) => {
+    if (!isJsonObject(entry) || typeof entry.ipn_id !== 'string' || typeof entry.url !== 'string') {
+      throw new PesapalApiError('Pesapal IPN lookup returned an invalid registration.');
+    }
+    return { ipn_id: entry.ipn_id, url: entry.url };
+  });
+}
+
 export type PesapalOrder = {
   order_tracking_id: string;
   merchant_reference: string;
@@ -189,6 +221,7 @@ export async function submitOrder(order: {
       amount: order.amount,
       description: 'Saplaya groceries checkout',
       callback_url: order.callbackUrl,
+      redirect_mode: 'TOP_WINDOW',
       notification_id: order.ipnId,
       billing_address: {
         email_address: order.email,
@@ -278,8 +311,13 @@ export function isPaymentCompleted(status: PesapalTransactionStatus): boolean {
 export function isPaymentFailed(status: PesapalTransactionStatus): boolean {
   const description = status.payment_status_description?.trim().toUpperCase();
   const paymentStatus = typeof status.status === 'string' ? status.status.trim().toUpperCase() : '';
-  const code = String(status.status_code ?? status.payment_status_code ?? '');
-  return ['FAILED', 'CANCELLED', 'REVERSED'].includes(description ?? '')
-    || ['FAILED', 'CANCELLED', 'REVERSED'].includes(paymentStatus)
-    || ['2', '3'].includes(code);
+  const failedDescriptions = ['INVALID', 'FAILED', 'CANCELLED', 'REVERSED'];
+  if (description) return failedDescriptions.includes(description);
+  if (paymentStatus && !/^\d+$/.test(paymentStatus)) return failedDescriptions.includes(paymentStatus);
+
+  if (status.status_code !== undefined && status.status_code !== '') {
+    return ['0', '2', '3'].includes(String(status.status_code));
+  }
+  // Older API responses used payment_status_code 3 for processing and 4 for reversed.
+  return ['2', '4'].includes(String(status.payment_status_code ?? ''));
 }

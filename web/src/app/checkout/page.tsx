@@ -214,7 +214,7 @@ export default function CheckoutPage() {
             : {}),
         });
         if (selectedProvider?.id === 'pesapal') {
-          window.location.assign(`/checkout/pesapal?tx_ref=${encodeURIComponent(payment.tx_ref ?? '')}&order_tracking_id=${encodeURIComponent(payment.order_tracking_id ?? '')}`);
+          window.location.assign(`/checkout/secure?tx_ref=${encodeURIComponent(payment.tx_ref ?? '')}&order_tracking_id=${encodeURIComponent(payment.order_tracking_id ?? '')}`);
           return;
         }
         window.location.assign(payment.payment_url);
@@ -475,7 +475,7 @@ export default function CheckoutPage() {
                       );
                     })}
                   </div>
-                  <p className="text-xs leading-5 text-ink-mute">Choose a gateway below. Its secure checkout confirms the exact methods available to you.</p>
+                  <p className="text-xs leading-5 text-ink-mute">Available options depend on your selected currency and location.</p>
                   {channelProviders.map((provider) => (
                     <label
                       key={provider.id}
@@ -488,9 +488,9 @@ export default function CheckoutPage() {
                     >
                       <input type="radio" name="payment-provider" className="sr-only" checked={selectedProvider?.id === provider.id} onChange={() => setPreferredProvider(provider.id)} />
                       <span className="rounded-xl bg-leaf/10 p-2 text-leaf-deep">
-                        {provider.requires_phone
+                        {selectedChannel?.id === 'mobile_money'
                           ? <Smartphone size={18} aria-hidden="true" />
-                          : provider.id === 'paypal'
+                          : selectedChannel?.id === 'other'
                             ? <Wallet size={18} aria-hidden="true" />
                             : <CreditCard size={18} aria-hidden="true" />}
                       </span>
@@ -511,9 +511,9 @@ export default function CheckoutPage() {
                     <CreditCard size={20} aria-hidden="true" />
                   </span>
                   <div>
-                    <p className="text-sm font-extrabold">Card payment with {selectedProvider.label}</p>
+                    <p className="text-sm font-extrabold">Card payment</p>
                     <p className="mt-1 text-xs leading-5 text-ink-mute">
-                      Enter your card details only in the secure gateway checkout. Saplaya does not store your card number.
+                      Enter your card details only on the secure payment page. Saplaya does not store your card number.
                     </p>
                   </div>
                 </div>

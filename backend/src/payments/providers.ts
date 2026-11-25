@@ -51,6 +51,21 @@ export interface PaymentProvider {
   verify(gatewayId: string): Promise<VerifiedPayment>;
 }
 
+export function checkoutProviderPresentation(
+  provider: Pick<PaymentProvider, 'id' | 'methods'>,
+): { label: string; methods: string[] } {
+  switch (provider.id) {
+    case 'stripe':
+      return { label: 'Cards & wallets', methods: ['Cards, digital wallets and other enabled methods'] };
+    case 'snippe':
+      return { label: 'Mobile money', methods: provider.methods };
+    case 'pesapal':
+      return { label: 'Secure checkout', methods: ['Cards', 'Mobile money'] };
+    case 'paypal':
+      return { label: 'Digital wallet & cards', methods: ['Wallet balance, cards and supported local methods'] };
+  }
+}
+
 export class PaymentProviderError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);

@@ -27,7 +27,7 @@ import {
   type CommissionTier,
   type OperationScope,
 } from './management.js';
-import { ipnAcknowledgement, registerIpn } from './pesapal.js';
+import { getRegisteredIpns, ipnAcknowledgement, registerIpn } from './pesapal.js';
 import { isDailyDeliveryWindowAvailable } from './delivery-time.js';
 import { loadPaymentGatewayConfig, PAYMENT_PROVIDER_IDS, type PaymentProviderId } from './payments/config.js';
 import { PaymentGateway, settlePayment, type SettlementStore, type StoredPayment } from './payments/gateway.js';
@@ -35,6 +35,7 @@ import {
   PaymentProviderError,
   PayPalProvider,
   StripeProvider,
+  checkoutProviderPresentation,
   verifySnippeWebhook,
   verifyStripeWebhook,
   WebhookVerificationError,
@@ -1206,9 +1207,8 @@ app.get('/checkout/options', async (_req, res) => {
     payment_currencies: [...new Set(providers.flatMap((provider) => provider.currencies))],
     payment_providers: providers.map((provider) => ({
       id: provider.id,
-      label: provider.label,
+      ...checkoutProviderPresentation(provider),
       channels: provider.channels,
-      methods: provider.methods,
       currencies: provider.currencies,
       requires_phone: provider.requiresPhone,
     })),
@@ -2144,10 +2144,12 @@ app.post('/admin/payments/pesapal/register-ipn', requirePerm('settings.manage'),
     console.error('Could not load Pesapal IPN configuration:', lookupError.message);
     return res.status(500).json({ error: 'Could not check existing Pesapal notification configuration.' });
   }
-  if (existing?.ipn_id) return res.json({ ipn_id: existing.ipn_id, already_registered: true });
 
   try {
-    const ipnId = await registerIpn(`${publicApiBase}/api/v1/payments/pesapal-ipn`);
+    const ipnUrl = `${publicApiBase}/api/v1/payments/pesapal-ipn`;
+    const registrations = await getRegisteredIpns();
+    const matchingRegistration = registrations.find((registration) => registration.url === ipnUrl);
+    const ipnId = matchingRegistration?.ipn_id ?? await registerIpn(ipnUrl);
     const { error: saveError } = await db.from('payment_provider_config').upsert({
       provider: 'pesapal',
       ipn_id: ipnId,
@@ -2157,11 +2159,17 @@ app.post('/admin/payments/pesapal/register-ipn', requirePerm('settings.manage'),
       console.error('Pesapal IPN was registered but could not be saved:', { ipnId, error: saveError.message });
       return res.status(500).json({ error: 'IPN was registered but could not be saved. Contact support before registering again.' });
     }
-    console.info('Pesapal IPN registered:', ipnId);
-    return res.status(201).json({ ipn_id: ipnId, already_registered: false });
+    const alreadyRegistered = Boolean(matchingRegistration);
+    const replaced = Boolean(existing?.ipn_id && existing.ipn_id !== ipnId);
+    console.info('Pesapal IPN configuration verified:', { alreadyRegistered, replaced });
+    return res.status(alreadyRegistered ? 200 : 201).json({
+      ipn_id: ipnId,
+      already_registered: alreadyRegistered,
+      replaced,
+    });
   } catch (error) {
     console.error('Pesapal IPN registration failed:', error);
-    return res.status(502).json({ error: 'Could not register the Pesapal notification URL.' });
+    return res.status(502).json({ error: 'Could not verify or configure the payment notification URL.' });
   }
 });
 

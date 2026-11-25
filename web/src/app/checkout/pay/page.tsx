@@ -116,7 +116,7 @@ function PaymentForm({ amount, currency, returnUrl }: { amount: number; currency
         {submitting ? 'Processing payment…' : `Pay ${formatAmount(amount, currency)}`}
       </button>
       <p className="text-center text-xs text-ink-mute">
-        Payments are encrypted and processed by Stripe. Saplaya never sees or stores your card details.
+        Your payment is encrypted. Saplaya never sees or stores your card details.
       </p>
     </form>
   );

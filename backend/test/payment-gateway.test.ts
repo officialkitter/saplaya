@@ -8,6 +8,7 @@ import {
   SnippeProvider,
   PayPalProvider,
   StripeProvider,
+  checkoutProviderPresentation,
   stripePaymentPageUrl,
   toStripeMinorUnits,
   verifySnippeWebhook,
@@ -85,6 +86,21 @@ test('legacy config keeps the existing Pesapal-only deployment working', () => {
   assert.equal(config.mode, 'legacy');
   assert.deepEqual(config.providers, [{ id: 'pesapal', currencies: ['TZS'] }]);
   assert.deepEqual(loadPaymentGatewayConfig({}).providers, []);
+});
+
+test('checkout payment labels hide gateway brands from customers', () => {
+  assert.deepEqual(checkoutProviderPresentation({ id: 'pesapal', methods: ['cards', 'mobile money'] }), {
+    label: 'Secure checkout',
+    methods: ['Cards', 'Mobile money'],
+  });
+  assert.deepEqual(checkoutProviderPresentation({ id: 'paypal', methods: ['PayPal balance', 'cards'] }), {
+    label: 'Digital wallet & cards',
+    methods: ['Wallet balance, cards and supported local methods'],
+  });
+  assert.deepEqual(checkoutProviderPresentation({ id: 'stripe', methods: ['Stripe cards'] }), {
+    label: 'Cards & wallets',
+    methods: ['Cards, digital wallets and other enabled methods'],
+  });
 });
 
 test('legacy live Pesapal config rejects non-public or insecure callback URLs', () => {
