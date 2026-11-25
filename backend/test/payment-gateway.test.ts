@@ -80,10 +80,37 @@ test('legacy config keeps the existing Pesapal-only deployment working', () => {
     PESAPAL_CUSTOMER_SECRET: 'secret',
     PESAPAL_ENV: 'live',
     PUBLIC_API_URL: 'https://api.example.com',
+    WEB_CHECKOUT_CALLBACK_URL: 'https://shop.example.com/checkout/payment',
   });
   assert.equal(config.mode, 'legacy');
   assert.deepEqual(config.providers, [{ id: 'pesapal', currencies: ['TZS'] }]);
   assert.deepEqual(loadPaymentGatewayConfig({}).providers, []);
+});
+
+test('legacy live Pesapal config rejects non-public or insecure callback URLs', () => {
+  const livePesapalEnv = {
+    PESAPAL_CUSTOMER_KEY: 'key',
+    PESAPAL_CUSTOMER_SECRET: 'secret',
+    PESAPAL_ENV: 'live',
+    PUBLIC_API_URL: 'https://api.example.com',
+    WEB_CHECKOUT_CALLBACK_URL: 'https://shop.example.com/checkout/payment',
+  };
+  assert.match(configProblems({ ...livePesapalEnv, PUBLIC_API_URL: 'http://localhost:3000' }).join(), /PUBLIC_API_URL must use https/);
+  assert.match(configProblems({ ...livePesapalEnv, PUBLIC_API_URL: 'https://localhost:3000' }).join(), /publicly reachable host/);
+  assert.match(configProblems({ ...livePesapalEnv, WEB_CHECKOUT_CALLBACK_URL: 'http://shop.example.com/checkout/payment' }).join(), /WEB_CHECKOUT_CALLBACK_URL must use https/);
+  assert.match(configProblems({ ...livePesapalEnv, WEB_CHECKOUT_CALLBACK_URL: 'https://127.0.0.1/checkout/payment' }).join(), /publicly reachable host/);
+});
+
+test('sandbox Pesapal may use local HTTP callback URLs for development', () => {
+  const config = loadPaymentGatewayConfig({
+    PESAPAL_CUSTOMER_KEY: 'key',
+    PESAPAL_CUSTOMER_SECRET: 'secret',
+    PESAPAL_ENV: 'sandbox',
+    PUBLIC_API_URL: 'http://localhost:3000',
+    WEB_CHECKOUT_CALLBACK_URL: 'http://localhost:3001/checkout/payment',
+  });
+  assert.equal(config.mode, 'legacy');
+  assert.equal(config.environment, 'test');
 });
 
 test('Stripe webhook signatures reject tampering and replay', () => {

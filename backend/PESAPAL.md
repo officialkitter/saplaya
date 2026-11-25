@@ -1,4 +1,4 @@
-# Payment gateway: Stripe, Snippe and PesaPal
+# Payment gateway: Stripe, Snippe, PesaPal and PayPal
 
 The gateway keeps pricing and order fulfillment on the server. Stripe uses a Saplaya-branded Payment Element page, while Snippe and PesaPal use their hosted checkout pages. Deployment and read-only smoke tests must not initiate a live transaction. A successful build or valid key format does not prove that a merchant account is activated.
 
@@ -68,6 +68,8 @@ Set these as backend process/deployment secrets. Do not put credentials in the w
 | `WEB_CHECKOUT_CALLBACK_URL` | Optional trusted website return URL; required for `client_platform: "web"`. |
 | `PAYMENT_APP_CALLBACK_URL` | Mobile deep-link return URL (defaults to `saplaya://payment-callback`). |
 | `PAYMENT_SUPPORTED_CURRENCIES` | Legacy PesaPal-only currency list. Defaults to `TZS`. In explicit gateway mode remove this variable and use `PESAPAL_CURRENCIES`. |
+
+In live mode, `PUBLIC_API_URL` and any configured `WEB_CHECKOUT_CALLBACK_URL` must use HTTPS and a publicly reachable host. Localhost/loopback URLs are rejected so a live payment cannot be initialized with return or IPN endpoints that Pesapal cannot reach. Use sandbox credentials and URLs for local development.
 
 Apply the existing payment/database setup in order: `supabase/mobile_account_payments.sql`, `supabase/pesapal_payments.sql`, then the checkout/pricing migrations through `20261107100000_management_commissions_regions.sql`, and finally `20261116100000_multicurrency_checkout_recipient.sql`. The separate agent-claims/notifications migration is not a prerequisite for this checkout migration. Inspect the target schema and migration history before applying SQL; do not blindly replay unrelated migrations. Register the IPN once through the authenticated `POST /admin/payments/pesapal/register-ipn` route; the stored notification ID is server-only.
 

@@ -112,7 +112,9 @@ export default function CheckoutPage() {
     : [];
   const selectedProvider = channelProviders.find((provider) => provider.id === preferredProvider) ?? channelProviders[0];
   // Older API responses omit payment_providers; those deployments are Pesapal-only and need a phone.
-  const providerNeedsPhone = selectedProvider ? selectedProvider.requires_phone : true;
+  const providerNeedsPhone = selectedProvider
+    ? selectedProvider.requires_phone && selectedChannel?.id === 'mobile_money'
+    : true;
   const items = useMemo(() => lines.map(({ product, qty }) => ({ product_id: product.id, qty })), [lines]);
   const quoteKey = JSON.stringify({
     mode: effectiveMode, deliveryWindow, items, lat: market.location?.lat, lng: market.location?.lng,
@@ -502,6 +504,19 @@ export default function CheckoutPage() {
                     </label>
                   ))}
                 </fieldset>
+              )}
+              {selectedChannel?.id === 'cards' && selectedProvider && (
+                <div className="flex items-start gap-3 rounded-2xl border border-white/80 bg-gradient-to-br from-white/90 via-white/65 to-leaf/10 p-4 shadow-soft backdrop-blur-xl">
+                  <span className="rounded-xl bg-leaf/10 p-2.5 text-leaf-deep">
+                    <CreditCard size={20} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-extrabold">Card payment with {selectedProvider.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-ink-mute">
+                      Enter your card details only in the secure gateway checkout. Saplaya does not store your card number.
+                    </p>
+                  </div>
+                </div>
               )}
               {providerNeedsPhone && (
                 <>

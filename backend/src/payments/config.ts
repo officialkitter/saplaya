@@ -82,6 +82,37 @@ function parseCurrencyList(raw: string, setting: string, problems: string[]): st
   }
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')
+    || host === '::1' || host === '0.0.0.0' || host.startsWith('127.');
+}
+
+function validatePublicUrl(
+  raw: string,
+  setting: string,
+  environment: PaymentEnvironment,
+  problems: string[],
+): void {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      problems.push(`${setting} must be an http(s) URL.`);
+    }
+    if (environment === 'live' && url.protocol !== 'https:') {
+      problems.push(`${setting} must use https in live mode.`);
+    }
+    if (environment === 'live' && isLoopbackHostname(url.hostname)) {
+      problems.push(`${setting} must use a publicly reachable host in live mode.`);
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      problems.push(`${setting} must not contain credentials, a query string, or a fragment.`);
+    }
+  } catch {
+    problems.push(`${setting} must be an absolute URL.`);
+  }
+}
+
 function requireSecret(
   env: Env,
   name: string,
@@ -232,6 +263,13 @@ export function loadPaymentGatewayConfig(env: Env = process.env): PaymentGateway
     const providers = hasPesapal
       ? [pesapalSettings(env, legacyEnvironment, problems, 'PAYMENT_SUPPORTED_CURRENCIES')]
       : [];
+    if (providers.length && publicApiUrl) {
+      validatePublicUrl(publicApiUrl, 'PUBLIC_API_URL', legacyEnvironment, problems);
+      const webCallbackUrl = value(env, 'WEB_CHECKOUT_CALLBACK_URL');
+      if (webCallbackUrl) {
+        validatePublicUrl(webCallbackUrl, 'WEB_CHECKOUT_CALLBACK_URL', legacyEnvironment, problems);
+      }
+    }
     if (problems.length) throw new PaymentConfigurationError(problems);
     return { mode: 'legacy', environment: legacyEnvironment, publicApiUrl, providers };
   }
@@ -246,17 +284,11 @@ export function loadPaymentGatewayConfig(env: Env = process.env): PaymentGateway
   if (!publicApiUrl) {
     problems.push('PUBLIC_API_URL is required for payment returns and webhooks.');
   } else {
-    try {
-      const url = new URL(publicApiUrl);
-      if (environment === 'live' && url.protocol !== 'https:') {
-        problems.push('PUBLIC_API_URL must use https when PAYMENT_ENVIRONMENT is "live".');
-      }
-      if (url.username || url.password || url.search || url.hash) {
-        problems.push('PUBLIC_API_URL must not contain credentials, a query string, or a fragment.');
-      }
-    } catch {
-      problems.push('PUBLIC_API_URL must be an absolute URL.');
-    }
+    validatePublicUrl(publicApiUrl, 'PUBLIC_API_URL', environment, problems);
+  }
+  const webCallbackUrl = value(env, 'WEB_CHECKOUT_CALLBACK_URL');
+  if (webCallbackUrl) {
+    validatePublicUrl(webCallbackUrl, 'WEB_CHECKOUT_CALLBACK_URL', environment, problems);
   }
   if (value(env, 'PAYMENT_SUPPORTED_CURRENCIES')) {
     problems.push('PAYMENT_SUPPORTED_CURRENCIES is replaced by per-provider *_CURRENCIES settings; remove it.');
